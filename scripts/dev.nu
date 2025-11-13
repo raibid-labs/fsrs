@@ -21,13 +21,18 @@ def watch-build [] {
     print "Press Ctrl+C to stop\n"
 
     # Check if cargo-watch is installed
-    if (which cargo-watch | is-empty) {
-        print "❌ cargo-watch not found. Install with:"
-        print "   cargo install cargo-watch"
+    if (which cargo-watch | is-not-empty) {
+        cargo watch -x "build" -s "just fmt" -c
+    } else if (which watchexec | is-not-empty) {
+        print "⚠️  Using watchexec (cargo-watch not available)"
+        watchexec -c -r -e rs,toml -- cargo build
+    } else {
+        print "❌ Neither cargo-watch nor watchexec found."
+        print "   Install one of:"
+        print "     • cargo install cargo-watch (may fail on macOS ARM64)"
+        print "     • brew install watchexec (recommended for macOS)"
         exit 1
     }
-
-    cargo watch -x "build" -s "just fmt" -c
 }
 
 def watch-tests [] {
@@ -35,13 +40,18 @@ def watch-tests [] {
     print "Press Ctrl+C to stop\n"
 
     # Check if cargo-watch is installed
-    if (which cargo-watch | is-empty) {
-        print "❌ cargo-watch not found. Install with:"
-        print "   cargo install cargo-watch"
+    if (which cargo-watch | is-not-empty) {
+        cargo watch -x "test --quiet" -c
+    } else if (which watchexec | is-not-empty) {
+        print "⚠️  Using watchexec (cargo-watch not available)"
+        watchexec -c -r -e rs,toml -- cargo test --quiet
+    } else {
+        print "❌ Neither cargo-watch nor watchexec found."
+        print "   Install one of:"
+        print "     • cargo install cargo-watch (may fail on macOS ARM64)"
+        print "     • brew install watchexec (recommended for macOS)"
         exit 1
     }
-
-    cargo watch -x "test --quiet" -c
 }
 
 def start-repl [] {

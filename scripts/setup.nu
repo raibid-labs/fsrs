@@ -84,7 +84,6 @@ def install-rust-deps [] {
 
     # Install cargo tools
     let tools = [
-        "cargo-watch",
         "cargo-edit",
         "cargo-audit",
         "cargo-tarpaulin",
@@ -94,10 +93,29 @@ def install-rust-deps [] {
     for tool in $tools {
         if (which $tool | is-empty) {
             print $"  Installing ($tool)..."
-            cargo install $tool
+            try {
+                cargo install $tool
+            } catch {
+                print $"  ⚠️  Failed to install ($tool) - continuing..."
+            }
         } else {
             print $"  ✅ ($tool) already installed"
         }
+    }
+
+    # Install cargo-watch separately with error handling (has known issues on macOS ARM64)
+    if (which cargo-watch | is-empty) {
+        print "  Installing cargo-watch..."
+        try {
+            cargo install cargo-watch
+            print "  ✅ cargo-watch installed"
+        } catch {
+            print "  ⚠️  cargo-watch installation failed (known issue on macOS ARM64)"
+            print "     Alternative: Use 'watchexec' or run commands manually"
+            print "     Install watchexec: brew install watchexec"
+        }
+    } else {
+        print "  ✅ cargo-watch already installed"
     }
 
     # Install rustfmt and clippy
