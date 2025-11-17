@@ -6,5 +6,20 @@
     "This project extends the raibid-labs organization configuration.",
     "Type: lib",
     "See workspace repo for base rules and conventions."
-  ]
+  ],
+  "$schema": "https://claude.ai/schemas/project-config.json",
+  "version": "1.0.0",
+  "project": {
+    "name": "fsrs",
+    "type": "library",
+    "repository": "https://github.com/raibid-labs/fsrs"
+  },
+  "language": {
+    "primary": "unknown"
+  },
+  "customization": {
+    "mcpServers": {},
+    "workflows": {},
+    "agents": []
+  }
 }
