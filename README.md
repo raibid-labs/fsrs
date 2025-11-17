@@ -1,88 +1,356 @@
-# fsrs
+# FSRS - F# Script Runtime System
 
-`fsrs` is an experimental Mini‑F# dialect plus embeddable Rust VM designed to replace Lua‑style scripting in tools like terminal emulators (e.g. WezTerm).
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)]()
 
-The goal:
+**FSRS** is an experimental Mini-F# dialect with an embeddable Rust bytecode VM, designed to replace Lua-style scripting in applications like terminal emulators (e.g., WezTerm). It combines F#-style developer ergonomics with the simplicity of Lua embedding.
 
-- F#-style developer ergonomics (records, DUs, pattern matching, pipelines, simple modules).
-- A small, eager, expression‑oriented language suitable for **embedded scripting and configs**.
-- A Lua‑class bytecode VM implemented in Rust (no .NET, no LLVM, no WASM required).
-- Designed for use in a Rust host (terminal emulator, CLI, etc.) with hot‑path callbacks.
+---
 
-This repository is **bootstrap scaffolding**, design docs, and example configs to get the project started.
+## 📋 Table of Contents
 
-## Layout
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Project Status](#project-status)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
-- `README.md` — high‑level overview and goals (this file).
-- `docs/` — design docs for the language, VM, and embedding.
-- `examples/` — example Mini‑F# (`.fsrs`) configs and callback modules.
-- `scripts/` — helper scripts (Nushell) to scaffold the Rust workspace.
-- `rust/` — initial Rust workspace skeleton (front‑end, VM, demo host).
+---
 
-## Getting started
+## Overview
 
-### 1. Prereqs
+FSRS provides:
 
-- Rust (latest stable) with `cargo`.
-- Nushell (for the optional bootstrap script): <https://www.nushell.sh>
-- A code assistant such as Claude Code in your editor (optional but recommended).
+- **F#-Style Ergonomics**: Records, discriminated unions, pattern matching, pipelines, and simple modules
+- **Embedded Scripting**: Lua-class bytecode VM implemented entirely in Rust (no .NET, no LLVM, no WASM)
+- **Host Integration**: Designed for Rust host applications with hot-path callbacks and zero-cost abstractions
+- **Hot-Reload Support**: Development-friendly script reloading without application restart
+- **Type Safety**: Hindley-Milner type inference for compile-time safety
 
-### 2. Bootstrap the Rust workspace (optional)
+### Use Cases
 
-If you want to recreate the workspace from scratch, you can run:
+- **Terminal Emulator Configuration**: Replace Lua configs in tools like WezTerm
+- **Plugin Systems**: Embeddable scripting for extensible applications
+- **Configuration Files with Logic**: Expressive configs beyond TOML/YAML
+- **Game Scripting**: Functional scripting for game logic
 
-```nu
-use scripts/bootstrap.nu *
-bootstrap
+---
+
+## Key Features
+
+### Language Features (Mini-F# Dialect)
+
+```fsharp
+# Let bindings and functions
+let add x y = x + y
+let inc = add 1
+
+# Pattern matching over discriminated unions
+type Direction = Left | Right | Up | Down
+
+match dir with
+| Left -> "left"
+| Right -> "right"
+| Up -> "up"
+| Down -> "down"
+
+# Records and field access
+type TabInfo = {
+    Title: string
+    Index: int
+    ProcessName: string
+}
+
+let tab = { Title = "main"; Index = 0; ProcessName = "zsh" }
+let title = tab.Title
+
+# Pipelines and composition
+let normalizeTitle title =
+    title
+    |> String.trim
+    |> String.toLower
 ```
 
-This will:
+### Runtime Features
 
-- Create/refresh the `rust/` Cargo workspace.
-- Create crates:
-  - `fsrs-frontend` — parser, typechecker, desugaring for the Mini‑F# dialect.
-  - `fsrs-vm` — bytecode VM, value representation, GC, and built‑ins.
-  - `fsrs-demo` — small binary demonstrating embedding the language in a host program.
+- **Stack-Based Bytecode VM**: Inspired by OCaml ZINC machine
+- **Garbage Collection**: Hybrid ref-counting + cycle detection
+- **Closures**: First-class functions with upvalue capture
+- **Pattern Matching**: Compiled to efficient decision trees
+- **Host Interop**: Rhai-inspired zero-boilerplate API
 
-You can also inspect the script and just follow its steps manually.
+---
 
-### 3. Build and run the demo host
+## Project Status
 
-From the `rust/` directory:
+**Version**: 0.1.0-alpha
+**Status**: Bootstrap Phase
+
+### What Exists
+
+- ✅ Skeletal Rust workspace (`fsrs-frontend`, `fsrs-vm`, `fsrs-demo`)
+- ✅ Comprehensive design documentation
+- ✅ Build infrastructure (Just + Nushell)
+- ✅ Research on VM implementation patterns
+
+### What's Coming (Phase 1 - Weeks 1-3)
+
+- 🚧 AST, lexer, and parser implementation
+- 🚧 Bytecode compiler
+- 🚧 VM interpreter and runtime
+- 🚧 Basic type inference
+
+See [ROADMAP.md](docs/ROADMAP.md) for the complete development plan.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Rust** (1.70+): Install from [rustup.rs](https://rustup.rs)
+- **Nushell** (0.90+): Install from [nushell.sh](https://www.nushell.sh)
+- **Just** (optional): `cargo install just`
+
+### Installation
 
 ```bash
-cd rust
-cargo build
+# Clone the repository
+git clone https://github.com/raibid-labs/fsrs.git
+cd fsrs
+
+# Bootstrap the environment
+just bootstrap
+
+# Build the project
+just build
+
+# Run tests
+just test
+
+# Run the demo (placeholder in early stages)
+just demo
+```
+
+### Using Manually (Without Just)
+
+```bash
+# Bootstrap
+nu scripts/bootstrap.nu
+
+# Build
+cd rust && cargo build --workspace
+
+# Test
+cargo test --workspace
+
+# Run demo
 cargo run -p fsrs-demo
 ```
 
-Initially, `fsrs-demo` just:
+---
 
-- Loads an example `.fsrs` script from `../examples/`.
-- Pretends to parse/compile it (stubbed).
-- Prints placeholder information to show the integration points you will fill in.
+## Documentation
 
-### 4. How to use these files with Claude Code
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
-See `docs/CLAUDE_CODE_NOTES.md` for detailed prompts and task breakdowns tailored for Claude Code.
+### Getting Started
 
-High‑level flow:
+- **[SETUP.md](docs/SETUP.md)** - Development environment setup
+- **[ROADMAP.md](docs/ROADMAP.md)** - Development phases and timeline
+- **[TOC.md](docs/TOC.md)** - Complete documentation index
 
-1. Start in `rust/crates/fsrs-frontend/src/lib.rs` and follow the **Phase 1** tasks in `docs/CLAUDE_CODE_NOTES.md` to:
-   - Define the core AST,
-   - Implement a minimal tokenizer and parser for the Mini‑F# subset,
-   - Add basic error reporting.
+### Architecture & Design
 
-2. Move on to the `fsrs-vm` crate and implement:
-   - `Value`, `Instruction`, `Chunk`, `Vm` structs,
-   - A minimal interpreter loop,
-   - A few built‑ins (ints, bools, strings, simple arithmetic).
+- **[01-overview.md](docs/01-overview.md)** - System architecture overview
+- **[02-language-spec.md](docs/02-language-spec.md)** - Mini-F# language specification
+- **[03-vm-design.md](docs/03-vm-design.md)** - Bytecode VM architecture
+- **[HOST_INTEROP.md](docs/HOST_INTEROP.md)** - Host API design
 
-3. Wire the two together in `fsrs-demo`:
-   - Parse & compile `examples/minifs_config.fsrs`,
-   - Execute it in the VM,
-   - Extract data for a pretend “terminal config”.
+### Implementation
 
-Each step is broken down in the design docs to be friendly to an AI code assistant.
+- **[CLAUDE_CODE_NOTES.md](docs/CLAUDE_CODE_NOTES.md)** - Detailed implementation tasks
+- **[RESEARCH_NOTES.md](docs/RESEARCH_NOTES.md)** - VM and embedding research
+- **[NUSHELL_PATTERNS.md](docs/NUSHELL_PATTERNS.md)** - Scripting patterns
+
+### Development
+
+- **[CLAUDE.md](CLAUDE.md)** - Claude Code configuration and workflows
+- **[justfile](justfile)** - Build automation commands
 
 ---
+
+## Project Structure
+
+```
+fsrs/
+├── rust/                    # Rust workspace
+│   ├── Cargo.toml           # Workspace configuration
+│   └── crates/
+│       ├── fsrs-frontend/   # Parser, typechecker, bytecode compiler
+│       ├── fsrs-vm/         # Bytecode VM runtime
+│       └── fsrs-demo/       # Demo host application
+├── docs/                    # Comprehensive documentation
+│   ├── ROADMAP.md           # Development roadmap
+│   ├── SETUP.md             # Setup guide
+│   ├── 01-overview.md       # Architecture
+│   ├── 02-language-spec.md  # Language specification
+│   └── ...
+├── examples/                # Example .fsrs scripts
+├── scripts/                 # Nushell automation scripts
+│   ├── build.nu
+│   ├── test.nu
+│   └── bootstrap.nu
+├── tests/                   # Integration tests
+├── justfile                 # Build automation
+├── CLAUDE.md                # Claude Code configuration
+└── README.md                # This file
+```
+
+---
+
+## Development
+
+### Available Commands (Just)
+
+```bash
+# Show all available commands
+just
+
+# Building
+just build              # Build all crates (dev mode)
+just build-release      # Build optimized release binaries
+just build-crate CRATE  # Build specific crate
+
+# Testing
+just test               # Run all tests
+just test-unit          # Unit tests only
+just test-integration   # Integration tests
+just test-coverage      # Generate coverage report
+
+# Development
+just dev                # Watch mode with auto-rebuild
+just watch              # Watch and rebuild
+just watch-test         # Watch and run tests
+just demo               # Run demo host
+
+# Code Quality
+just check              # Run all checks (fmt + lint + test)
+just fmt                # Format code
+just lint               # Run clippy linter
+
+# Documentation
+just docs               # Generate and open API docs
+```
+
+### Development Workflow
+
+```bash
+# 1. Start watch mode
+just watch
+
+# 2. In another terminal, watch tests
+just watch-test
+
+# 3. Make changes...
+
+# 4. Before committing, run checks
+just check
+```
+
+### Using Without Just
+
+All Just commands map to standard Cargo commands. See [SETUP.md](docs/SETUP.md) for manual commands.
+
+---
+
+## Roadmap
+
+FSRS is developed in four phases over 16 weeks:
+
+### Phase 1: MVP - Core Language & Interpreter (Weeks 1-3)
+
+- Core AST, lexer, parser
+- Basic bytecode VM (stack-based)
+- Integer arithmetic, if/then/else
+- Simple function calls
+
+### Phase 2: Language Features (Weeks 4-7)
+
+- Closures and recursive functions
+- Tuples, lists, arrays
+- Pattern matching
+- Type inference (Hindley-Milner)
+
+### Phase 3: Advanced Features (Weeks 8-11)
+
+- Records and discriminated unions
+- Host interop API
+- Hot-reload support
+- Module system
+
+### Phase 4: Production Ready (Weeks 12-16)
+
+- Performance optimization
+- Rich error messages
+- Comprehensive documentation
+- v1.0.0-rc1 release
+
+See [ROADMAP.md](docs/ROADMAP.md) for detailed milestones and deliverables.
+
+---
+
+## Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. **Read the docs**: Start with [SETUP.md](docs/SETUP.md) and [ROADMAP.md](docs/ROADMAP.md)
+2. **Check the roadmap**: See what phase we're in and what needs work
+3. **Review implementation notes**: [CLAUDE_CODE_NOTES.md](docs/CLAUDE_CODE_NOTES.md) has detailed tasks
+4. **Follow conventions**: See [CLAUDE.md](CLAUDE.md) for development patterns
+5. **Submit a PR**: Include tests and documentation
+
+### Development Guidelines
+
+- **Code Style**: Follow Rustfmt (enforced)
+- **Linting**: Zero clippy warnings policy
+- **Testing**: > 80% coverage target
+- **Documentation**: Public APIs must have docs
+- **Commits**: Conventional commits preferred
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## Acknowledgments
+
+- **Inspiration**: WezTerm's Lua configuration, F# language design
+- **Research**: OCaml ZINC VM, Lua embedding patterns, Rhai, Gluon
+- **Tooling**: Rust, Cargo, Just, Nushell
+
+---
+
+## Contact & Support
+
+- **Repository**: https://github.com/raibid-labs/fsrs
+- **Issues**: Report bugs or request features on GitHub Issues
+- **Discussions**: Ask questions on GitHub Discussions
+- **Documentation**: Complete docs in [`docs/`](docs/)
+
+---
+
+**Status**: Early development - not ready for production use
+**Target**: v1.0.0 in Q2 2026
+
+For detailed implementation tasks, see [CLAUDE_CODE_NOTES.md](docs/CLAUDE_CODE_NOTES.md).
+For the complete roadmap, see [ROADMAP.md](docs/ROADMAP.md).

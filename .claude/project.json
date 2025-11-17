@@ -1,25 +1,75 @@
 {
-  "name": "fsrs",
-  "description": "raibid-labs project",
-  "extends": "github:raibid-labs/workspace/.claude/base-project.json",
-  "customInstructions": [
-    "This project extends the raibid-labs organization configuration.",
-    "Type: lib",
-    "See workspace repo for base rules and conventions."
-  ],
   "$schema": "https://claude.ai/schemas/project-config.json",
   "version": "1.0.0",
+  "extends": "github:raibid-labs/workspace/.claude/base-project.json",
+  "name": "fsrs",
+  "description": "Mini-F# dialect with embeddable Rust VM for scripting and configuration",
+
   "project": {
     "name": "fsrs",
     "type": "library",
-    "repository": "https://github.com/raibid-labs/fsrs"
+    "repository": "https://github.com/raibid-labs/fsrs",
+    "description": "Experimental F#-style language with eager bytecode VM in Rust"
   },
+
   "language": {
-    "primary": "unknown"
+    "primary": "rust",
+    "secondary": ["nushell"]
   },
-  "customization": {
-    "mcpServers": {},
-    "workflows": {},
-    "agents": []
+
+  "contextFiles": [
+    "README.md",
+    "rust/Cargo.toml",
+    "rust/crates/fsrs-frontend/Cargo.toml",
+    "rust/crates/fsrs-vm/Cargo.toml",
+    "rust/crates/fsrs-demo/Cargo.toml",
+    "docs/",
+    "examples/",
+    "scripts/"
+  ],
+
+  "fileStructure": {
+    "rust/": "Rust workspace with frontend, VM, and demo crates",
+    "rust/crates/fsrs-frontend/": "Parser, typechecker, desugaring for Mini-F#",
+    "rust/crates/fsrs-vm/": "Bytecode VM, value representation, GC, built-ins",
+    "rust/crates/fsrs-demo/": "Demo host showing language embedding",
+    "docs/": "Design documentation for language and VM",
+    "examples/": "Example .fsrs configs and callback modules",
+    "scripts/": "Nushell bootstrap and helper scripts"
+  },
+
+  "buildCommands": {
+    "build": "cd rust && cargo build",
+    "test": "cd rust && cargo test",
+    "check": "cd rust && cargo check --all-targets --all-features",
+    "clippy": "cd rust && cargo clippy --all-targets --all-features -- -D warnings",
+    "fmt": "cd rust && cargo fmt",
+    "fmt-check": "cd rust && cargo fmt --check",
+    "dev": "cd rust && cargo watch -x run",
+    "doc": "cd rust && cargo doc --no-deps --open"
+  },
+
+  "customInstructions": [
+    "This is a language implementation project - compiler frontend + bytecode VM",
+    "Design goals: F#-style ergonomics, embedded scripting (Lua-class), Rust-native",
+    "Architecture: frontend (parser/typechecker) + VM (bytecode/GC) + demo host",
+    "Bootstrap phase: focus on design docs and minimal viable implementation",
+    "Use Nushell for cross-platform scripting (see scripts/ directory)"
+  ],
+
+  "rules": {
+    "rust": [
+      "Follow Rust API Guidelines for public APIs",
+      "VM code must be safe - careful with unsafe blocks",
+      "Document bytecode opcodes and VM internals thoroughly",
+      "Keep frontend and VM loosely coupled",
+      "Test with property-based testing where applicable"
+    ],
+    "language-design": [
+      "Prioritize simplicity and ergonomics",
+      "Design for embedding - minimal dependencies",
+      "Keep VM small and fast (Lua-class performance target)",
+      "Document design decisions in docs/ directory"
+    ]
   }
 }
