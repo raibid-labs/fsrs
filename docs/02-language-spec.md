@@ -285,22 +285,202 @@ let elem = matrix.[1].[0]  // 3
 
 ### 3.7 Pattern matching
 
-Over literals, tuples, records, and DUs:
+Pattern matching destructures values and branches based on their shape. FSRS supports pattern matching over literals, variables, wildcards, and tuples.
+
+#### Basic Syntax
 
 ```fsharp
-let describeDirection d =
-  match d with
-  | Left -> "left"
-  | Right -> "right"
-  | Up -> "up"
-  | Down -> "down"
-
-let describeTab tab =
-  match tab with
-  | { ProcessName = "cargo" } -> "build"
-  | { ProcessName = "npm" } -> "node"
-  | _ -> "other"
+match <scrutinee> with
+| <pattern1> -> <expression1>
+| <pattern2> -> <expression2>
+| <patternN> -> <expressionN>
 ```
+
+Patterns are tried in order from top to bottom. The first matching pattern wins.
+
+#### Supported Patterns
+
+**Literal Patterns** - Match exact values:
+
+```fsharp
+let describe n =
+  match n with
+  | 0 -> "zero"
+  | 1 -> "one"
+  | 2 -> "two"
+  | _ -> "many"
+
+// Works with all literal types
+let classify value =
+  match value with
+  | 42 -> "the answer"
+  | true -> "boolean true"
+  | "hello" -> "greeting"
+  | _ -> "something else"
+```
+
+**Variable Patterns** - Bind the matched value to a variable:
+
+```fsharp
+let double n =
+  match n with
+  | x -> x * 2
+
+// Variable is available in the arm body
+let process value =
+  match value with
+  | 0 -> 0
+  | n -> n + 1  // 'n' is bound to the matched value
+```
+
+**Wildcard Pattern** (`_`) - Matches anything without binding:
+
+```fsharp
+let is_zero n =
+  match n with
+  | 0 -> true
+  | _ -> false  // Catch-all pattern
+```
+
+**Tuple Patterns** - Destructure tuples:
+
+```fsharp
+// Match literal tuples
+let classify_point p =
+  match p with
+  | (0, 0) -> "origin"
+  | (0, y) -> "y-axis"
+  | (x, 0) -> "x-axis"
+  | (x, y) -> "quadrant"
+
+// Extract tuple elements
+let add_pair p =
+  match p with
+  | (a, b) -> a + b
+
+// Nested tuples
+let describe_nested t =
+  match t with
+  | (0, (0, 0)) -> "zero with origin"
+  | (x, (y, z)) -> "general case"
+
+// Mix patterns
+let classify pair =
+  match pair with
+  | (0, _) -> "first is zero"
+  | (_, 0) -> "second is zero"
+  | (x, y) -> "both non-zero"
+```
+
+#### Pattern Matching Semantics
+
+**Evaluation Order**:
+- Scrutinee is evaluated once
+- Patterns are tested top-to-bottom
+- First matching pattern wins
+- Match arms must be exhaustive (or end with wildcard)
+
+**Variable Scope**:
+- Variables bound in patterns are only available in that arm's body
+- Variables shadow outer bindings within the match arm
+
+```fsharp
+let x = 100 in
+match (1, 2) with
+| (x, y) -> x + y  // x = 1, y = 2 (shadows outer x)
+// Result: 3
+```
+
+#### Common Patterns
+
+**Option-like matching** (when option types are added):
+```fsharp
+match maybe_value with
+| Some x -> x
+| None -> 0
+```
+
+**Tuple destructuring**:
+```fsharp
+let first p = match p with | (x, _) -> x
+let second p = match p with | (_, y) -> y
+let swap p = match p with | (x, y) -> (y, x)
+```
+
+**Classification functions**:
+```fsharp
+let classify_age age =
+  match age with
+  | 0 -> "newborn"
+  | n when n < 13 -> "child"  // (guards not yet supported)
+  | n -> "teen or adult"
+```
+
+#### Examples
+
+**Simple number classifier**:
+```fsharp
+let describe n =
+  match n with
+  | 0 -> "zero"
+  | 1 -> "one"
+  | _ -> "many"
+
+describe 0  // "zero"
+describe 5  // "many"
+```
+
+**Point classifier**:
+```fsharp
+let classify_point p =
+  match p with
+  | (0, 0) -> "origin"
+  | (0, y) -> "on y-axis"
+  | (x, 0) -> "on x-axis"
+  | (x, y) -> "in quadrant"
+
+classify_point (0, 0)  // "origin"
+classify_point (3, 4)  // "in quadrant"
+```
+
+**Extract and compute**:
+```fsharp
+let distance_squared p =
+  match p with
+  | (x, y) -> x * x + y * y
+
+distance_squared (3, 4)  // 25
+```
+
+#### Pattern Matching vs. If-Else
+
+Pattern matching provides clearer, more concise code than nested if-else:
+
+```fsharp
+// Using if-else (verbose)
+let describe n =
+  if n = 0 then "zero"
+  else if n = 1 then "one"
+  else if n = 2 then "two"
+  else "many"
+
+// Using pattern matching (clearer)
+let describe n =
+  match n with
+  | 0 -> "zero"
+  | 1 -> "one"
+  | 2 -> "two"
+  | _ -> "many"
+```
+
+#### Future Extensions
+
+The following pattern features are planned for future versions:
+- List patterns: `| [] -> ...`, `| head :: tail -> ...`
+- Record patterns: `| { x = 0; y = _ } -> ...`
+- Discriminated union patterns: `| Some x -> ...`, `| None -> ...`
+- Guard clauses: `| x when x > 0 -> ...`
+- As-patterns: `| (x, y) as point -> ...`
 
 ### 3.8 Pipelines and composition
 
