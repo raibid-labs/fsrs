@@ -16,6 +16,7 @@
 //! - Lists (e.g., [1; 2; 3], []) and cons operator (::)
 //! - Arrays (e.g., [|1; 2; 3|], arr.[0], arr.[0] <- 99)
 //! - Records (e.g., type Person = { name: string; age: int })
+//! - Discriminated Unions (e.g., type Option = Some of int | None)
 //!
 //! # Example
 //!
@@ -197,13 +198,115 @@ impl fmt::Display for RecordTypeDef {
     }
 }
 
+/// Variant definition in a discriminated union.
+///
+/// Represents a single case/variant in a DU.
+/// Example: Circle of float | Rectangle of float * float
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantDef {
+    /// Name of the variant (e.g., "Some", "None", "Circle")
+    pub name: String,
+    /// Field types for this variant (empty for simple enums)
+    pub fields: Vec<TypeExpr>,
+}
+
+impl fmt::Display for VariantDef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.fields.is_empty() {
+            write!(f, " of ")?;
+            for (i, field) in self.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " * ")?;
+                }
+                write!(f, "{}", field)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl VariantDef {
+    /// Create a new variant with no fields
+    pub fn new_simple(name: String) -> Self {
+        VariantDef {
+            name,
+            fields: vec![],
+        }
+    }
+
+    /// Create a new variant with fields
+    pub fn new(name: String, fields: Vec<TypeExpr>) -> Self {
+        VariantDef { name, fields }
+    }
+
+    /// Returns true if this variant has no fields (simple enum case)
+    pub fn is_simple(&self) -> bool {
+        self.fields.is_empty()
+    }
+
+    /// Returns the number of fields
+    pub fn field_count(&self) -> usize {
+        self.fields.len()
+    }
+}
+
+/// Discriminated union type definition.
+///
+/// Represents a discriminated union (algebraic data type).
+/// Example: type Option = Some of int | None
+#[derive(Debug, Clone, PartialEq)]
+pub struct DuTypeDef {
+    /// Name of the DU type
+    pub name: String,
+    /// Variants/cases of this DU
+    pub variants: Vec<VariantDef>,
+}
+
+impl fmt::Display for DuTypeDef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "type {} = ", self.name)?;
+        for (i, variant) in self.variants.iter().enumerate() {
+            if i > 0 {
+                write!(f, " | ")?;
+            }
+            write!(f, "{}", variant)?;
+        }
+        Ok(())
+    }
+}
+
+impl DuTypeDef {
+    /// Get all variant names
+    pub fn variant_names(&self) -> Vec<&str> {
+        self.variants.iter().map(|v| v.name.as_str()).collect()
+    }
+
+    /// Find a variant by name
+    pub fn find_variant(&self, name: &str) -> Option<&VariantDef> {
+        self.variants.iter().find(|v| v.name == name)
+    }
+
+    /// Returns true if this is a simple enumeration (all variants have no fields)
+    pub fn is_simple_enum(&self) -> bool {
+        self.variants.iter().all(|v| v.is_simple())
+    }
+
+    /// Returns the number of variants
+    pub fn variant_count(&self) -> usize {
+        self.variants.len()
+    }
+}
+
 /// Top-level declaration in a module.
 ///
 /// Represents declarations that can appear at the top level of a module.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
-    /// Type definition (e.g., record type)
+    /// Record type definition (e.g., type Person = { name: string; age: int })
     TypeDef(RecordTypeDef),
+    /// Discriminated union type definition (e.g., type Option = Some of int | None)
+    DuDef(DuTypeDef),
     /// Let-binding declaration
     LetBinding {
         name: String,
@@ -216,6 +319,7 @@ impl fmt::Display for Declaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Declaration::TypeDef(typedef) => write!(f, "{}", typedef),
+            Declaration::DuDef(dudef) => write!(f, "{}", dudef),
             Declaration::LetBinding { name, params, body } => {
                 write!(f, "let {}", name)?;
                 for param in params {
@@ -250,8 +354,8 @@ impl fmt::Display for Module {
 
 /// Pattern in a match expression.
 ///
-/// Patterns can match literals, variables, wildcards, and tuples.
-/// Issue #27 supports basic patterns; Issue #28 will add lists/arrays.
+/// Patterns can match literals, variables, wildcards, tuples, and DU variants.
+/// Issue #27 supports basic patterns; Issue #28 adds DU variant patterns.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     /// Wildcard pattern (_) - matches anything
@@ -262,6 +366,15 @@ pub enum Pattern {
     Literal(Literal),
     /// Tuple pattern ((p1, p2, ...)) - matches tuples
     Tuple(Vec<Pattern>),
+    /// Variant pattern (Some x, None, Circle r) - matches DU variants
+    Variant {
+        /// Optional type name qualifier (e.g., "Option.Some")
+        type_name: Option<String>,
+        /// Variant name (e.g., "Some", "None")
+        variant_name: String,
+        /// Patterns for variant fields
+        patterns: Vec<Pattern>,
+    },
 }
 
 impl fmt::Display for Pattern {
@@ -279,6 +392,27 @@ impl fmt::Display for Pattern {
                     write!(f, "{}", pat)?;
                 }
                 write!(f, ")")
+            }
+            Pattern::Variant {
+                type_name,
+                variant_name,
+                patterns,
+            } => {
+                if let Some(tn) = type_name {
+                    write!(f, "{}.", tn)?;
+                }
+                write!(f, "{}", variant_name)?;
+                if !patterns.is_empty() {
+                    write!(f, " (")?;
+                    for (i, pat) in patterns.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", pat)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
         }
     }
@@ -305,6 +439,11 @@ impl Pattern {
         matches!(self, Pattern::Tuple(_))
     }
 
+    /// Returns true if this pattern is a variant pattern.
+    pub fn is_variant_pattern(&self) -> bool {
+        matches!(self, Pattern::Variant { .. })
+    }
+
     /// Returns the variable name if this is a Var, otherwise None.
     pub fn as_var(&self) -> Option<&str> {
         match self {
@@ -325,6 +464,18 @@ impl Pattern {
     pub fn as_tuple(&self) -> Option<&Vec<Pattern>> {
         match self {
             Pattern::Tuple(patterns) => Some(patterns),
+            _ => None,
+        }
+    }
+
+    /// Returns variant info if this is a Variant, otherwise None.
+    pub fn as_variant(&self) -> Option<(&Option<String>, &str, &Vec<Pattern>)> {
+        match self {
+            Pattern::Variant {
+                type_name,
+                variant_name,
+                patterns,
+            } => Some((type_name, variant_name, patterns)),
             _ => None,
         }
     }
@@ -464,6 +615,16 @@ pub enum Expr {
         record: Box<Expr>,
         fields: RecordFields, // Fields to update
     },
+
+    /// Variant construction (e.g., Some 42, None, Circle 5.0)
+    VariantConstruct {
+        /// Optional type name qualifier
+        type_name: String,
+        /// Variant name
+        variant_name: String,
+        /// Arguments to the variant constructor
+        args: Vec<Box<Expr>>,
+    },
 }
 
 /// Type alias for record field list: (field_name, value_expression)
@@ -570,6 +731,11 @@ impl Expr {
         matches!(self, Expr::RecordUpdate { .. })
     }
 
+    /// Returns true if this expression is a variant construction.
+    pub fn is_variant_construct(&self) -> bool {
+        matches!(self, Expr::VariantConstruct { .. })
+    }
+
     /// Returns the variable name if this is a Var, otherwise None.
     pub fn as_var(&self) -> Option<&str> {
         match self {
@@ -630,6 +796,18 @@ impl Expr {
     pub fn as_match(&self) -> Option<(&Expr, &Vec<MatchArm>)> {
         match self {
             Expr::Match { scrutinee, arms } => Some((scrutinee, arms)),
+            _ => None,
+        }
+    }
+
+    /// Returns variant construction info if this is VariantConstruct, otherwise None.
+    pub fn as_variant_construct(&self) -> Option<(&str, &str, &Vec<Box<Expr>>)> {
+        match self {
+            Expr::VariantConstruct {
+                type_name,
+                variant_name,
+                args,
+            } => Some((type_name, variant_name, args)),
             _ => None,
         }
     }
@@ -754,6 +932,27 @@ impl fmt::Display for Expr {
                     write!(f, "{} = {}", field_name, field_expr)?;
                 }
                 write!(f, " }})")
+            }
+            Expr::VariantConstruct {
+                type_name,
+                variant_name,
+                args,
+            } => {
+                if !type_name.is_empty() {
+                    write!(f, "{}.", type_name)?;
+                }
+                write!(f, "{}", variant_name)?;
+                if !args.is_empty() {
+                    write!(f, " (")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", arg)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
         }
     }
