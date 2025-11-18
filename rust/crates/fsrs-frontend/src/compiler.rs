@@ -124,6 +124,13 @@ impl Compiler {
                 then_branch,
                 else_branch,
             } => self.compile_if(cond, then_branch, else_branch),
+            // TODO(Layer 2): Implement tuple compilation
+            // This will be implemented in the next layer (parser/compiler integration)
+            Expr::Tuple(_elements) => {
+                // Placeholder for Layer 1: AST only
+                // Layer 2 will add: parser support, bytecode instructions, VM runtime
+                Ok(())
+            }
         }
     }
 

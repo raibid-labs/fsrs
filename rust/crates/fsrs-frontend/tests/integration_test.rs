@@ -2,7 +2,6 @@
 //!
 //! Tests the complete flow: source code → lexer → parser → compiler → bytecode
 
-use fsrs_frontend::ast::{BinOp, Expr, Literal};
 use fsrs_frontend::compiler::Compiler;
 use fsrs_frontend::lexer::Lexer;
 use fsrs_frontend::parser::Parser;
@@ -220,7 +219,7 @@ fn test_integration_complex_nested_expression() {
     let chunk = compile_source(source).unwrap();
 
     // Should compile successfully
-    assert!(chunk.instructions.len() > 0);
+    assert!(!chunk.instructions.is_empty());
 
     // Should have comparison
     assert!(chunk
@@ -283,7 +282,7 @@ fn test_integration_multiline_expression() {
     let chunk = compile_source(source).unwrap();
 
     // Should compile successfully
-    assert!(chunk.instructions.len() > 0);
+    assert!(!chunk.instructions.is_empty());
 }
 
 #[test]
@@ -308,7 +307,7 @@ fn test_integration_deeply_nested_let() {
     let chunk = compile_source(source).unwrap();
 
     // Should successfully handle deep nesting
-    assert!(chunk.instructions.len() > 0);
+    assert!(!chunk.instructions.is_empty());
     assert!(chunk
         .instructions
         .iter()

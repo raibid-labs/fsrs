@@ -12,6 +12,7 @@
 //! - Lambda functions and function application
 //! - Binary operations (arithmetic, comparison, logical)
 //! - Conditional expressions (if-then-else)
+//! - Tuples (e.g., (1, 2), (x, y, z))
 //!
 //! # Example
 //!
@@ -187,6 +188,10 @@ pub enum Expr {
         then_branch: Box<Expr>,
         else_branch: Box<Expr>,
     },
+
+    /// Tuple expression (e.g., (1, 2), (x, y, z))
+    /// Empty tuple () is represented as Lit(Literal::Unit)
+    Tuple(Vec<Expr>),
 }
 
 impl Expr {
@@ -235,6 +240,11 @@ impl Expr {
         matches!(self, Expr::If { .. })
     }
 
+    /// Returns true if this expression is a tuple.
+    pub fn is_tuple(&self) -> bool {
+        matches!(self, Expr::Tuple(_))
+    }
+
     /// Returns the variable name if this is a Var, otherwise None.
     pub fn as_var(&self) -> Option<&str> {
         match self {
@@ -247,6 +257,14 @@ impl Expr {
     pub fn as_literal(&self) -> Option<&Literal> {
         match self {
             Expr::Lit(lit) => Some(lit),
+            _ => None,
+        }
+    }
+
+    /// Returns the tuple elements if this is a Tuple, otherwise None.
+    pub fn as_tuple(&self) -> Option<&Vec<Expr>> {
+        match self {
+            Expr::Tuple(elements) => Some(elements),
             _ => None,
         }
     }
@@ -288,6 +306,16 @@ impl fmt::Display for Expr {
                 else_branch,
             } => {
                 write!(f, "(if {} then {} else {})", cond, then_branch, else_branch)
+            }
+            Expr::Tuple(elements) => {
+                write!(f, "(")?;
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", element)?;
+                }
+                write!(f, ")")
             }
         }
     }
@@ -631,5 +659,186 @@ mod tests {
 
         let expr = Expr::Var("x".to_string());
         assert_eq!(expr.as_literal(), None);
+    }
+
+    // ========================================================================
+    // Tuple Tests
+    // ========================================================================
+
+    #[test]
+    fn test_tuple_empty() {
+        // Empty tuple is represented as Literal::Unit, not Tuple(vec![])
+        let expr = Expr::Lit(Literal::Unit);
+        assert!(expr.is_literal());
+        assert!(!expr.is_tuple());
+        assert_eq!(format!("{}", expr), "()");
+    }
+
+    #[test]
+    fn test_tuple_pair() {
+        // (1, 2)
+        let expr = Expr::Tuple(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]);
+        assert!(expr.is_tuple());
+        assert!(!expr.is_literal());
+        assert_eq!(format!("{}", expr), "(1, 2)");
+    }
+
+    #[test]
+    fn test_tuple_triple() {
+        // (1, 2, 3)
+        let expr = Expr::Tuple(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "(1, 2, 3)");
+    }
+
+    #[test]
+    fn test_tuple_nested() {
+        // (1, (2, 3))
+        let expr = Expr::Tuple(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Tuple(vec![Expr::Lit(Literal::Int(2)), Expr::Lit(Literal::Int(3))]),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "(1, (2, 3))");
+    }
+
+    #[test]
+    fn test_tuple_nested_deep() {
+        // ((1, 2), (3, 4))
+        let expr = Expr::Tuple(vec![
+            Expr::Tuple(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]),
+            Expr::Tuple(vec![Expr::Lit(Literal::Int(3)), Expr::Lit(Literal::Int(4))]),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "((1, 2), (3, 4))");
+    }
+
+    #[test]
+    fn test_tuple_mixed_types() {
+        // (1, "hello", true)
+        let expr = Expr::Tuple(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Str("hello".to_string())),
+            Expr::Lit(Literal::Bool(true)),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), r#"(1, "hello", true)"#);
+    }
+
+    #[test]
+    fn test_tuple_with_variables() {
+        // (x, y, z)
+        let expr = Expr::Tuple(vec![
+            Expr::Var("x".to_string()),
+            Expr::Var("y".to_string()),
+            Expr::Var("z".to_string()),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "(x, y, z)");
+    }
+
+    #[test]
+    fn test_tuple_with_expressions() {
+        // (x + 1, y * 2)
+        let expr = Expr::Tuple(vec![
+            Expr::BinOp {
+                op: BinOp::Add,
+                left: Box::new(Expr::Var("x".to_string())),
+                right: Box::new(Expr::Lit(Literal::Int(1))),
+            },
+            Expr::BinOp {
+                op: BinOp::Mul,
+                left: Box::new(Expr::Var("y".to_string())),
+                right: Box::new(Expr::Lit(Literal::Int(2))),
+            },
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "((x + 1), (y * 2))");
+    }
+
+    #[test]
+    fn test_tuple_as_tuple() {
+        // Test as_tuple() helper
+        let expr = Expr::Tuple(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]);
+
+        let elements = expr.as_tuple();
+        assert!(elements.is_some());
+        assert_eq!(elements.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_tuple_as_tuple_none() {
+        // Non-tuple should return None
+        let expr = Expr::Lit(Literal::Int(42));
+        assert_eq!(expr.as_tuple(), None);
+    }
+
+    #[test]
+    fn test_tuple_single_element() {
+        // (42,) - single element tuple
+        let expr = Expr::Tuple(vec![Expr::Lit(Literal::Int(42))]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "(42)");
+    }
+
+    #[test]
+    fn test_tuple_with_nested_let() {
+        // (let x = 1 in x, 2)
+        let expr = Expr::Tuple(vec![
+            Expr::Let {
+                name: "x".to_string(),
+                value: Box::new(Expr::Lit(Literal::Int(1))),
+                body: Box::new(Expr::Var("x".to_string())),
+            },
+            Expr::Lit(Literal::Int(2)),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "((let x = 1 in x), 2)");
+    }
+
+    #[test]
+    fn test_tuple_with_lambda() {
+        // ((fun x -> x + 1), 2)
+        let expr = Expr::Tuple(vec![
+            Expr::Lambda {
+                param: "x".to_string(),
+                body: Box::new(Expr::BinOp {
+                    op: BinOp::Add,
+                    left: Box::new(Expr::Var("x".to_string())),
+                    right: Box::new(Expr::Lit(Literal::Int(1))),
+                }),
+            },
+            Expr::Lit(Literal::Int(2)),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "((fun x -> (x + 1)), 2)");
+    }
+
+    #[test]
+    fn test_tuple_clone_and_equality() {
+        let expr1 = Expr::Tuple(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]);
+        let expr2 = expr1.clone();
+        assert_eq!(expr1, expr2);
+    }
+
+    #[test]
+    fn test_tuple_large() {
+        // (1, 2, 3, 4, 5, 6, 7, 8)
+        let expr = Expr::Tuple(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+            Expr::Lit(Literal::Int(4)),
+            Expr::Lit(Literal::Int(5)),
+            Expr::Lit(Literal::Int(6)),
+            Expr::Lit(Literal::Int(7)),
+            Expr::Lit(Literal::Int(8)),
+        ]);
+        assert!(expr.is_tuple());
+        assert_eq!(format!("{}", expr), "(1, 2, 3, 4, 5, 6, 7, 8)");
     }
 }
