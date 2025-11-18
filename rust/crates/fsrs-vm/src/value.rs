@@ -1,7 +1,9 @@
 // FSRS VM Value Representation
 // Defines runtime values for the bytecode VM
 
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 /// Runtime value representation for the FSRS VM
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +22,8 @@ pub enum Value {
     Cons { head: Box<Value>, tail: Box<Value> },
     /// Empty list []
     Nil,
+    /// Mutable array with vector-based storage
+    Array(Rc<RefCell<Vec<Value>>>),
 }
 
 impl Value {
@@ -33,6 +37,7 @@ impl Value {
             Value::Tuple(_) => "tuple",
             Value::Cons { .. } => "list",
             Value::Nil => "list",
+            Value::Array(_) => "array",
         }
     }
 
@@ -95,6 +100,7 @@ impl Value {
             Value::Tuple(elements) => !elements.is_empty(),
             Value::Cons { .. } => true,
             Value::Nil => false,
+            Value::Array(arr) => !arr.borrow().is_empty(),
         }
     }
 
@@ -116,6 +122,61 @@ impl Value {
     /// Checks if the value is Nil (empty list)
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
+    }
+
+    /// Checks if the value is an Array
+    pub fn is_array(&self) -> bool {
+        matches!(self, Value::Array(_))
+    }
+
+    /// Attempts to extract an array reference from the value
+    /// Returns Some(Rc<RefCell<Vec<Value>>>) if the value is Array, None otherwise
+    pub fn as_array(&self) -> Option<Rc<RefCell<Vec<Value>>>> {
+        if let Value::Array(arr) = self {
+            Some(arr.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Get an element from an array by index
+    /// Returns Err if not an array or index out of bounds
+    pub fn array_get(&self, index: usize) -> Result<Value, String> {
+        match self {
+            Value::Array(arr) => {
+                let arr = arr.borrow();
+                arr.get(index)
+                    .cloned()
+                    .ok_or_else(|| format!("Array index out of bounds: {}", index))
+            }
+            _ => Err("Not an array".to_string()),
+        }
+    }
+
+    /// Set an element in an array by index (mutable)
+    /// Returns Err if not an array or index out of bounds
+    pub fn array_set(&self, index: usize, value: Value) -> Result<(), String> {
+        match self {
+            Value::Array(arr) => {
+                let mut arr = arr.borrow_mut();
+                if index < arr.len() {
+                    arr[index] = value;
+                    Ok(())
+                } else {
+                    Err(format!("Array index out of bounds: {}", index))
+                }
+            }
+            _ => Err("Not an array".to_string()),
+        }
+    }
+
+    /// Get the length of an array
+    /// Returns Err if not an array
+    pub fn array_length(&self) -> Result<i64, String> {
+        match self {
+            Value::Array(arr) => Ok(arr.borrow().len() as i64),
+            _ => Err("Not an array".to_string()),
+        }
     }
 
     /// Convert a list to a vector of values
@@ -189,6 +250,18 @@ impl fmt::Display for Value {
                         )
                     }
                 }
+            }
+            Value::Array(arr) => {
+                // Pretty-print as [|e1; e2; e3|]
+                write!(f, "[|")?;
+                let arr = arr.borrow();
+                for (i, element) in arr.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{}", element)?;
+                }
+                write!(f, "|]")
             }
         }
     }
@@ -912,5 +985,209 @@ mod tests {
         let debug_str = format!("{:?}", val);
         assert!(debug_str.contains("Cons"));
         assert!(debug_str.contains("Int(42)"));
+    }
+
+    // ========== Array Tests (Layer 3 - Runtime) ==========
+
+    #[test]
+    fn test_array_empty_construction() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![])));
+        assert!(arr.is_array());
+        assert_eq!(format!("{}", arr), "[||]");
+    }
+
+    #[test]
+    fn test_array_single_element() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(42)])));
+        assert!(arr.is_array());
+        assert_eq!(format!("{}", arr), "[|42|]");
+    }
+
+    #[test]
+    fn test_array_multiple_elements() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        assert_eq!(format!("{}", arr), "[|1; 2; 3|]");
+    }
+
+    #[test]
+    fn test_array_type_name() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        assert_eq!(arr.type_name(), "array");
+    }
+
+    #[test]
+    fn test_array_is_array() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![])));
+        assert!(arr.is_array());
+        assert!(!Value::Int(42).is_array());
+        assert!(!Value::Nil.is_array());
+    }
+
+    #[test]
+    fn test_array_as_array_success() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let arr_ref = arr.as_array();
+        assert!(arr_ref.is_some());
+        let arr_ref = arr_ref.unwrap();
+        assert_eq!(arr_ref.borrow().len(), 2);
+        assert_eq!(arr_ref.borrow()[0], Value::Int(1));
+    }
+
+    #[test]
+    fn test_array_as_array_failure() {
+        assert!(Value::Int(42).as_array().is_none());
+        assert!(Value::Nil.as_array().is_none());
+        assert!(Value::Tuple(vec![]).as_array().is_none());
+    }
+
+    #[test]
+    fn test_array_get_success() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(10),
+            Value::Int(20),
+            Value::Int(30),
+        ])));
+        assert_eq!(arr.array_get(0), Ok(Value::Int(10)));
+        assert_eq!(arr.array_get(1), Ok(Value::Int(20)));
+        assert_eq!(arr.array_get(2), Ok(Value::Int(30)));
+    }
+
+    #[test]
+    fn test_array_get_out_of_bounds() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        assert!(arr.array_get(1).is_err());
+        assert!(arr.array_get(10).is_err());
+    }
+
+    #[test]
+    fn test_array_get_not_array() {
+        let val = Value::Int(42);
+        assert_eq!(val.array_get(0), Err("Not an array".to_string()));
+    }
+
+    #[test]
+    fn test_array_set_success() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        assert!(arr.array_set(1, Value::Int(99)).is_ok());
+        assert_eq!(arr.array_get(1), Ok(Value::Int(99)));
+    }
+
+    #[test]
+    fn test_array_set_out_of_bounds() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        assert!(arr.array_set(1, Value::Int(2)).is_err());
+    }
+
+    #[test]
+    fn test_array_set_not_array() {
+        let val = Value::Int(42);
+        assert_eq!(
+            val.array_set(0, Value::Int(1)),
+            Err("Not an array".to_string())
+        );
+    }
+
+    #[test]
+    fn test_array_length_success() {
+        let arr1 = Value::Array(Rc::new(RefCell::new(vec![])));
+        assert_eq!(arr1.array_length(), Ok(0));
+
+        let arr2 = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        assert_eq!(arr2.array_length(), Ok(3));
+    }
+
+    #[test]
+    fn test_array_length_not_array() {
+        let val = Value::Int(42);
+        assert_eq!(val.array_length(), Err("Not an array".to_string()));
+    }
+
+    #[test]
+    fn test_array_equality_structural() {
+        let arr1 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let arr2 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        assert_eq!(arr1, arr2);
+    }
+
+    #[test]
+    fn test_array_equality_reference() {
+        let arr_rc = Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)]));
+        let arr1 = Value::Array(arr_rc.clone());
+        let arr2 = Value::Array(arr_rc);
+        assert_eq!(arr1, arr2);
+    }
+
+    #[test]
+    fn test_array_inequality() {
+        let arr1 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let arr2 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(3)])));
+        assert_ne!(arr1, arr2);
+    }
+
+    #[test]
+    fn test_array_nested() {
+        let inner = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let outer = Value::Array(Rc::new(RefCell::new(vec![inner])));
+        assert_eq!(format!("{}", outer), "[|[|1; 2|]|]");
+    }
+
+    #[test]
+    fn test_array_mixed_types() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(42),
+            Value::Str("hello".to_string()),
+            Value::Bool(true),
+        ])));
+        assert_eq!(format!("{}", arr), "[|42; hello; true|]");
+    }
+
+    #[test]
+    fn test_array_is_truthy() {
+        let arr1 = Value::Array(Rc::new(RefCell::new(vec![])));
+        assert!(!arr1.is_truthy());
+
+        let arr2 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        assert!(arr2.is_truthy());
+    }
+
+    #[test]
+    fn test_array_clone() {
+        let arr1 = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let arr2 = arr1.clone();
+        assert_eq!(arr1, arr2);
+
+        // Verify they share the same Rc (mutation affects both)
+        arr1.array_set(0, Value::Int(99)).unwrap();
+        assert_eq!(arr2.array_get(0), Ok(Value::Int(99)));
+    }
+
+    #[test]
+    fn test_array_mutation() {
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+
+        // Mutate array
+        arr.array_set(0, Value::Int(10)).unwrap();
+        arr.array_set(2, Value::Int(30)).unwrap();
+
+        // Verify mutations
+        assert_eq!(arr.array_get(0), Ok(Value::Int(10)));
+        assert_eq!(arr.array_get(1), Ok(Value::Int(2)));
+        assert_eq!(arr.array_get(2), Ok(Value::Int(30)));
     }
 }

@@ -111,6 +111,24 @@ pub enum Instruction {
 
     /// IsNil: Pop list, push bool (true if empty)
     IsNil,
+
+    // ===== Array Operations =====
+    /// Create array from N stack values [|e1; e2; e3|]
+    /// Pop N values from stack (in reverse order), build array, push array
+    MakeArray(u16),
+
+    /// ArrayGet: Pop index, pop array, push element
+    ArrayGet,
+
+    /// ArraySet: Pop value, pop index, pop array (mutates in place), push unit
+    ArraySet,
+
+    /// ArrayLength: Pop array, push length as Int
+    ArrayLength,
+
+    /// ArrayUpdate: Create new array with updated element (immutable)
+    /// Pop value, pop index, pop array, push new array
+    ArrayUpdate,
 }
 
 impl fmt::Display for Instruction {
@@ -160,6 +178,13 @@ impl fmt::Display for Instruction {
             Instruction::ListHead => write!(f, "LIST_HEAD"),
             Instruction::ListTail => write!(f, "LIST_TAIL"),
             Instruction::IsNil => write!(f, "IS_NIL"),
+
+            // Array operations
+            Instruction::MakeArray(n) => write!(f, "MAKE_ARRAY {}", n),
+            Instruction::ArrayGet => write!(f, "ARRAY_GET"),
+            Instruction::ArraySet => write!(f, "ARRAY_SET"),
+            Instruction::ArrayLength => write!(f, "ARRAY_LENGTH"),
+            Instruction::ArrayUpdate => write!(f, "ARRAY_UPDATE"),
         }
     }
 }
@@ -263,6 +288,38 @@ mod tests {
     fn test_instruction_is_nil() {
         let instr = Instruction::IsNil;
         assert_eq!(instr, Instruction::IsNil);
+    }
+
+    // ========== Array Instruction Tests ==========
+
+    #[test]
+    fn test_instruction_make_array() {
+        let instr = Instruction::MakeArray(3);
+        assert_eq!(instr, Instruction::MakeArray(3));
+    }
+
+    #[test]
+    fn test_instruction_array_get() {
+        let instr = Instruction::ArrayGet;
+        assert_eq!(instr, Instruction::ArrayGet);
+    }
+
+    #[test]
+    fn test_instruction_array_set() {
+        let instr = Instruction::ArraySet;
+        assert_eq!(instr, Instruction::ArraySet);
+    }
+
+    #[test]
+    fn test_instruction_array_length() {
+        let instr = Instruction::ArrayLength;
+        assert_eq!(instr, Instruction::ArrayLength);
+    }
+
+    #[test]
+    fn test_instruction_array_update() {
+        let instr = Instruction::ArrayUpdate;
+        assert_eq!(instr, Instruction::ArrayUpdate);
     }
 
     // ========== Display Formatting Tests ==========
@@ -382,6 +439,32 @@ mod tests {
         assert_eq!(format!("{}", Instruction::IsNil), "IS_NIL");
     }
 
+    #[test]
+    fn test_display_make_array() {
+        assert_eq!(format!("{}", Instruction::MakeArray(3)), "MAKE_ARRAY 3");
+        assert_eq!(format!("{}", Instruction::MakeArray(0)), "MAKE_ARRAY 0");
+    }
+
+    #[test]
+    fn test_display_array_get() {
+        assert_eq!(format!("{}", Instruction::ArrayGet), "ARRAY_GET");
+    }
+
+    #[test]
+    fn test_display_array_set() {
+        assert_eq!(format!("{}", Instruction::ArraySet), "ARRAY_SET");
+    }
+
+    #[test]
+    fn test_display_array_length() {
+        assert_eq!(format!("{}", Instruction::ArrayLength), "ARRAY_LENGTH");
+    }
+
+    #[test]
+    fn test_display_array_update() {
+        assert_eq!(format!("{}", Instruction::ArrayUpdate), "ARRAY_UPDATE");
+    }
+
     // ========== Clone Tests ==========
 
     #[test]
@@ -408,6 +491,13 @@ mod tests {
     #[test]
     fn test_clone_make_list() {
         let instr1 = Instruction::MakeList(5);
+        let instr2 = instr1.clone();
+        assert_eq!(instr1, instr2);
+    }
+
+    #[test]
+    fn test_clone_make_array() {
+        let instr1 = Instruction::MakeArray(5);
         let instr2 = instr1.clone();
         assert_eq!(instr1, instr2);
     }
@@ -450,6 +540,18 @@ mod tests {
         assert_eq!(format!("{:?}", instr), "Cons");
     }
 
+    #[test]
+    fn test_debug_make_array() {
+        let instr = Instruction::MakeArray(3);
+        assert_eq!(format!("{:?}", instr), "MakeArray(3)");
+    }
+
+    #[test]
+    fn test_debug_array_get() {
+        let instr = Instruction::ArrayGet;
+        assert_eq!(format!("{:?}", instr), "ArrayGet");
+    }
+
     // ========== Equality Tests ==========
 
     #[test]
@@ -480,6 +582,16 @@ mod tests {
         assert_eq!(Instruction::ListHead, Instruction::ListHead);
         assert_eq!(Instruction::ListTail, Instruction::ListTail);
         assert_eq!(Instruction::IsNil, Instruction::IsNil);
+    }
+
+    #[test]
+    fn test_equality_array_instructions() {
+        assert_eq!(Instruction::MakeArray(3), Instruction::MakeArray(3));
+        assert_ne!(Instruction::MakeArray(3), Instruction::MakeArray(5));
+        assert_eq!(Instruction::ArrayGet, Instruction::ArrayGet);
+        assert_eq!(Instruction::ArraySet, Instruction::ArraySet);
+        assert_eq!(Instruction::ArrayLength, Instruction::ArrayLength);
+        assert_eq!(Instruction::ArrayUpdate, Instruction::ArrayUpdate);
     }
 
     // ========== Edge Case Tests ==========
@@ -524,5 +636,11 @@ mod tests {
     fn test_max_list_size() {
         let instr = Instruction::MakeList(u16::MAX);
         assert_eq!(format!("{}", instr), format!("MAKE_LIST {}", u16::MAX));
+    }
+
+    #[test]
+    fn test_max_array_size() {
+        let instr = Instruction::MakeArray(u16::MAX);
+        assert_eq!(format!("{}", instr), format!("MAKE_ARRAY {}", u16::MAX));
     }
 }

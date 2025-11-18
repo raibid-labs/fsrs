@@ -132,10 +132,14 @@ impl Compiler {
             Expr::Tuple(elements) => self.compile_tuple(elements),
             Expr::List(elements) => self.compile_list(elements),
             Expr::Cons { head, tail } => self.compile_cons(head, tail),
-            Expr::Array(_) => Ok(()),           // TODO: Arrays feature
-            Expr::ArrayIndex { .. } => Ok(()),  // TODO: Arrays feature
-            Expr::ArrayUpdate { .. } => Ok(()), // TODO: Arrays feature
-            Expr::ArrayLength(_) => Ok(()),     // TODO: Arrays feature
+            Expr::Array(elements) => self.compile_array(elements),
+            Expr::ArrayIndex { array, index } => self.compile_array_index(array, index),
+            Expr::ArrayUpdate {
+                array,
+                index,
+                value,
+            } => self.compile_array_update(array, index, value),
+            Expr::ArrayLength(array) => self.compile_array_length(array),
         }
     }
 
@@ -248,6 +252,63 @@ impl Compiler {
         self.compile_expr(tail)?;
         // Emit Cons instruction
         self.emit(Instruction::Cons);
+        Ok(())
+    }
+
+    /// Compile an array expression
+    fn compile_array(&mut self, elements: &[Expr]) -> CompileResult<()> {
+        // Check if array size fits in u16
+        if elements.len() > u16::MAX as usize {
+            return Err(CompileError::TupleTooLarge); // Reuse error for now
+        }
+
+        // Compile each element (left to right)
+        for element in elements {
+            self.compile_expr(element)?;
+        }
+
+        // Emit MakeArray instruction with element count
+        let element_count = elements.len() as u16;
+        self.emit(Instruction::MakeArray(element_count));
+
+        Ok(())
+    }
+
+    /// Compile an array index expression
+    fn compile_array_index(&mut self, array: &Expr, index: &Expr) -> CompileResult<()> {
+        // Compile array expression
+        self.compile_expr(array)?;
+        // Compile index expression
+        self.compile_expr(index)?;
+        // Emit ArrayGet instruction
+        self.emit(Instruction::ArrayGet);
+        Ok(())
+    }
+
+    /// Compile an array update expression (immutable)
+    fn compile_array_update(
+        &mut self,
+        array: &Expr,
+        index: &Expr,
+        value: &Expr,
+    ) -> CompileResult<()> {
+        // Compile array expression
+        self.compile_expr(array)?;
+        // Compile index expression
+        self.compile_expr(index)?;
+        // Compile new value expression
+        self.compile_expr(value)?;
+        // Emit ArrayUpdate instruction (creates new array)
+        self.emit(Instruction::ArrayUpdate);
+        Ok(())
+    }
+
+    /// Compile an array length expression
+    fn compile_array_length(&mut self, array: &Expr) -> CompileResult<()> {
+        // Compile array expression
+        self.compile_expr(array)?;
+        // Emit ArrayLength instruction
+        self.emit(Instruction::ArrayLength);
         Ok(())
     }
 
@@ -1261,4 +1322,264 @@ fn test_compile_list_mixed_types() {
         .instructions
         .iter()
         .any(|i| matches!(i, Instruction::MakeList(3))));
+}
+
+// ========================================================================
+// TDD: Array Compilation Tests (Layer 3)
+// ========================================================================
+
+#[test]
+fn test_compile_array_empty() {
+    // [||]
+    let expr = Expr::Array(vec![]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    // Should have: MakeArray(0), Return
+    assert_eq!(chunk.instructions[0], Instruction::MakeArray(0));
+    assert_eq!(chunk.instructions[1], Instruction::Return);
+}
+
+#[test]
+fn test_compile_array_single() {
+    // [|42|]
+    let expr = Expr::Array(vec![Expr::Lit(Literal::Int(42))]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    // Should have: LoadConst(42), MakeArray(1), Return
+    assert_eq!(chunk.instructions[0], Instruction::LoadConst(0));
+    assert_eq!(chunk.instructions[1], Instruction::MakeArray(1));
+    assert_eq!(chunk.instructions[2], Instruction::Return);
+}
+
+#[test]
+fn test_compile_array_multiple() {
+    // [|1; 2; 3|]
+    let expr = Expr::Array(vec![
+        Expr::Lit(Literal::Int(1)),
+        Expr::Lit(Literal::Int(2)),
+        Expr::Lit(Literal::Int(3)),
+    ]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert_eq!(chunk.instructions[0], Instruction::LoadConst(0));
+    assert_eq!(chunk.instructions[1], Instruction::LoadConst(1));
+    assert_eq!(chunk.instructions[2], Instruction::LoadConst(2));
+    assert_eq!(chunk.instructions[3], Instruction::MakeArray(3));
+    assert_eq!(chunk.instructions[4], Instruction::Return);
+}
+
+#[test]
+fn test_compile_array_index() {
+    // let arr = [|1; 2; 3|] in arr.[1]
+    let expr = Expr::Let {
+        name: "arr".to_string(),
+        value: Box::new(Expr::Array(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ])),
+        body: Box::new(Expr::ArrayIndex {
+            array: Box::new(Expr::Var("arr".to_string())),
+            index: Box::new(Expr::Lit(Literal::Int(1))),
+        }),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+    assert!(chunk.instructions.contains(&Instruction::ArrayGet));
+}
+
+#[test]
+fn test_compile_array_update() {
+    // let arr = [|1; 2; 3|] in arr.[1] <- 99
+    let expr = Expr::Let {
+        name: "arr".to_string(),
+        value: Box::new(Expr::Array(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ])),
+        body: Box::new(Expr::ArrayUpdate {
+            array: Box::new(Expr::Var("arr".to_string())),
+            index: Box::new(Expr::Lit(Literal::Int(1))),
+            value: Box::new(Expr::Lit(Literal::Int(99))),
+        }),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+    assert!(chunk.instructions.contains(&Instruction::ArrayUpdate));
+}
+
+#[test]
+fn test_compile_array_length() {
+    // let arr = [|1; 2; 3|] in Array.length arr
+    let expr = Expr::Let {
+        name: "arr".to_string(),
+        value: Box::new(Expr::Array(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ])),
+        body: Box::new(Expr::ArrayLength(Box::new(Expr::Var("arr".to_string())))),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+    assert!(chunk.instructions.contains(&Instruction::ArrayLength));
+}
+
+#[test]
+fn test_compile_array_nested() {
+    // [|[|1; 2|]; [|3; 4|]|]
+    let expr = Expr::Array(vec![
+        Expr::Array(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]),
+        Expr::Array(vec![Expr::Lit(Literal::Int(3)), Expr::Lit(Literal::Int(4))]),
+    ]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    // Should have two inner MakeArray(2) and one outer MakeArray(2)
+    let make_array_count = chunk
+        .instructions
+        .iter()
+        .filter(|i| matches!(i, Instruction::MakeArray(2)))
+        .count();
+    assert_eq!(make_array_count, 3);
+}
+
+#[test]
+fn test_compile_array_with_variables() {
+    // let x = 1 in let y = 2 in [|x; y|]
+    let expr = Expr::Let {
+        name: "x".to_string(),
+        value: Box::new(Expr::Lit(Literal::Int(1))),
+        body: Box::new(Expr::Let {
+            name: "y".to_string(),
+            value: Box::new(Expr::Lit(Literal::Int(2))),
+            body: Box::new(Expr::Array(vec![
+                Expr::Var("x".to_string()),
+                Expr::Var("y".to_string()),
+            ])),
+        }),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk.instructions.contains(&Instruction::LoadLocal(0)));
+    assert!(chunk.instructions.contains(&Instruction::LoadLocal(1)));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(2))));
+}
+
+#[test]
+fn test_compile_array_with_expressions() {
+    // [|1 + 2; 3 * 4|]
+    let expr = Expr::Array(vec![
+        Expr::BinOp {
+            op: BinOp::Add,
+            left: Box::new(Expr::Lit(Literal::Int(1))),
+            right: Box::new(Expr::Lit(Literal::Int(2))),
+        },
+        Expr::BinOp {
+            op: BinOp::Mul,
+            left: Box::new(Expr::Lit(Literal::Int(3))),
+            right: Box::new(Expr::Lit(Literal::Int(4))),
+        },
+    ]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk.instructions.contains(&Instruction::Add));
+    assert!(chunk.instructions.contains(&Instruction::Mul));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(2))));
+}
+
+#[test]
+fn test_compile_array_mixed_types() {
+    // [|42; "hello"; true|]
+    let expr = Expr::Array(vec![
+        Expr::Lit(Literal::Int(42)),
+        Expr::Lit(Literal::Str("hello".to_string())),
+        Expr::Lit(Literal::Bool(true)),
+    ]);
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert_eq!(chunk.constants[0], Value::Int(42));
+    assert_eq!(chunk.constants[1], Value::Str("hello".to_string()));
+    assert_eq!(chunk.constants[2], Value::Bool(true));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+}
+
+#[test]
+fn test_compile_array_in_let() {
+    // let arr = [|1; 2; 3|] in arr
+    let expr = Expr::Let {
+        name: "arr".to_string(),
+        value: Box::new(Expr::Array(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ])),
+        body: Box::new(Expr::Var("arr".to_string())),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+    assert!(chunk.instructions.contains(&Instruction::StoreLocal(0)));
+    assert!(chunk.instructions.contains(&Instruction::LoadLocal(0)));
+}
+
+#[test]
+fn test_compile_array_chained_access() {
+    // let arr = [|1; 2; 3|] in arr.[0] + arr.[2]
+    let expr = Expr::Let {
+        name: "arr".to_string(),
+        value: Box::new(Expr::Array(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ])),
+        body: Box::new(Expr::BinOp {
+            op: BinOp::Add,
+            left: Box::new(Expr::ArrayIndex {
+                array: Box::new(Expr::Var("arr".to_string())),
+                index: Box::new(Expr::Lit(Literal::Int(0))),
+            }),
+            right: Box::new(Expr::ArrayIndex {
+                array: Box::new(Expr::Var("arr".to_string())),
+                index: Box::new(Expr::Lit(Literal::Int(2))),
+            }),
+        }),
+    };
+    let chunk = Compiler::compile(&expr).unwrap();
+
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::MakeArray(3))));
+    let array_get_count = chunk
+        .instructions
+        .iter()
+        .filter(|i| matches!(i, Instruction::ArrayGet))
+        .count();
+    assert_eq!(array_get_count, 2);
+    assert!(chunk.instructions.contains(&Instruction::Add));
 }

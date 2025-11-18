@@ -29,8 +29,13 @@ pub enum VmError {
     /// No active frame
     NoActiveFrame,
     /// Invalid tuple field index
-    InvalidTupleFieldIndex { index: u8, tuple_size: usize },
+    InvalidTupleFieldIndex {
+        index: u8,
+        tuple_size: usize,
+    },
     /// Attempted to access head/tail of empty list
+    /// Runtime error with message
+    Runtime(String),
     EmptyList,
 }
 
@@ -57,6 +62,7 @@ impl fmt::Display for VmError {
                 )
             }
             VmError::EmptyList => write!(f, "Cannot access head/tail of empty list"),
+            VmError::Runtime(msg) => write!(f, "Runtime error: {}", msg),
         }
     }
 }
@@ -349,6 +355,126 @@ impl Vm {
                     self.push(Value::Bool(value.is_nil()));
                 }
 
+                // Array operations
+                Instruction::MakeArray(n) => {
+                    // Pop N values from stack in reverse order
+                    let mut elements = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        elements.push(self.pop()?);
+                    }
+                    // Reverse to maintain left-to-right order
+                    elements.reverse();
+                    // Build array from elements
+                    use std::cell::RefCell;
+                    use std::rc::Rc;
+                    let array = Value::Array(Rc::new(RefCell::new(elements)));
+                    self.push(array);
+                }
+
+                Instruction::ArrayGet => {
+                    let index = self.pop()?;
+                    let array = self.pop()?;
+
+                    let idx = match index {
+                        Value::Int(i) => {
+                            if i < 0 {
+                                return Err(VmError::TypeMismatch {
+                                    expected: "non-negative int",
+                                    got: "negative int",
+                                });
+                            }
+                            i as usize
+                        }
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "int",
+                                got: index.type_name(),
+                            })
+                        }
+                    };
+
+                    let value = array.array_get(idx).map_err(VmError::Runtime)?;
+
+                    self.push(value);
+                }
+
+                Instruction::ArraySet => {
+                    let value = self.pop()?;
+                    let index = self.pop()?;
+                    let array = self.pop()?;
+
+                    let idx = match index {
+                        Value::Int(i) => {
+                            if i < 0 {
+                                return Err(VmError::TypeMismatch {
+                                    expected: "non-negative int",
+                                    got: "negative int",
+                                });
+                            }
+                            i as usize
+                        }
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "int",
+                                got: index.type_name(),
+                            })
+                        }
+                    };
+
+                    array.array_set(idx, value).map_err(VmError::Runtime)?;
+
+                    // Push unit to indicate completion
+                    self.push(Value::Unit);
+                }
+
+                Instruction::ArrayLength => {
+                    let array = self.pop()?;
+                    let len = array.array_length().map_err(VmError::Runtime)?;
+                    self.push(Value::Int(len));
+                }
+
+                Instruction::ArrayUpdate => {
+                    let value = self.pop()?;
+                    let index = self.pop()?;
+                    let array = self.pop()?;
+
+                    let idx = match index {
+                        Value::Int(i) => {
+                            if i < 0 {
+                                return Err(VmError::TypeMismatch {
+                                    expected: "non-negative int",
+                                    got: "negative int",
+                                });
+                            }
+                            i as usize
+                        }
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "int",
+                                got: index.type_name(),
+                            })
+                        }
+                    };
+
+                    // Clone the array for immutable update
+                    use std::cell::RefCell;
+                    use std::rc::Rc;
+                    let new_arr = if let Value::Array(arr) = &array {
+                        let mut new_elements = arr.borrow().clone();
+                        if idx >= new_elements.len() {
+                            return Err(VmError::Runtime(format!("Index {} out of bounds", idx)));
+                        }
+                        new_elements[idx] = value;
+                        Value::Array(Rc::new(RefCell::new(new_elements)))
+                    } else {
+                        return Err(VmError::TypeMismatch {
+                            expected: "array",
+                            got: array.type_name(),
+                        });
+                    };
+
+                    self.push(new_arr);
+                }
                 // Unimplemented instructions for Phase 1
                 Instruction::LoadUpvalue(_)
                 | Instruction::StoreUpvalue(_)
@@ -1239,5 +1365,254 @@ mod tests {
             .build();
         let result = vm.execute(chunk).unwrap();
         assert_eq!(result, list);
+    }
+
+    // ========== Array Operation Tests ==========
+
+    #[test]
+    fn test_vm_make_array_empty() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .instruction(Instruction::MakeArray(0))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_array());
+        assert_eq!(result.array_length(), Ok(0));
+    }
+
+    #[test]
+    fn test_vm_make_array_single() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::MakeArray(1))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result.array_get(0), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_vm_make_array_multiple() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Int(1))
+            .constant(Value::Int(2))
+            .constant(Value::Int(3))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::LoadConst(2))
+            .instruction(Instruction::MakeArray(3))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result.array_get(0), Ok(Value::Int(1)));
+        assert_eq!(result.array_get(1), Ok(Value::Int(2)));
+        assert_eq!(result.array_get(2), Ok(Value::Int(3)));
+    }
+
+    #[test]
+    fn test_vm_array_get() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(10),
+            Value::Int(20),
+            Value::Int(30),
+        ])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr)
+            .constant(Value::Int(1))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(20));
+    }
+
+    #[test]
+    fn test_vm_array_get_bounds_error() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr)
+            .constant(Value::Int(5))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk);
+        assert!(matches!(result, Err(VmError::Runtime(_))));
+    }
+
+    #[test]
+    fn test_vm_array_set() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr.clone())
+            .constant(Value::Int(1))
+            .constant(Value::Int(99))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::LoadConst(2))
+            .instruction(Instruction::ArraySet)
+            .instruction(Instruction::Pop) // Pop unit result
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(99));
+    }
+
+    #[test]
+    fn test_vm_array_length() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr)
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::ArrayLength)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_vm_array_update() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr.clone())
+            .constant(Value::Int(1))
+            .constant(Value::Int(99))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::LoadConst(2))
+            .instruction(Instruction::ArrayUpdate)
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(99));
+        // Verify original array unchanged
+        assert_eq!(arr.array_get(1), Ok(Value::Int(2)));
+    }
+
+    #[test]
+    fn test_vm_array_negative_index_error() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr)
+            .constant(Value::Int(-1))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk);
+        assert!(matches!(result, Err(VmError::TypeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_vm_array_type_error() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Int(42))
+            .constant(Value::Int(0))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::ArrayGet)
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk);
+        assert!(matches!(result, Err(VmError::Runtime(_))));
+    }
+
+    #[test]
+    fn test_vm_array_mixed_types() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Int(42))
+            .constant(Value::Str("hello".to_string()))
+            .constant(Value::Bool(true))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::LoadConst(1))
+            .instruction(Instruction::LoadConst(2))
+            .instruction(Instruction::MakeArray(3))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result.array_get(0), Ok(Value::Int(42)));
+        assert_eq!(result.array_get(1), Ok(Value::Str("hello".to_string())));
+        assert_eq!(result.array_get(2), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_vm_array_in_local() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let chunk = ChunkBuilder::new()
+            .constant(arr.clone())
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::StoreLocal(0))
+            .instruction(Instruction::LoadLocal(0))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, arr);
+    }
+
+    #[test]
+    fn test_vm_array_nested() {
+        let mut vm = Vm::new();
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let inner = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let chunk = ChunkBuilder::new()
+            .constant(inner)
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::MakeArray(1))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        let outer_elem = result.array_get(0).unwrap();
+        assert_eq!(outer_elem.array_get(0), Ok(Value::Int(1)));
+        assert_eq!(outer_elem.array_get(1), Ok(Value::Int(2)));
     }
 }
