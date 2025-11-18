@@ -6,8 +6,8 @@
 //! - Literals: integers, floats, booleans, strings
 //! - Keywords: let, rec, and, in, if, then, else, fun, true, false
 //! - Identifiers: alphanumeric names starting with letter or underscore
-//! - Operators: arithmetic, comparison, logical
-//! - Punctuation: parentheses, arrows, commas
+//! - Operators: arithmetic, comparison, logical, cons (::)
+//! - Punctuation: parentheses, arrows, commas, brackets, semicolons
 //! - Position tracking for error reporting
 //!
 //! # Example
@@ -85,16 +85,24 @@ pub enum Token {
     And,
     /// || operator
     Or,
+    /// :: operator (cons)
+    ColonColon,
 
     // Punctuation
     /// ( left parenthesis
     LParen,
     /// ) right parenthesis
     RParen,
+    /// [ left bracket
+    LBracket,
+    /// ] right bracket
+    RBracket,
     /// -> arrow
     Arrow,
     /// , comma
     Comma,
+    /// ; semicolon
+    Semicolon,
 
     // Special
     /// End of file marker
@@ -130,10 +138,14 @@ impl fmt::Display for Token {
             Token::Gte => write!(f, ">="),
             Token::And => write!(f, "&&"),
             Token::Or => write!(f, "||"),
+            Token::ColonColon => write!(f, "::"),
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
             Token::Arrow => write!(f, "->"),
             Token::Comma => write!(f, ","),
+            Token::Semicolon => write!(f, ";"),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -283,6 +295,7 @@ impl Lexer {
             '>' => self.lex_gt_or_gte(),
             '&' => self.lex_and(),
             '|' => self.lex_or(),
+            ':' => self.lex_colon_or_coloncolon(),
             '(' => {
                 self.advance();
                 Ok(Token::LParen)
@@ -291,9 +304,21 @@ impl Lexer {
                 self.advance();
                 Ok(Token::RParen)
             }
+            '[' => {
+                self.advance();
+                Ok(Token::LBracket)
+            }
+            ']' => {
+                self.advance();
+                Ok(Token::RBracket)
+            }
             ',' => {
                 self.advance();
                 Ok(Token::Comma)
+            }
+            ';' => {
+                self.advance();
+                Ok(Token::Semicolon)
             }
             _ => Err(LexError::UnexpectedChar(ch, self.current_position())),
         }
@@ -471,6 +496,19 @@ impl Lexer {
             Ok(Token::Or)
         } else {
             Err(LexError::UnexpectedChar('|', pos))
+        }
+    }
+
+    /// Lex : or ::.
+    fn lex_colon_or_coloncolon(&mut self) -> Result<Token, LexError> {
+        let pos = self.current_position();
+        self.advance();
+        if !self.is_at_end() && self.current_char() == ':' {
+            self.advance();
+            Ok(Token::ColonColon)
+        } else {
+            // Single colon is not a valid token in our language
+            Err(LexError::UnexpectedChar(':', pos))
         }
     }
 
@@ -1169,5 +1207,128 @@ mod tests {
         assert_eq!(tokens[6].token, Token::Int(3));
         assert_eq!(tokens[7].token, Token::RParen);
         assert_eq!(tokens[8].token, Token::RParen);
+    }
+
+    // ========================================================================
+    // List Lexer Tests (Issue #25 Layer 1)
+    // ========================================================================
+
+    #[test]
+    fn test_lex_brackets() {
+        let mut lexer = Lexer::new("[ ]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBracket);
+        assert_eq!(tokens[1].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_semicolon() {
+        let mut lexer = Lexer::new(";");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Semicolon);
+    }
+
+    #[test]
+    fn test_lex_coloncolon() {
+        let mut lexer = Lexer::new("::");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::ColonColon);
+    }
+
+    #[test]
+    fn test_lex_list_empty() {
+        let mut lexer = Lexer::new("[]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBracket);
+        assert_eq!(tokens[1].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_list_simple() {
+        let mut lexer = Lexer::new("[1; 2; 3]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBracket);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Semicolon);
+        assert_eq!(tokens[3].token, Token::Int(2));
+        assert_eq!(tokens[4].token, Token::Semicolon);
+        assert_eq!(tokens[5].token, Token::Int(3));
+        assert_eq!(tokens[6].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_cons_operator() {
+        let mut lexer = Lexer::new("1 :: []");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Int(1));
+        assert_eq!(tokens[1].token, Token::ColonColon);
+        assert_eq!(tokens[2].token, Token::LBracket);
+        assert_eq!(tokens[3].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_cons_with_list() {
+        let mut lexer = Lexer::new("1 :: [2; 3]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Int(1));
+        assert_eq!(tokens[1].token, Token::ColonColon);
+        assert_eq!(tokens[2].token, Token::LBracket);
+        assert_eq!(tokens[3].token, Token::Int(2));
+        assert_eq!(tokens[4].token, Token::Semicolon);
+        assert_eq!(tokens[5].token, Token::Int(3));
+        assert_eq!(tokens[6].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_nested_lists() {
+        let mut lexer = Lexer::new("[1; [2; 3]]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBracket);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Semicolon);
+        assert_eq!(tokens[3].token, Token::LBracket);
+        assert_eq!(tokens[4].token, Token::Int(2));
+        assert_eq!(tokens[5].token, Token::Semicolon);
+        assert_eq!(tokens[6].token, Token::Int(3));
+        assert_eq!(tokens[7].token, Token::RBracket);
+        assert_eq!(tokens[8].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_complex_cons() {
+        let mut lexer = Lexer::new("1 :: 2 :: []");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Int(1));
+        assert_eq!(tokens[1].token, Token::ColonColon);
+        assert_eq!(tokens[2].token, Token::Int(2));
+        assert_eq!(tokens[3].token, Token::ColonColon);
+        assert_eq!(tokens[4].token, Token::LBracket);
+        assert_eq!(tokens[5].token, Token::RBracket);
+    }
+
+    #[test]
+    fn test_lex_mixed_list_cons() {
+        let mut lexer = Lexer::new("[1; 2] :: [[3; 4]]");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBracket);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Semicolon);
+        assert_eq!(tokens[3].token, Token::Int(2));
+        assert_eq!(tokens[4].token, Token::RBracket);
+        assert_eq!(tokens[5].token, Token::ColonColon);
+        assert_eq!(tokens[6].token, Token::LBracket);
+        assert_eq!(tokens[7].token, Token::LBracket);
+        assert_eq!(tokens[8].token, Token::Int(3));
+    }
+
+    #[test]
+    fn test_error_single_colon() {
+        let mut lexer = Lexer::new(":");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            LexError::UnexpectedChar(ch, _) => assert_eq!(ch, ':'),
+            _ => panic!("Expected UnexpectedChar error for single colon"),
+        }
     }
 }

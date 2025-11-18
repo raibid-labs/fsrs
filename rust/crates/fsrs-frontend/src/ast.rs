@@ -13,6 +13,7 @@
 //! - Binary operations (arithmetic, comparison, logical)
 //! - Conditional expressions (if-then-else)
 //! - Tuples (e.g., (1, 2), (x, y, z))
+//! - Lists (e.g., [1; 2; 3], []) and cons operator (::)
 //!
 //! # Example
 //!
@@ -192,6 +193,12 @@ pub enum Expr {
     /// Tuple expression (e.g., (1, 2), (x, y, z))
     /// Empty tuple () is represented as Lit(Literal::Unit)
     Tuple(Vec<Expr>),
+
+    /// List expression (e.g., [1; 2; 3], [])
+    List(Vec<Expr>),
+
+    /// Cons operator (e.g., 1 :: [2; 3], x :: xs)
+    Cons { head: Box<Expr>, tail: Box<Expr> },
 }
 
 impl Expr {
@@ -245,6 +252,16 @@ impl Expr {
         matches!(self, Expr::Tuple(_))
     }
 
+    /// Returns true if this expression is a list.
+    pub fn is_list(&self) -> bool {
+        matches!(self, Expr::List(_))
+    }
+
+    /// Returns true if this expression is a cons.
+    pub fn is_cons(&self) -> bool {
+        matches!(self, Expr::Cons { .. })
+    }
+
     /// Returns the variable name if this is a Var, otherwise None.
     pub fn as_var(&self) -> Option<&str> {
         match self {
@@ -265,6 +282,22 @@ impl Expr {
     pub fn as_tuple(&self) -> Option<&Vec<Expr>> {
         match self {
             Expr::Tuple(elements) => Some(elements),
+            _ => None,
+        }
+    }
+
+    /// Returns the list elements if this is a List, otherwise None.
+    pub fn as_list(&self) -> Option<&Vec<Expr>> {
+        match self {
+            Expr::List(elements) => Some(elements),
+            _ => None,
+        }
+    }
+
+    /// Returns the head and tail if this is a Cons, otherwise None.
+    pub fn as_cons(&self) -> Option<(&Expr, &Expr)> {
+        match self {
+            Expr::Cons { head, tail } => Some((head, tail)),
             _ => None,
         }
     }
@@ -316,6 +349,19 @@ impl fmt::Display for Expr {
                     write!(f, "{}", element)?;
                 }
                 write!(f, ")")
+            }
+            Expr::List(elements) => {
+                write!(f, "[")?;
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{}", element)?;
+                }
+                write!(f, "]")
+            }
+            Expr::Cons { head, tail } => {
+                write!(f, "({} :: {})", head, tail)
             }
         }
     }
@@ -840,5 +886,191 @@ mod tests {
         ]);
         assert!(expr.is_tuple());
         assert_eq!(format!("{}", expr), "(1, 2, 3, 4, 5, 6, 7, 8)");
+    }
+
+    // ========================================================================
+    // List Tests (Issue #25 Layer 1)
+    // ========================================================================
+
+    #[test]
+    fn test_list_empty() {
+        // []
+        let expr = Expr::List(vec![]);
+        assert!(expr.is_list());
+        assert!(!expr.is_literal());
+        assert_eq!(format!("{}", expr), "[]");
+    }
+
+    #[test]
+    fn test_list_single_element() {
+        // [1]
+        let expr = Expr::List(vec![Expr::Lit(Literal::Int(1))]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[1]");
+    }
+
+    #[test]
+    fn test_list_multiple_elements() {
+        // [1; 2; 3]
+        let expr = Expr::List(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+        ]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[1; 2; 3]");
+    }
+
+    #[test]
+    fn test_list_nested() {
+        // [1; [2; 3]]
+        let expr = Expr::List(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::List(vec![Expr::Lit(Literal::Int(2)), Expr::Lit(Literal::Int(3))]),
+        ]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[1; [2; 3]]");
+    }
+
+    #[test]
+    fn test_list_with_variables() {
+        // [x; y; z]
+        let expr = Expr::List(vec![
+            Expr::Var("x".to_string()),
+            Expr::Var("y".to_string()),
+            Expr::Var("z".to_string()),
+        ]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[x; y; z]");
+    }
+
+    #[test]
+    fn test_list_with_expressions() {
+        // [x + 1; y * 2]
+        let expr = Expr::List(vec![
+            Expr::BinOp {
+                op: BinOp::Add,
+                left: Box::new(Expr::Var("x".to_string())),
+                right: Box::new(Expr::Lit(Literal::Int(1))),
+            },
+            Expr::BinOp {
+                op: BinOp::Mul,
+                left: Box::new(Expr::Var("y".to_string())),
+                right: Box::new(Expr::Lit(Literal::Int(2))),
+            },
+        ]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[(x + 1); (y * 2)]");
+    }
+
+    #[test]
+    fn test_list_as_list() {
+        // Test as_list() helper
+        let expr = Expr::List(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]);
+        let elements = expr.as_list();
+        assert!(elements.is_some());
+        assert_eq!(elements.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_list_as_list_none() {
+        // Non-list should return None
+        let expr = Expr::Lit(Literal::Int(42));
+        assert_eq!(expr.as_list(), None);
+    }
+
+    #[test]
+    fn test_cons_simple() {
+        // 1 :: []
+        let expr = Expr::Cons {
+            head: Box::new(Expr::Lit(Literal::Int(1))),
+            tail: Box::new(Expr::List(vec![])),
+        };
+        assert!(expr.is_cons());
+        assert!(!expr.is_list());
+        assert_eq!(format!("{}", expr), "(1 :: [])");
+    }
+
+    #[test]
+    fn test_cons_with_list() {
+        // 1 :: [2; 3]
+        let expr = Expr::Cons {
+            head: Box::new(Expr::Lit(Literal::Int(1))),
+            tail: Box::new(Expr::List(vec![
+                Expr::Lit(Literal::Int(2)),
+                Expr::Lit(Literal::Int(3)),
+            ])),
+        };
+        assert!(expr.is_cons());
+        assert_eq!(format!("{}", expr), "(1 :: [2; 3])");
+    }
+
+    #[test]
+    fn test_cons_nested() {
+        // 1 :: 2 :: []
+        let expr = Expr::Cons {
+            head: Box::new(Expr::Lit(Literal::Int(1))),
+            tail: Box::new(Expr::Cons {
+                head: Box::new(Expr::Lit(Literal::Int(2))),
+                tail: Box::new(Expr::List(vec![])),
+            }),
+        };
+        assert!(expr.is_cons());
+        assert_eq!(format!("{}", expr), "(1 :: (2 :: []))");
+    }
+
+    #[test]
+    fn test_cons_as_cons() {
+        // Test as_cons() helper
+        let expr = Expr::Cons {
+            head: Box::new(Expr::Lit(Literal::Int(1))),
+            tail: Box::new(Expr::List(vec![])),
+        };
+        let result = expr.as_cons();
+        assert!(result.is_some());
+        let (head, tail) = result.unwrap();
+        assert_eq!(head, &Expr::Lit(Literal::Int(1)));
+        assert_eq!(tail, &Expr::List(vec![]));
+    }
+
+    #[test]
+    fn test_cons_as_cons_none() {
+        // Non-cons should return None
+        let expr = Expr::List(vec![]);
+        assert_eq!(expr.as_cons(), None);
+    }
+
+    #[test]
+    fn test_list_large() {
+        // [1; 2; 3; 4; 5; 6; 7; 8]
+        let expr = Expr::List(vec![
+            Expr::Lit(Literal::Int(1)),
+            Expr::Lit(Literal::Int(2)),
+            Expr::Lit(Literal::Int(3)),
+            Expr::Lit(Literal::Int(4)),
+            Expr::Lit(Literal::Int(5)),
+            Expr::Lit(Literal::Int(6)),
+            Expr::Lit(Literal::Int(7)),
+            Expr::Lit(Literal::Int(8)),
+        ]);
+        assert!(expr.is_list());
+        assert_eq!(format!("{}", expr), "[1; 2; 3; 4; 5; 6; 7; 8]");
+    }
+
+    #[test]
+    fn test_list_clone_and_equality() {
+        let expr1 = Expr::List(vec![Expr::Lit(Literal::Int(1)), Expr::Lit(Literal::Int(2))]);
+        let expr2 = expr1.clone();
+        assert_eq!(expr1, expr2);
+    }
+
+    #[test]
+    fn test_cons_clone_and_equality() {
+        let expr1 = Expr::Cons {
+            head: Box::new(Expr::Lit(Literal::Int(1))),
+            tail: Box::new(Expr::List(vec![])),
+        };
+        let expr2 = expr1.clone();
+        assert_eq!(expr1, expr2);
     }
 }

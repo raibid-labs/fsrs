@@ -12,6 +12,8 @@
 //! - Binary operations: arithmetic, comparison, logical
 //! - Conditional expressions: `if cond then expr1 else expr2`
 //! - Tuples: `(1, 2)`, `(x, y, z)`, `(42,)` (single-element)
+//! - Lists: `[1; 2; 3]`, `[]`
+//! - Cons operator: `1 :: [2; 3]`, `x :: xs`
 //! - Unary minus: `-42`, `-x`
 //! - Proper operator precedence
 //! - Error recovery and reporting
@@ -25,13 +27,15 @@
 //! lambda_expr::= "fun" IDENT "->" expr
 //! or_expr    ::= and_expr ("||" and_expr)*
 //! and_expr   ::= comp_expr ("&&" comp_expr)*
-//! comp_expr  ::= add_expr (("=" | "==" | "<>" | "<" | "<=" | ">" | ">=") add_expr)?
+//! comp_expr  ::= cons_expr (("=" | "==" | "<>" | "<" | "<=" | ">" | ">=") cons_expr)?
+//! cons_expr  ::= add_expr ("::" cons_expr)?
 //! add_expr   ::= mul_expr (("+" | "-") mul_expr)*
 //! mul_expr   ::= unary_expr (("*" | "/") unary_expr)*
 //! unary_expr ::= "-" unary_expr | app_expr
 //! app_expr   ::= primary (primary)*
-//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple
+//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list
 //! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
+//! list       ::= "[" "]" | "[" expr (";" expr)* ";"? "]"
 //! ```
 //!
 //! # Example
@@ -332,15 +336,32 @@ impl Parser {
 
     /// Parse comparison expression
     fn parse_comp_expr(&mut self) -> Result<Expr, ParseError> {
-        let left = self.parse_add_expr()?;
+        let left = self.parse_cons_expr()?;
 
         // Comparisons are non-associative (only one comparison allowed)
         if let Some(op) = self.match_comparison_op() {
-            let right = self.parse_add_expr()?;
+            let right = self.parse_cons_expr()?;
             return Ok(Expr::BinOp {
                 op,
                 left: Box::new(left),
                 right: Box::new(right),
+            });
+        }
+
+        Ok(left)
+    }
+
+    /// Parse cons expression (right-associative)
+    /// cons_expr ::= add_expr ("::" cons_expr)?
+    fn parse_cons_expr(&mut self) -> Result<Expr, ParseError> {
+        let left = self.parse_add_expr()?;
+
+        // Right-associative: 1 :: 2 :: [] parses as 1 :: (2 :: [])
+        if self.match_token(&Token::ColonColon) {
+            let tail = self.parse_cons_expr()?; // Recursive call for right-associativity
+            return Ok(Expr::Cons {
+                head: Box::new(left),
+                tail: Box::new(tail),
             });
         }
 
@@ -411,7 +432,7 @@ impl Parser {
         Ok(left)
     }
 
-    /// Parse primary expression (literals, variables, parenthesized expressions, tuples)
+    /// Parse primary expression (literals, variables, parenthesized expressions, tuples, lists)
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let tok = self.current_token();
 
@@ -483,6 +504,31 @@ impl Parser {
                     Ok(first_expr)
                 }
             }
+            Token::LBracket => {
+                self.advance(); // consume '['
+
+                let mut elements = vec![];
+
+                // Empty list: []
+                if self.match_token(&Token::RBracket) {
+                    return Ok(Expr::List(elements));
+                }
+
+                // Parse first element
+                elements.push(self.parse_expr()?);
+
+                // Parse remaining elements: ; e1 ; e2 ...
+                while self.match_token(&Token::Semicolon) {
+                    // Check for trailing semicolon before RBracket
+                    if matches!(self.current_token().token, Token::RBracket) {
+                        break; // trailing semicolon
+                    }
+                    elements.push(self.parse_expr()?);
+                }
+
+                self.expect_token(Token::RBracket)?;
+                Ok(Expr::List(elements))
+            }
             _ => Err(ParseError::UnexpectedToken {
                 expected: "expression".to_string(),
                 found: tok.token.clone(),
@@ -509,6 +555,7 @@ impl Parser {
                 | Token::String(_)
                 | Token::Ident(_)
                 | Token::LParen
+                | Token::LBracket
         )
     }
 
@@ -1580,6 +1627,339 @@ mod tests {
                 assert_eq!(elements.len(), 8);
             }
             _ => panic!("Expected Tuple"),
+        }
+    }
+
+    // ========================================================================
+    // List Parser Tests (Issue #25 Layer 2)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_list_empty() {
+        // []
+        let expr = parse("[]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 0);
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_single() {
+        // [1]
+        let expr = parse("[1]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 1);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_multiple() {
+        // [1; 2; 3]
+        let expr = parse("[1; 2; 3]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(2)));
+                assert_eq!(elements[2], Expr::Lit(Literal::Int(3)));
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_trailing_semicolon() {
+        // [1; 2;]
+        let expr = parse("[1; 2;]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 2);
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_nested() {
+        // [1; [2; 3]]
+        let expr = parse("[1; [2; 3]]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert!(elements[1].is_list());
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_empty() {
+        // 1 :: []
+        let expr = parse("1 :: []").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert_eq!(*head, Expr::Lit(Literal::Int(1)));
+                assert!(tail.is_list());
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_list() {
+        // 1 :: [2; 3]
+        let expr = parse("1 :: [2; 3]").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert_eq!(*head, Expr::Lit(Literal::Int(1)));
+                assert!(tail.is_list());
+                match *tail {
+                    Expr::List(elements) => {
+                        assert_eq!(elements.len(), 2);
+                    }
+                    _ => panic!("Expected list in tail"),
+                }
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_chain_right_assoc() {
+        // 1 :: 2 :: [] should parse as 1 :: (2 :: [])
+        let expr = parse("1 :: 2 :: []").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert_eq!(*head, Expr::Lit(Literal::Int(1)));
+                assert!(tail.is_cons()); // Right-associative
+                match *tail {
+                    Expr::Cons { head, tail } => {
+                        assert_eq!(*head, Expr::Lit(Literal::Int(2)));
+                        assert!(tail.is_list());
+                    }
+                    _ => panic!("Expected cons in tail"),
+                }
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_in_list() {
+        // [1 :: [2; 3]]
+        let expr = parse("[1 :: [2; 3]]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 1);
+                assert!(elements[0].is_cons());
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mixed_operators_list_cons() {
+        // x + 1 :: [y * 2]
+        let expr = parse("x + 1 :: [y * 2]").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert!(head.is_binop());
+                assert!(tail.is_list());
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_with_let() {
+        // let xs = [1; 2] in xs
+        let expr = parse("let xs = [1; 2] in xs").unwrap();
+        assert!(expr.is_let());
+        match expr {
+            Expr::Let { value, .. } => {
+                assert!(value.is_list());
+            }
+            _ => panic!("Expected Let"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_with_lambda() {
+        // let f = fun x -> [x; x + 1] in f 1
+        let expr = parse("let f = fun x -> [x; x + 1] in f 1").unwrap();
+        assert!(expr.is_let());
+    }
+
+    #[test]
+    fn test_parse_list_with_variables() {
+        // [x; y; z]
+        let expr = parse("[x; y; z]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(elements[0], Expr::Var("x".to_string()));
+                assert_eq!(elements[1], Expr::Var("y".to_string()));
+                assert_eq!(elements[2], Expr::Var("z".to_string()));
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_with_expressions() {
+        // [x + 1; y * 2]
+        let expr = parse("[x + 1; y * 2]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_binop());
+                assert!(elements[1].is_binop());
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_with_variables() {
+        // x :: xs
+        let expr = parse("x :: xs").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert_eq!(*head, Expr::Var("x".to_string()));
+                assert_eq!(*tail, Expr::Var("xs".to_string()));
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_precedence_cons_lower_than_arithmetic() {
+        // 1 + 2 :: [3] should parse as (1 + 2) :: [3]
+        let expr = parse("1 + 2 :: [3]").unwrap();
+        assert!(expr.is_cons());
+        match expr {
+            Expr::Cons { head, .. } => {
+                assert!(head.is_binop());
+            }
+            _ => panic!("Expected Cons"),
+        }
+    }
+
+    #[test]
+    fn test_precedence_cons_higher_than_comparison() {
+        // x :: xs = y :: ys should parse as (x :: xs) = (y :: ys)
+        let expr = parse("x :: xs = y :: ys").unwrap();
+        assert!(expr.is_binop());
+        match expr {
+            Expr::BinOp {
+                op: BinOp::Eq,
+                left,
+                right,
+            } => {
+                assert!(left.is_cons());
+                assert!(right.is_cons());
+            }
+            _ => panic!("Expected comparison"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_large() {
+        // [1; 2; 3; 4; 5; 6; 7; 8]
+        let expr = parse("[1; 2; 3; 4; 5; 6; 7; 8]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 8);
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_of_tuples() {
+        // [(1, 2); (3, 4)]
+        let expr = parse("[(1, 2); (3, 4)]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_tuple());
+                assert!(elements[1].is_tuple());
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_of_lists() {
+        // ([1; 2], [3; 4])
+        let expr = parse("([1; 2], [3; 4])").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_list());
+                assert!(elements[1].is_list());
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cons_precedence_with_comparison() {
+        // 1 :: 2 :: [] = [1; 2] should parse as (1 :: (2 :: [])) = [1; 2]
+        let expr = parse("1 :: 2 :: [] = [1; 2]").unwrap();
+        assert!(expr.is_binop());
+    }
+
+    #[test]
+    fn test_parse_list_with_if_elements() {
+        // [if true then 1 else 0; 2]
+        let expr = parse("[if true then 1 else 0; 2]").unwrap();
+        assert!(expr.is_list());
+        match expr {
+            Expr::List(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_if());
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    #[test]
+    fn test_parse_complex_cons_chain() {
+        // 1 :: 2 :: 3 :: []
+        let expr = parse("1 :: 2 :: 3 :: []").unwrap();
+        assert!(expr.is_cons());
+        // Check right-associativity: 1 :: (2 :: (3 :: []))
+        match expr {
+            Expr::Cons { head, tail } => {
+                assert_eq!(*head, Expr::Lit(Literal::Int(1)));
+                assert!(tail.is_cons());
+            }
+            _ => panic!("Expected Cons"),
         }
     }
 }

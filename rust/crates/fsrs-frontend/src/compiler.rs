@@ -130,6 +130,8 @@ impl Compiler {
                 else_branch,
             } => self.compile_if(cond, then_branch, else_branch),
             Expr::Tuple(elements) => self.compile_tuple(elements),
+            Expr::List(_) => Ok(()),     // TODO: Layer 3
+            Expr::Cons { .. } => Ok(()), // TODO: Layer 3
         }
     }
 
