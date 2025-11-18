@@ -162,11 +162,13 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn test_version_constant() {
         assert!(!VERSION.is_empty());
     }
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn test_help_text_not_empty() {
         assert!(!HELP_TEXT.is_empty());
     }
