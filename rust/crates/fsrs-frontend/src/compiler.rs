@@ -140,6 +140,10 @@ impl Compiler {
                 value,
             } => self.compile_array_update(array, index, value),
             Expr::ArrayLength(array) => self.compile_array_length(array),
+            Expr::RecordLiteral { .. } => unimplemented!("Records - Layer 3"),
+            Expr::RecordAccess { .. } => unimplemented!("Records - Layer 3"),
+            Expr::RecordUpdate { .. } => unimplemented!("Records - Layer 3"),
+            Expr::Match { .. } => unimplemented!("Pattern matching - Issue #27"),
         }
     }
 

@@ -58,6 +58,12 @@ pub enum Token {
     Else,
     /// fun keyword
     Fun,
+    /// match keyword
+    Match,
+    /// type keyword
+    Type,
+    /// with keyword (for record updates)
+    With,
 
     // Operators
     /// + operator
@@ -112,6 +118,16 @@ pub enum Token {
     Semicolon,
     /// . dot
     Dot,
+    /// { left brace
+    LBrace,
+    /// } right brace
+    RBrace,
+    /// : colon
+    Colon,
+    /// | pipe
+    Pipe,
+    /// _ underscore
+    Underscore,
 
     // Special
     /// End of file marker
@@ -134,6 +150,9 @@ impl fmt::Display for Token {
             Token::Then => write!(f, "then"),
             Token::Else => write!(f, "else"),
             Token::Fun => write!(f, "fun"),
+            Token::Match => write!(f, "match"),
+            Token::Type => write!(f, "type"),
+            Token::With => write!(f, "with"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -159,6 +178,11 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::Semicolon => write!(f, ";"),
             Token::Dot => write!(f, "."),
+            Token::LBrace => write!(f, "{{"),
+            Token::RBrace => write!(f, "}}"),
+            Token::Colon => write!(f, ":"),
+            Token::Pipe => write!(f, "|"),
+            Token::Underscore => write!(f, "_"),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -288,7 +312,18 @@ impl Lexer {
 
         match ch {
             '0'..='9' => self.lex_number(),
-            'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier_or_keyword(),
+            'a'..='z' | 'A'..='Z' => self.lex_identifier_or_keyword(),
+            '_' => {
+                // Peek ahead to see if this is an identifier like _foo or just _
+                if !self.is_at_end_or(1)
+                    && (self.peek_char().is_alphanumeric() || self.peek_char() == '_')
+                {
+                    self.lex_identifier_or_keyword()
+                } else {
+                    self.advance();
+                    Ok(Token::Underscore)
+                }
+            }
             '"' => self.lex_string(),
             '+' => {
                 self.advance();
@@ -329,6 +364,14 @@ impl Lexer {
             ';' => {
                 self.advance();
                 Ok(Token::Semicolon)
+            }
+            '{' => {
+                self.advance();
+                Ok(Token::LBrace)
+            }
+            '}' => {
+                self.advance();
+                Ok(Token::RBrace)
             }
             '.' => {
                 self.advance();
@@ -385,11 +428,14 @@ impl Lexer {
             "let" => Token::Let,
             "in" => Token::In,
             "rec" => Token::Rec,
+            "match" => Token::Match,
             "and" => Token::AndKeyword,
             "if" => Token::If,
             "then" => Token::Then,
             "else" => Token::Else,
             "fun" => Token::Fun,
+            "type" => Token::Type,
+            "with" => Token::With,
             "true" => Token::Bool(true),
             "false" => Token::Bool(false),
             _ => Token::Ident(s),
@@ -505,9 +551,8 @@ impl Lexer {
         }
     }
 
-    /// Lex || or |].
+    /// Lex ||, |], or | (pipe).
     fn lex_or_or_pipe_rbracket(&mut self) -> Result<Token, LexError> {
-        let pos = self.current_position();
         self.advance();
         if !self.is_at_end() {
             match self.current_char() {
@@ -519,23 +564,22 @@ impl Lexer {
                     self.advance();
                     Ok(Token::PipeRBracket)
                 }
-                _ => Err(LexError::UnexpectedChar('|', pos)),
+                _ => Ok(Token::Pipe), // Single pipe for match expressions
             }
         } else {
-            Err(LexError::UnexpectedChar('|', pos))
+            Ok(Token::Pipe) // Single pipe at end of input
         }
     }
 
     /// Lex : or ::.
     fn lex_colon_or_coloncolon(&mut self) -> Result<Token, LexError> {
-        let pos = self.current_position();
+        let _pos = self.current_position();
         self.advance();
         if !self.is_at_end() && self.current_char() == ':' {
             self.advance();
             Ok(Token::ColonColon)
         } else {
-            // Single colon is not a valid token in our language
-            Err(LexError::UnexpectedChar(':', pos))
+            Ok(Token::Colon)
         }
     }
 
@@ -975,14 +1019,13 @@ mod tests {
     }
 
     #[test]
-    fn test_error_single_pipe() {
+    fn test_single_pipe_now_valid() {
+        // Single pipe is now valid for pattern matching
         let mut lexer = Lexer::new("|");
         let result = lexer.tokenize();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LexError::UnexpectedChar(ch, _) => assert_eq!(ch, '|'),
-            _ => panic!("Expected UnexpectedChar error"),
-        }
+        assert!(result.is_ok());
+        let tokens = result.unwrap();
+        assert_eq!(tokens[0].token, Token::Pipe);
     }
 
     // ========================================================================
@@ -1360,14 +1403,11 @@ mod tests {
     }
 
     #[test]
-    fn test_error_single_colon() {
+    fn test_single_colon() {
         let mut lexer = Lexer::new(":");
-        let result = lexer.tokenize();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LexError::UnexpectedChar(ch, _) => assert_eq!(ch, ':'),
-            _ => panic!("Expected UnexpectedChar error for single colon"),
-        }
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 2); // Colon + EOF
+        assert_eq!(tokens[0].token, Token::Colon);
     }
 
     // ========================================================================
@@ -1500,4 +1540,202 @@ mod tests {
         assert_eq!(tokens[4].token, Token::Int(1));
         assert_eq!(tokens[5].token, Token::RBracket);
     }
+
+    // ========================================================================
+    // Record Token Tests (Issue #15 Layer 1)
+    // ========================================================================
+
+    #[test]
+    fn test_lex_type_keyword() {
+        let mut lexer = Lexer::new("type");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 2); // type + EOF
+        assert_eq!(tokens[0].token, Token::Type);
+    }
+
+    #[test]
+    fn test_lex_with_keyword() {
+        let mut lexer = Lexer::new("with");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 2); // with + EOF
+        assert_eq!(tokens[0].token, Token::With);
+    }
+
+    #[test]
+    fn test_lex_braces() {
+        let mut lexer = Lexer::new("{ }");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 3); // { } EOF
+        assert_eq!(tokens[0].token, Token::LBrace);
+        assert_eq!(tokens[1].token, Token::RBrace);
+    }
+
+    #[test]
+    fn test_lex_colon() {
+        let mut lexer = Lexer::new("name: int");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 4); // name : int EOF
+        assert_eq!(tokens[0].token, Token::Ident("name".to_string()));
+        assert_eq!(tokens[1].token, Token::Colon);
+        assert_eq!(tokens[2].token, Token::Ident("int".to_string()));
+    }
+
+    #[test]
+    fn test_lex_record_type_def() {
+        let mut lexer = Lexer::new("type Person = { name: string; age: int }");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Type);
+        assert_eq!(tokens[1].token, Token::Ident("Person".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(tokens[3].token, Token::LBrace);
+        assert_eq!(tokens[4].token, Token::Ident("name".to_string()));
+        assert_eq!(tokens[5].token, Token::Colon);
+        assert_eq!(tokens[6].token, Token::Ident("string".to_string()));
+        assert_eq!(tokens[7].token, Token::Semicolon);
+        assert_eq!(tokens[8].token, Token::Ident("age".to_string()));
+        assert_eq!(tokens[9].token, Token::Colon);
+        assert_eq!(tokens[10].token, Token::Ident("int".to_string()));
+        assert_eq!(tokens[11].token, Token::RBrace);
+    }
+
+    #[test]
+    fn test_lex_record_literal() {
+        let mut lexer = Lexer::new("{ name = \"John\"; age = 30 }");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBrace);
+        assert_eq!(tokens[1].token, Token::Ident("name".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(tokens[3].token, Token::String("John".to_string()));
+        assert_eq!(tokens[4].token, Token::Semicolon);
+        assert_eq!(tokens[5].token, Token::Ident("age".to_string()));
+        assert_eq!(tokens[6].token, Token::Eq);
+        assert_eq!(tokens[7].token, Token::Int(30));
+        assert_eq!(tokens[8].token, Token::RBrace);
+    }
+
+    #[test]
+    fn test_lex_record_update() {
+        let mut lexer = Lexer::new("{ person with age = 31 }");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LBrace);
+        assert_eq!(tokens[1].token, Token::Ident("person".to_string()));
+        assert_eq!(tokens[2].token, Token::With);
+        assert_eq!(tokens[3].token, Token::Ident("age".to_string()));
+        assert_eq!(tokens[4].token, Token::Eq);
+        assert_eq!(tokens[5].token, Token::Int(31));
+        assert_eq!(tokens[6].token, Token::RBrace);
+    }
+
+    #[test]
+    fn test_lex_record_access() {
+        let mut lexer = Lexer::new("person.name");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 4); // person . name EOF
+        assert_eq!(tokens[0].token, Token::Ident("person".to_string()));
+        assert_eq!(tokens[1].token, Token::Dot);
+        assert_eq!(tokens[2].token, Token::Ident("name".to_string()));
+    }
+}
+
+// ========================================================================
+// Pattern Matching Lexer Tests (Issue #27 Layer 1)
+// ========================================================================
+
+#[test]
+fn test_lex_match_keyword() {
+    let mut lexer = Lexer::new("match");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Match);
+}
+
+#[test]
+fn test_lex_with_keyword() {
+    let mut lexer = Lexer::new("with");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::With);
+}
+
+#[test]
+fn test_lex_underscore() {
+    let mut lexer = Lexer::new("_");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Underscore);
+}
+
+#[test]
+fn test_lex_pipe() {
+    let mut lexer = Lexer::new("|");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Pipe);
+}
+
+#[test]
+fn test_lex_match_simple() {
+    let mut lexer = Lexer::new("match x with");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Match);
+    assert_eq!(tokens[1].token, Token::Ident("x".to_string()));
+    assert_eq!(tokens[2].token, Token::With);
+}
+
+#[test]
+fn test_lex_match_arms() {
+    let mut lexer = Lexer::new("| 0 -> 1");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Pipe);
+    assert_eq!(tokens[1].token, Token::Int(0));
+    assert_eq!(tokens[2].token, Token::Arrow);
+    assert_eq!(tokens[3].token, Token::Int(1));
+}
+
+#[test]
+fn test_lex_match_wildcard() {
+    let mut lexer = Lexer::new("| _ -> 0");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Pipe);
+    assert_eq!(tokens[1].token, Token::Underscore);
+    assert_eq!(tokens[2].token, Token::Arrow);
+    assert_eq!(tokens[3].token, Token::Int(0));
+}
+
+#[test]
+fn test_lex_match_full_expression() {
+    let mut lexer = Lexer::new("match n with | 0 -> \"zero\" | _ -> \"many\"");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Match);
+    assert_eq!(tokens[1].token, Token::Ident("n".to_string()));
+    assert_eq!(tokens[2].token, Token::With);
+    assert_eq!(tokens[3].token, Token::Pipe);
+    assert_eq!(tokens[4].token, Token::Int(0));
+    assert_eq!(tokens[5].token, Token::Arrow);
+    assert_eq!(tokens[6].token, Token::String("zero".to_string()));
+    assert_eq!(tokens[7].token, Token::Pipe);
+    assert_eq!(tokens[8].token, Token::Underscore);
+    assert_eq!(tokens[9].token, Token::Arrow);
+    assert_eq!(tokens[10].token, Token::String("many".to_string()));
+}
+
+#[test]
+fn test_lex_underscore_vs_identifier() {
+    let mut lexer = Lexer::new("_ _foo foo_bar");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Underscore);
+    assert_eq!(tokens[1].token, Token::Ident("_foo".to_string()));
+    assert_eq!(tokens[2].token, Token::Ident("foo_bar".to_string()));
+}
+
+#[test]
+fn test_lex_pipe_vs_or() {
+    let mut lexer = Lexer::new("| ||");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Pipe);
+    assert_eq!(tokens[1].token, Token::Or);
+}
+
+#[test]
+fn test_lex_pipe_vs_pipe_rbracket() {
+    let mut lexer = Lexer::new("| |]");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens[0].token, Token::Pipe);
+    assert_eq!(tokens[1].token, Token::PipeRBracket);
 }
