@@ -20,12 +20,13 @@ The language is intentionally small and expression‑oriented.
 - Unit: `()` (used rarely; mostly for host interop)
 - Tuples: `(1, 2)`, `(x, "hello", true)`
 - Lists: `[]`, `[1; 2; 3]`, `[[1; 2]; [3; 4]]`
+- Arrays: `[||]`, `[|1; 2; 3|]`, `[|[|1; 2|]; [|3; 4|]|]`
 
 ### 1.3 Keywords (initial subset)
 
 `let`, `rec`, `if`, `then`, `else`, `match`, `with`, `type`, `module`, `true`, `false`, `in`, `fun`
 
-Operators and special tokens: `(` `)` `{` `}` `[` `]` `=` `->` `|` `:` `;` `,` `.` `*` `+` `-` `/` `::` `|>` `>>` `<<`
+Operators and special tokens: `(` `)` `{` `}` `[` `]` `[|` `|]` `=` `->` `|` `:` `;` `,` `.` `*` `+` `-` `/` `::` `|>` `>>` `<<` `<-`
 
 ## 2. Types
 
@@ -164,7 +165,125 @@ let nested = [1; 2] :: [3; 4] :: []  // [[1; 2]; [3; 4]]
 - Lists can be nested: `[[1; 2]; [3; 4]]`
 - Lists support structural equality: `[1; 2] = [1; 2]` is `true`
 
-### 3.6 Pattern matching
+### 3.6 Arrays
+
+Arrays are mutable, indexed collections with F# syntax. FSRS provides full array support with immutable update semantics.
+
+#### Array Literals
+
+Arrays use `[|...|]` delimiters to distinguish them from lists `[...]`:
+
+```fsharp
+// Empty array
+let empty = [||]
+
+// Array with elements (semicolon-separated)
+let numbers = [|1; 2; 3; 4; 5|]
+
+// Nested arrays (matrices)
+let matrix = [|[|1; 2|]; [|3; 4|]; [|5; 6|]|]
+```
+
+#### Array Indexing
+
+Arrays support zero-based indexing using the `.[index]` syntax:
+
+```fsharp
+let arr = [|10; 20; 30; 40; 50|]
+let first = arr.[0]   // 10
+let third = arr.[2]   // 30
+let last = arr.[4]    // 50
+
+// Nested array indexing
+let matrix = [|[|1; 2|]; [|3; 4|]|]
+let element = matrix.[1].[0]  // 3
+```
+
+**Index bounds checking**:
+- Valid indices: `0` to `length - 1`
+- Out-of-bounds access results in a runtime error
+- Negative indices are not supported
+
+#### Array Updates
+
+Array updates use the `<-` operator and follow **immutable semantics**. Each update creates a new array, preserving the original:
+
+```fsharp
+let arr = [|1; 2; 3; 4; 5|]
+
+// Simple update (creates new array)
+let arr2 = arr.[1] <- 99  // [|1; 99; 3; 4; 5|]
+
+// Original array is unchanged
+print arr   // [|1; 2; 3; 4; 5|]
+print arr2  // [|1; 99; 3; 4; 5|]
+
+// Chained updates (left-to-right evaluation)
+let result = arr.[0] <- 10.[1] <- 20.[2] <- 30
+// Result: [|10; 20; 30; 4; 5|]
+
+// Update nested arrays
+let matrix = [|[|1; 2|]; [|3; 4|]|]
+let updated = matrix.[0] <- [|99; 88|]
+// updated: [|[|99; 88|]; [|3; 4|]|]
+```
+
+**Update semantics**:
+- `arr.[i] <- value` returns a **new array** with updated value at index `i`
+- Original array remains unchanged (immutable semantics)
+- Updates can be chained: `arr.[0] <- 10.[1] <- 20`
+- Out-of-bounds updates result in runtime errors
+
+#### Array.length
+
+The `Array.length` function returns the number of elements in an array:
+
+```fsharp
+let numbers = [|1; 2; 3; 4; 5|]
+let len = Array.length numbers  // 5
+
+// Empty array
+let empty = [||]
+Array.length empty  // 0
+
+// Nested arrays
+let matrix = [|[|1; 2; 3|]; [|4; 5|]; [|6|]|]
+Array.length matrix          // 3 (outer array)
+Array.length matrix.[0]      // 3 (first row)
+Array.length matrix.[1]      // 2 (second row)
+```
+
+#### Array Properties
+
+- Arrays are printed with `[|...|]` delimiters and semicolon separators: `[|1; 2; 3|]`
+- Empty array is `[||]`
+- Arrays can be nested: `[|[|1; 2|]; [|3; 4|]|]`
+- Arrays support structural equality: `[|1; 2|] = [|1; 2|]` is `true`
+- Arrays can contain mixed types: `[|1; true; "hello"|]`
+- Array updates are immutable (create new arrays)
+
+#### Example Usage
+
+```fsharp
+// Basic array operations
+let empty = [||]
+let numbers = [|1; 2; 3; 4; 5|]
+let first = numbers.[0]
+let len = Array.length numbers
+
+// Immutable updates
+let arr = [|10; 20; 30|]
+let updated = arr.[1] <- 99
+// arr is still [|10; 20; 30|]
+// updated is [|10; 99; 30|]
+
+// Nested arrays (matrices)
+let matrix = [|[|1; 2|]; [|3; 4|]; [|5; 6|]|]
+let row = matrix.[0]      // [|1; 2|]
+let elem = matrix.[1].[0]  // 3
+```
+
+### 3.7 Pattern matching
 
 Over literals, tuples, records, and DUs:
 
@@ -183,7 +302,7 @@ let describeTab tab =
   | _ -> "other"
 ```
 
-### 3.7 Pipelines and composition
+### 3.8 Pipelines and composition
 
 ```fsharp
 let normalizeTitle (title: string) =
