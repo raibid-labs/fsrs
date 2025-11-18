@@ -785,11 +785,13 @@ impl Parser {
     // Type Expression Parsing (Issue #15 Layer 2)
     // ========================================================================
 
+    #[allow(dead_code)]
     /// Parse type expression
     fn parse_type_expr(&mut self) -> Result<TypeExpr> {
         self.parse_type_function()
     }
 
+    #[allow(dead_code)]
     /// Parse function type: T1 -> T2
     fn parse_type_function(&mut self) -> Result<TypeExpr> {
         let mut left = self.parse_type_tuple()?;
@@ -802,6 +804,7 @@ impl Parser {
     }
 
     /// Parse tuple type: T1 * T2 * T3
+    #[allow(dead_code)]
     fn parse_type_tuple(&mut self) -> Result<TypeExpr> {
         let mut types = vec![self.parse_type_primary()?];
         while self.peek() == Some(&Token::Star) {
@@ -815,6 +818,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     /// Parse primary type expression
     fn parse_type_primary(&mut self) -> Result<TypeExpr> {
         match self.peek() {
@@ -974,6 +978,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     /// Peek at the current token without position info
     fn peek(&self) -> Option<&Token> {
         if self.is_at_end() {

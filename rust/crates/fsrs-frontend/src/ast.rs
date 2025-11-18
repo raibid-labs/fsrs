@@ -2008,3 +2008,510 @@ fn test_expr_match_complex_body() {
     };
     assert!(expr.is_match());
 }
+// ========================================================================
+// DU Type Definition Tests (Issue #28 Layer 1)
+// ========================================================================
+
+#[test]
+fn test_variant_def_simple() {
+    let variant = VariantDef::new_simple("None".to_string());
+    assert!(variant.is_simple());
+    assert_eq!(variant.field_count(), 0);
+    assert_eq!(format!("{}", variant), "None");
+}
+
+#[test]
+fn test_variant_def_with_single_field() {
+    let variant = VariantDef::new("Some".to_string(), vec![TypeExpr::Named("int".to_string())]);
+    assert!(!variant.is_simple());
+    assert_eq!(variant.field_count(), 1);
+    assert_eq!(format!("{}", variant), "Some of int");
+}
+
+#[test]
+fn test_variant_def_with_multiple_fields() {
+    let variant = VariantDef::new(
+        "Rectangle".to_string(),
+        vec![
+            TypeExpr::Named("float".to_string()),
+            TypeExpr::Named("float".to_string()),
+        ],
+    );
+    assert!(!variant.is_simple());
+    assert_eq!(variant.field_count(), 2);
+    assert_eq!(format!("{}", variant), "Rectangle of float * float");
+}
+
+#[test]
+fn test_variant_def_with_tuple_field() {
+    let variant = VariantDef::new(
+        "Point".to_string(),
+        vec![TypeExpr::Tuple(vec![
+            TypeExpr::Named("int".to_string()),
+            TypeExpr::Named("int".to_string()),
+        ])],
+    );
+    assert_eq!(format!("{}", variant), "Point of int * int");
+}
+
+#[test]
+fn test_variant_def_clone() {
+    let variant1 = VariantDef::new_simple("None".to_string());
+    let variant2 = variant1.clone();
+    assert_eq!(variant1, variant2);
+}
+
+#[test]
+fn test_du_typedef_simple_enum() {
+    let du = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![
+            VariantDef::new_simple("Red".to_string()),
+            VariantDef::new_simple("Green".to_string()),
+            VariantDef::new_simple("Blue".to_string()),
+        ],
+    };
+    assert!(du.is_simple_enum());
+    assert_eq!(du.variant_count(), 3);
+    assert_eq!(format!("{}", du), "type Color = Red | Green | Blue");
+}
+
+#[test]
+fn test_du_typedef_with_fields() {
+    let du = DuTypeDef {
+        name: "Shape".to_string(),
+        variants: vec![
+            VariantDef::new(
+                "Circle".to_string(),
+                vec![TypeExpr::Named("float".to_string())],
+            ),
+            VariantDef::new(
+                "Rectangle".to_string(),
+                vec![
+                    TypeExpr::Named("float".to_string()),
+                    TypeExpr::Named("float".to_string()),
+                ],
+            ),
+        ],
+    };
+    assert!(!du.is_simple_enum());
+    assert_eq!(du.variant_count(), 2);
+    assert_eq!(
+        format!("{}", du),
+        "type Shape = Circle of float | Rectangle of float * float"
+    );
+}
+
+#[test]
+fn test_du_typedef_option_type() {
+    let du = DuTypeDef {
+        name: "Option".to_string(),
+        variants: vec![
+            VariantDef::new("Some".to_string(), vec![TypeExpr::Named("int".to_string())]),
+            VariantDef::new_simple("None".to_string()),
+        ],
+    };
+    assert!(!du.is_simple_enum());
+    assert_eq!(format!("{}", du), "type Option = Some of int | None");
+}
+
+#[test]
+fn test_du_typedef_variant_names() {
+    let du = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![
+            VariantDef::new_simple("Red".to_string()),
+            VariantDef::new_simple("Green".to_string()),
+            VariantDef::new_simple("Blue".to_string()),
+        ],
+    };
+    let names = du.variant_names();
+    assert_eq!(names, vec!["Red", "Green", "Blue"]);
+}
+
+#[test]
+fn test_du_typedef_find_variant() {
+    let du = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![
+            VariantDef::new_simple("Red".to_string()),
+            VariantDef::new_simple("Green".to_string()),
+            VariantDef::new_simple("Blue".to_string()),
+        ],
+    };
+    assert!(du.find_variant("Red").is_some());
+    assert!(du.find_variant("Green").is_some());
+    assert!(du.find_variant("Yellow").is_none());
+}
+
+#[test]
+fn test_du_typedef_clone() {
+    let du1 = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![VariantDef::new_simple("Red".to_string())],
+    };
+    let du2 = du1.clone();
+    assert_eq!(du1, du2);
+}
+
+#[test]
+fn test_declaration_dudef() {
+    let decl = Declaration::DuDef(DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![
+            VariantDef::new_simple("Red".to_string()),
+            VariantDef::new_simple("Green".to_string()),
+        ],
+    });
+    assert!(matches!(decl, Declaration::DuDef(_)));
+    assert_eq!(format!("{}", decl), "type Color = Red | Green");
+}
+
+#[test]
+fn test_module_with_dudef() {
+    let module = Module {
+        declarations: vec![
+            Declaration::DuDef(DuTypeDef {
+                name: "Color".to_string(),
+                variants: vec![VariantDef::new_simple("Red".to_string())],
+            }),
+            Declaration::LetBinding {
+                name: "red".to_string(),
+                params: vec![],
+                body: Box::new(Expr::Var("Red".to_string())),
+            },
+        ],
+    };
+    assert_eq!(module.declarations.len(), 2);
+}
+
+// ========================================================================
+// Variant Construction Tests
+// ========================================================================
+
+#[test]
+fn test_expr_variant_construct_simple() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "None".to_string(),
+        args: vec![],
+    };
+    assert!(expr.is_variant_construct());
+    assert!(!expr.is_literal());
+    assert_eq!(format!("{}", expr), "None");
+}
+
+#[test]
+fn test_expr_variant_construct_with_arg() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Some".to_string(),
+        args: vec![Box::new(Expr::Lit(Literal::Int(42)))],
+    };
+    assert!(expr.is_variant_construct());
+    assert_eq!(format!("{}", expr), "Some (42)");
+}
+
+#[test]
+fn test_expr_variant_construct_with_multiple_args() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Rectangle".to_string(),
+        args: vec![
+            Box::new(Expr::Lit(Literal::Float(10.0))),
+            Box::new(Expr::Lit(Literal::Float(20.0))),
+        ],
+    };
+    assert!(expr.is_variant_construct());
+    assert_eq!(format!("{}", expr), "Rectangle (10, 20)");
+}
+
+#[test]
+fn test_expr_variant_construct_with_type_name() {
+    let expr = Expr::VariantConstruct {
+        type_name: "Option".to_string(),
+        variant_name: "Some".to_string(),
+        args: vec![Box::new(Expr::Lit(Literal::Int(42)))],
+    };
+    assert_eq!(format!("{}", expr), "Option.Some (42)");
+}
+
+#[test]
+fn test_expr_variant_construct_as_variant_construct() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Some".to_string(),
+        args: vec![Box::new(Expr::Lit(Literal::Int(42)))],
+    };
+    let result = expr.as_variant_construct();
+    assert!(result.is_some());
+    let (type_name, variant_name, args) = result.unwrap();
+    assert_eq!(type_name, "");
+    assert_eq!(variant_name, "Some");
+    assert_eq!(args.len(), 1);
+}
+
+#[test]
+fn test_expr_variant_construct_clone() {
+    let expr1 = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "None".to_string(),
+        args: vec![],
+    };
+    let expr2 = expr1.clone();
+    assert_eq!(expr1, expr2);
+}
+
+#[test]
+fn test_expr_variant_construct_nested() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Some".to_string(),
+        args: vec![Box::new(Expr::VariantConstruct {
+            type_name: String::new(),
+            variant_name: "Some".to_string(),
+            args: vec![Box::new(Expr::Lit(Literal::Int(42)))],
+        })],
+    };
+    assert_eq!(format!("{}", expr), "Some (Some (42))");
+}
+
+#[test]
+fn test_expr_variant_construct_with_tuple() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Point".to_string(),
+        args: vec![Box::new(Expr::Tuple(vec![
+            Expr::Lit(Literal::Int(10)),
+            Expr::Lit(Literal::Int(20)),
+        ]))],
+    };
+    assert_eq!(format!("{}", expr), "Point ((10, 20))");
+}
+
+#[test]
+fn test_expr_variant_construct_with_expression() {
+    let expr = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "Some".to_string(),
+        args: vec![Box::new(Expr::BinOp {
+            op: BinOp::Add,
+            left: Box::new(Expr::Lit(Literal::Int(40))),
+            right: Box::new(Expr::Lit(Literal::Int(2))),
+        })],
+    };
+    assert_eq!(format!("{}", expr), "Some ((40 + 2))");
+}
+
+#[test]
+fn test_expr_variant_construct_in_let() {
+    let expr = Expr::Let {
+        name: "value".to_string(),
+        value: Box::new(Expr::VariantConstruct {
+            type_name: String::new(),
+            variant_name: "Some".to_string(),
+            args: vec![Box::new(Expr::Lit(Literal::Int(42)))],
+        }),
+        body: Box::new(Expr::Var("value".to_string())),
+    };
+    assert!(expr.is_let());
+    if let Expr::Let { value, .. } = &expr {
+        assert!(value.is_variant_construct());
+    }
+}
+
+// ========================================================================
+// Variant Pattern Tests
+// ========================================================================
+
+#[test]
+fn test_pattern_variant_simple() {
+    let pat = Pattern::Variant {
+        type_name: None,
+        variant_name: "None".to_string(),
+        patterns: vec![],
+    };
+    assert!(pat.is_variant_pattern());
+    assert!(!pat.is_wildcard());
+    assert!(!pat.is_literal());
+    assert_eq!(format!("{}", pat), "None");
+}
+
+#[test]
+fn test_pattern_variant_with_var() {
+    let pat = Pattern::Variant {
+        type_name: None,
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    assert!(pat.is_variant_pattern());
+    assert_eq!(format!("{}", pat), "Some (x)");
+}
+
+#[test]
+fn test_pattern_variant_with_multiple_patterns() {
+    let pat = Pattern::Variant {
+        type_name: None,
+        variant_name: "Rectangle".to_string(),
+        patterns: vec![Pattern::Var("w".to_string()), Pattern::Var("h".to_string())],
+    };
+    assert!(pat.is_variant_pattern());
+    assert_eq!(format!("{}", pat), "Rectangle (w, h)");
+}
+
+#[test]
+fn test_pattern_variant_with_type_name() {
+    let pat = Pattern::Variant {
+        type_name: Some("Option".to_string()),
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    assert_eq!(format!("{}", pat), "Option.Some (x)");
+}
+
+#[test]
+fn test_pattern_variant_as_variant() {
+    let pat = Pattern::Variant {
+        type_name: None,
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    let result = pat.as_variant();
+    assert!(result.is_some());
+    let (type_name, variant_name, patterns) = result.unwrap();
+    assert_eq!(*type_name, None);
+    assert_eq!(variant_name, "Some");
+    assert_eq!(patterns.len(), 1);
+}
+
+// ========================================================================
+// Lexer Token Tests for DU
+// ========================================================================
+
+#[test]
+fn test_lexer_of_token() {
+    use crate::lexer::{Lexer, Token};
+    let mut lexer = Lexer::new("of");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens.len(), 2); // "of" + EOF
+    assert_eq!(tokens[0].token, Token::Of);
+}
+
+#[test]
+fn test_lexer_du_definition() {
+    use crate::lexer::{Lexer, Token};
+    let mut lexer = Lexer::new("type Option = Some of int | None");
+    let tokens = lexer.tokenize().unwrap();
+
+    // Check key tokens
+    assert!(tokens.iter().any(|t| t.token == Token::Type));
+    assert!(tokens.iter().any(|t| t.token == Token::Of));
+    assert!(tokens.iter().any(|t| t.token == Token::Pipe));
+}
+
+// ========================================================================
+// Additional DU Tests to reach 35+
+// ========================================================================
+
+#[test]
+fn test_variant_def_equality() {
+    let v1 = VariantDef::new_simple("Red".to_string());
+    let v2 = VariantDef::new_simple("Red".to_string());
+    assert_eq!(v1, v2);
+}
+
+#[test]
+fn test_variant_def_inequality() {
+    let v1 = VariantDef::new_simple("Red".to_string());
+    let v2 = VariantDef::new_simple("Blue".to_string());
+    assert_ne!(v1, v2);
+}
+
+#[test]
+fn test_du_typedef_mixed_variants() {
+    let du = DuTypeDef {
+        name: "Result".to_string(),
+        variants: vec![
+            VariantDef::new("Ok".to_string(), vec![TypeExpr::Named("int".to_string())]),
+            VariantDef::new(
+                "Error".to_string(),
+                vec![TypeExpr::Named("string".to_string())],
+            ),
+        ],
+    };
+    assert!(!du.is_simple_enum());
+    assert_eq!(du.variant_count(), 2);
+}
+
+#[test]
+fn test_du_typedef_equality() {
+    let du1 = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![VariantDef::new_simple("Red".to_string())],
+    };
+    let du2 = DuTypeDef {
+        name: "Color".to_string(),
+        variants: vec![VariantDef::new_simple("Red".to_string())],
+    };
+    assert_eq!(du1, du2);
+}
+
+#[test]
+fn test_expr_variant_construct_equality() {
+    let e1 = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "None".to_string(),
+        args: vec![],
+    };
+    let e2 = Expr::VariantConstruct {
+        type_name: String::new(),
+        variant_name: "None".to_string(),
+        args: vec![],
+    };
+    assert_eq!(e1, e2);
+}
+
+#[test]
+fn test_pattern_variant_clone() {
+    let p1 = Pattern::Variant {
+        type_name: None,
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    let p2 = p1.clone();
+    assert_eq!(p1, p2);
+}
+
+#[test]
+fn test_pattern_variant_equality() {
+    let p1 = Pattern::Variant {
+        type_name: None,
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    let p2 = Pattern::Variant {
+        type_name: None,
+        variant_name: "Some".to_string(),
+        patterns: vec![Pattern::Var("x".to_string())],
+    };
+    assert_eq!(p1, p2);
+}
+
+#[test]
+fn test_lexer_of_in_context() {
+    use crate::lexer::{Lexer, Token};
+    let mut lexer = Lexer::new("Some of");
+    let tokens = lexer.tokenize().unwrap();
+    assert_eq!(tokens.len(), 3); // "Some" + "of" + EOF
+    assert_eq!(tokens[1].token, Token::Of);
+}
+
+#[test]
+fn test_lexer_multiple_variants() {
+    use crate::lexer::{Lexer, Token};
+    let mut lexer = Lexer::new("Red | Green | Blue");
+    let tokens = lexer.tokenize().unwrap();
+    // Check for pipes
+    let pipe_count = tokens.iter().filter(|t| t.token == Token::Pipe).count();
+    assert_eq!(pipe_count, 2);
+}
