@@ -289,6 +289,16 @@ impl Expr {
         matches!(self, Expr::ArrayIndex { .. })
     }
 
+    /// Returns true if this expression is an array update.
+    pub fn is_array_update(&self) -> bool {
+        matches!(self, Expr::ArrayUpdate { .. })
+    }
+
+    /// Returns true if this expression is an array length.
+    pub fn is_array_length(&self) -> bool {
+        matches!(self, Expr::ArrayLength(_))
+    }
+
     /// Returns the variable name if this is a Var, otherwise None.
     pub fn as_var(&self) -> Option<&str> {
         match self {
