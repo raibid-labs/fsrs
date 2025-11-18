@@ -13,11 +13,19 @@
 //! - Conditional expressions: `if cond then expr1 else expr2`
 //! - Tuples: `(1, 2)`, `(x, y, z)`, `(42,)` (single-element)
 //! - Lists: `[1; 2; 3]`, `[]`
+//! - Arrays: `[|1; 2; 3|]`, `arr.[0]`, `arr.[0] <- 99`
+//! - Records: `type Person = { name: string }`, `{ name = "John" }`, `person.name`
 //! - Cons operator: `1 :: [2; 3]`, `x :: xs`
 //! - Unary minus: `-42`, `-x`
 //! - Proper operator precedence
 //! - Error recovery and reporting
 //!
+//! module     ::= declaration*
+//! declaration::= type_def | let_binding
+//! type_def   ::= "type" IDENT "=" "{" (IDENT ":" type_expr (";" IDENT ":" type_expr)* ";"?)? "}"
+//! type_expr  ::= simple_type ("->" type_expr)? | simple_type ("*" simple_type)*
+//! simple_type::= IDENT
+//! let_binding::= "let" IDENT IDENT* "=" expr
 //! # Grammar (Simplified)
 //!
 //! ```text
@@ -38,6 +46,8 @@
 //! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
 //! list       ::= "[" "]" | "[" expr (";" expr)* ";"? "]"
 //! array      ::= "[|" "]" | "[|" expr (";" expr)* ";"? "|]"
+//! record_literal ::= "{" (IDENT "=" expr (";" IDENT "=" expr)* ";"?)? "}"
+//! record_update  ::= "{" expr "with" IDENT "=" expr (";" IDENT "=" expr)* ";"? "}"
 //! ```
 //!
 //! # Example
@@ -55,8 +65,7 @@
 //! // AST represents: let x = 42 in (x + 1)
 //! assert!(ast.is_let());
 //! ```
-
-use crate::ast::{BinOp, Expr, Literal};
+use crate::ast::{BinOp, Expr, Literal, MatchArm, Pattern};
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
 
@@ -145,6 +154,7 @@ impl Parser {
             Token::Let => self.parse_let(),
             Token::If => self.parse_if(),
             Token::Fun => self.parse_lambda(),
+            Token::Match => self.parse_match(),
             _ => self.parse_or_expr(),
         }
     }
@@ -302,6 +312,124 @@ impl Parser {
         let body = Box::new(self.parse_expr()?);
 
         Ok(Expr::Lambda { param, body })
+    }
+
+    /// Parse match expression: `match expr with | pattern -> expr | pattern -> expr ...`
+    fn parse_match(&mut self) -> Result<Expr, ParseError> {
+        self.expect_token(Token::Match)?;
+
+        // Parse scrutinee
+        let scrutinee = Box::new(self.parse_or_expr()?);
+
+        self.expect_token(Token::With)?;
+
+        // Expect first pipe
+        self.expect_token(Token::Pipe)?;
+
+        let mut arms = vec![];
+
+        // Parse arms
+        loop {
+            // Parse pattern
+            let pattern = self.parse_pattern()?;
+
+            // Expect arrow
+            self.expect_token(Token::Arrow)?;
+
+            // Parse body expression
+            let body = Box::new(self.parse_expr()?);
+
+            arms.push(MatchArm { pattern, body });
+
+            // Check for more arms
+            if self.match_token(&Token::Pipe) {
+                // Continue parsing next arm
+            } else {
+                // No more arms
+                break;
+            }
+        }
+
+        Ok(Expr::Match { scrutinee, arms })
+    }
+
+    /// Parse pattern: `_` | IDENT | INT | BOOL | STRING | `(` pattern (, pattern)* `)`
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        let tok = self.current_token();
+
+        match &tok.token {
+            Token::Underscore => {
+                self.advance();
+                Ok(Pattern::Wildcard)
+            }
+            Token::Ident(name) => {
+                let name = name.clone();
+                self.advance();
+                Ok(Pattern::Var(name))
+            }
+            Token::Int(n) => {
+                let val = *n;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Int(val)))
+            }
+            Token::Bool(b) => {
+                let val = *b;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Bool(val)))
+            }
+            Token::String(s) => {
+                let val = s.clone();
+                self.advance();
+                Ok(Pattern::Literal(Literal::Str(val)))
+            }
+            Token::LParen => {
+                self.advance(); // consume '('
+
+                // Empty tuple pattern ()
+                if self.match_token(&Token::RParen) {
+                    return Ok(Pattern::Tuple(vec![]));
+                }
+
+                // Parse first pattern
+                let first_pattern = self.parse_pattern()?;
+
+                // Check if it's a tuple (has comma) or grouped pattern (no comma)
+                if self.match_token(&Token::Comma) {
+                    // It's a tuple pattern: (p1, p2, ...)
+                    let mut patterns = vec![first_pattern];
+
+                    // Check for trailing comma or continue with more patterns
+                    if !matches!(self.current_token().token, Token::RParen) {
+                        // Parse remaining patterns
+                        loop {
+                            patterns.push(self.parse_pattern()?);
+
+                            if self.match_token(&Token::Comma) {
+                                // Check for trailing comma before RParen
+                                if matches!(self.current_token().token, Token::RParen) {
+                                    break;
+                                }
+                                // Otherwise continue parsing
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.expect_token(Token::RParen)?;
+                    Ok(Pattern::Tuple(patterns))
+                } else {
+                    // No comma, it's a grouped pattern: (p)
+                    self.expect_token(Token::RParen)?;
+                    Ok(first_pattern)
+                }
+            }
+            _ => Err(ParseError::UnexpectedToken {
+                expected: "pattern (wildcard, identifier, literal, or tuple)".to_string(),
+                found: tok.token.clone(),
+                pos: tok.pos,
+            }),
+        }
     }
 
     /// Parse logical OR expression (lowest precedence)
@@ -2439,5 +2567,346 @@ mod tests {
             }
             _ => panic!("Expected Let"),
         }
+    }
+
+    // ========================================================================
+    // Pattern Matching Parser Tests (Issue #27 Layer 2)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_match_literal_int() {
+        let source = "match x with | 0 -> \"zero\" | 1 -> \"one\" | _ -> \"many\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (scrutinee, arms) = expr.as_match().unwrap();
+        assert_eq!(scrutinee.as_var(), Some("x"));
+        assert_eq!(arms.len(), 3);
+        assert!(arms[0].pattern.is_literal());
+        assert!(arms[1].pattern.is_literal());
+        assert!(arms[2].pattern.is_wildcard());
+    }
+
+    #[test]
+    fn test_parse_match_literal_bool() {
+        let source = "match flag with | true -> 1 | false -> 0";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].pattern.is_literal());
+        assert!(arms[1].pattern.is_literal());
+    }
+
+    #[test]
+    fn test_parse_match_variable_pattern() {
+        let source = "match x with | n -> n + 1";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_var());
+        assert_eq!(arms[0].pattern.as_var(), Some("n"));
+    }
+
+    #[test]
+    fn test_parse_match_wildcard() {
+        let source = "match x with | _ -> 42";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_wildcard());
+    }
+
+    #[test]
+    fn test_parse_match_string_literal() {
+        let source = r#"match cmd with | "quit" -> 0 | "help" -> 1 | _ -> 2"#;
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 3);
+        assert!(arms[0].pattern.is_literal());
+        assert!(arms[1].pattern.is_literal());
+    }
+
+    #[test]
+    fn test_parse_match_tuple_pattern() {
+        let source = "match pair with | (0, 0) -> \"origin\" | (x, y) -> \"point\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].pattern.is_tuple());
+        assert!(arms[1].pattern.is_tuple());
+    }
+
+    #[test]
+    fn test_parse_match_nested_tuple() {
+        let source = "match triple with | (a, (b, c)) -> a + b + c";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_tuple());
+        let tuple_patterns = arms[0].pattern.as_tuple().unwrap();
+        assert_eq!(tuple_patterns.len(), 2);
+        assert!(tuple_patterns[1].is_tuple());
+    }
+
+    #[test]
+    fn test_parse_match_tuple_with_wildcard() {
+        let source = "match pair with | (0, _) -> \"x\" | (_, 0) -> \"y\" | _ -> \"z\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 3);
+        assert!(arms[0].pattern.is_tuple());
+        assert!(arms[1].pattern.is_tuple());
+    }
+
+    #[test]
+    fn test_parse_match_complex_scrutinee() {
+        let source = "match x + 1 with | 0 -> \"zero\" | _ -> \"other\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (scrutinee, arms) = expr.as_match().unwrap();
+        assert!(scrutinee.is_binop());
+        assert_eq!(arms.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_match_in_let_binding() {
+        let source =
+            "let classify = fun n -> match n with | 0 -> \"zero\" | _ -> \"nonzero\" in classify";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_let());
+    }
+
+    #[test]
+    fn test_parse_match_as_function_body() {
+        let source = "fun n -> match n with | 0 -> \"zero\" | 1 -> \"one\" | _ -> \"many\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_lambda());
+        match expr {
+            Expr::Lambda { body, .. } => {
+                assert!(body.is_match());
+            }
+            _ => panic!("Expected Lambda"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_match() {
+        let source = "match x with | 0 -> (match y with | 0 -> 1 | _ -> 2) | _ -> 3";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].body.is_match());
+    }
+
+    #[test]
+    fn test_parse_match_complex_body() {
+        let source = "match n with | 0 -> if true then 1 else 2 | _ -> 3";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].body.is_if());
+    }
+
+    #[test]
+    fn test_parse_match_multiple_arms() {
+        let source =
+            "match n with | 0 -> \"a\" | 1 -> \"b\" | 2 -> \"c\" | 3 -> \"d\" | _ -> \"e\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 5);
+    }
+
+    #[test]
+    fn test_parse_match_empty_tuple_pattern() {
+        let source = "match unit with | () -> 42";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_tuple());
+        assert_eq!(arms[0].pattern.as_tuple().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_parse_match_grouped_pattern() {
+        let source = "match x with | (n) -> n + 1";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        // Grouped pattern (n) is just n
+        assert!(arms[0].pattern.is_var());
+    }
+
+    #[test]
+    fn test_parse_match_mixed_patterns() {
+        let source = "match data with | 0 -> \"zero\" | x -> \"var\" | _ -> \"wild\"";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 3);
+        assert!(arms[0].pattern.is_literal());
+        assert!(arms[1].pattern.is_var());
+        assert!(arms[2].pattern.is_wildcard());
+    }
+
+    #[test]
+    fn test_parse_match_tuple_triple() {
+        let source = "match triple with | (a, b, c) -> a + b + c";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_tuple());
+        assert_eq!(arms[0].pattern.as_tuple().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_parse_match_with_arithmetic_in_body() {
+        let source = "match n with | 0 -> 1 + 2 * 3 | _ -> 4 - 5";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].body.is_binop());
+        assert!(arms[1].body.is_binop());
+    }
+
+    #[test]
+    fn test_parse_match_in_complex_expression() {
+        let source = "let f = fun x -> 1 + (match x with | 0 -> 10 | _ -> 20) in f 5";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_let());
+    }
+
+    // Error cases
+    #[test]
+    fn test_parse_match_missing_with() {
+        let source = "match x | 0 -> 1";
+        let result = parse(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_match_missing_pipe() {
+        let source = "match x with 0 -> 1";
+        let result = parse(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_match_missing_arrow() {
+        let source = "match x with | 0 1";
+        let result = parse(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_pattern_invalid() {
+        let source = "match x with | -> 1";
+        let result = parse(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_match_empty_arms() {
+        let source = "match x with";
+        let result = parse(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_match_tuple_pattern_nested_complex() {
+        let source = "match quad with | ((a, b), (c, d)) -> a + b + c + d";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_tuple());
+        let tuple_patterns = arms[0].pattern.as_tuple().unwrap();
+        assert_eq!(tuple_patterns.len(), 2);
+        assert!(tuple_patterns[0].is_tuple());
+        assert!(tuple_patterns[1].is_tuple());
+    }
+
+    #[test]
+    fn test_parse_match_real_world_example() {
+        let source = r#"
+            let classify_point = fun p ->
+                match p with
+                | (0, 0) -> "origin"
+                | (0, _) -> "y-axis"
+                | (_, 0) -> "x-axis"
+                | (x, y) -> "quadrant"
+            in classify_point (1, 2)
+        "#;
+        let expr = parse(source).unwrap();
+        assert!(expr.is_let());
+    }
+
+    #[test]
+    fn test_parse_match_fibonacci_style() {
+        let source = r#"
+            let rec fib = fun n ->
+                match n with
+                | 0 -> 0
+                | 1 -> 1
+                | n -> fib (n - 1) + fib (n - 2)
+            in fib 10
+        "#;
+        let expr = parse(source).unwrap();
+        assert!(expr.is_let_rec());
+    }
+
+    #[test]
+    fn test_parse_match_with_let_in_body() {
+        let source = "match x with | 0 -> let y = 1 in y | _ -> 2";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].body.is_let());
+    }
+
+    #[test]
+    fn test_parse_match_with_lambda_in_body() {
+        let source = "match x with | 0 -> fun y -> y + 1 | _ -> fun y -> y";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 2);
+        assert!(arms[0].body.is_lambda());
+        assert!(arms[1].body.is_lambda());
+    }
+
+    #[test]
+    fn test_parse_match_single_arm() {
+        let source = "match x with | n -> n";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_var());
+    }
+
+    #[test]
+    fn test_parse_match_tuple_single_element() {
+        let source = "match pair with | (x,) -> x";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_match());
+        let (_, arms) = expr.as_match().unwrap();
+        assert_eq!(arms.len(), 1);
+        assert!(arms[0].pattern.is_tuple());
+        let tuple_patterns = arms[0].pattern.as_tuple().unwrap();
+        assert_eq!(tuple_patterns.len(), 1);
     }
 }
