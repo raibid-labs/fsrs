@@ -6,10 +6,10 @@
 def main [
     --mode: string = "all"  # Test mode: all, unit, integration, crate
     --crate: string = ""    # Specific crate to test
-    --verbose: bool = false # Show test output
-    --nocapture: bool = false # Don't capture stdout
+    --verbose              # Show test output
+    --nocapture            # Don't capture stdout
 ] {
-    print $"🧪 Running FSRS tests ($mode mode)"
+    print $"🧪 Running FSRS tests \(($mode) mode\)"
 
     # Check if cargo is available
     if (which cargo | is-empty) {
@@ -33,7 +33,7 @@ def main [
             ["test", "-p", $crate]
         },
         _ => {
-            print $"❌ Invalid mode: ($mode)"
+            print $"❌ Invalid mode: \(($mode)\)"
             print "Valid modes: all, unit, integration, crate"
             exit 1
         }
@@ -65,7 +65,7 @@ def main [
                 | lines
                 | find "test result:"
                 | first
-            print $"\n📊 ($summary)"
+            print $"\n📊 \(($summary)\)"
         }
     } else {
         print "\n❌ Tests failed!"
@@ -78,7 +78,7 @@ def main [
 
         if not ($failed | is-empty) {
             print "\n❌ Failed tests:"
-            $failed | each { |line| print $"  ($line)" }
+            $failed | each { |line| print $"  \(($line)\)" }
         }
 
         exit 1
