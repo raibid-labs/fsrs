@@ -6,6 +6,7 @@
 //! - Literals: integers, floats, booleans, strings
 //! - Variables and identifiers
 //! - Let-bindings: `let x = expr in body`
+//! - Multi-parameter functions (curried): `let f x y = expr in body`
 //! - Lambda functions: `fun x -> body`
 //! - Function application: `f x y`
 //! - Binary operations: arithmetic, comparison, logical
@@ -18,7 +19,7 @@
 //!
 //! ```text
 //! expr       ::= let_expr | if_expr | lambda_expr | or_expr
-//! let_expr   ::= "let" IDENT "=" expr "in" expr
+//! let_expr   ::= "let" IDENT IDENT* "=" expr "in" expr
 //! if_expr    ::= "if" expr "then" expr "else" expr
 //! lambda_expr::= "fun" IDENT "->" expr
 //! or_expr    ::= and_expr ("||" and_expr)*
@@ -140,14 +141,36 @@ impl Parser {
         }
     }
 
-    /// Parse let-binding: let x = value in body
+    /// Parse let-binding with optional multi-parameter function syntax.
+    ///
+    /// Supports both:
+    /// - `let x = expr in body` (simple binding)
+    /// - `let f x y z = expr in body` (multi-parameter function, desugared to nested lambdas)
     fn parse_let(&mut self) -> Result<Expr, ParseError> {
         self.expect_token(Token::Let)?;
 
         let name = self.expect_ident()?;
+
+        // Collect any parameters before the '='
+        let mut params = Vec::new();
+        while !self.is_at_end() && !matches!(self.current_token().token, Token::Eq) {
+            // Check if current token is an identifier
+            if let Token::Ident(_) = self.current_token().token {
+                params.push(self.expect_ident()?);
+            } else {
+                break;
+            }
+        }
+
         self.expect_token(Token::Eq)?;
 
-        let value = Box::new(self.parse_expr()?);
+        let mut value = Box::new(self.parse_expr()?);
+
+        // If we have parameters, desugar to nested lambdas
+        // let f x y = body  =>  let f = fun x -> fun y -> body
+        for param in params.into_iter().rev() {
+            value = Box::new(Expr::Lambda { param, body: value });
+        }
 
         self.expect_token(Token::In)?;
 
