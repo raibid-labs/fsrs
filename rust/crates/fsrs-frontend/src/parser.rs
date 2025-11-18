@@ -149,6 +149,13 @@ impl Parser {
     fn parse_let(&mut self) -> Result<Expr, ParseError> {
         self.expect_token(Token::Let)?;
 
+        // Check for 'rec' keyword
+        let is_rec = self.match_token(&Token::Rec);
+
+        if is_rec {
+            return self.parse_let_rec();
+        }
+
         let name = self.expect_ident()?;
 
         // Collect any parameters before the '='
@@ -177,6 +184,84 @@ impl Parser {
         let body = Box::new(self.parse_expr()?);
 
         Ok(Expr::Let { name, value, body })
+    }
+
+    /// Parse recursive let-binding: `let rec name = expr in body`
+    /// or mutually recursive: `let rec f = ... and g = ... in body`
+    fn parse_let_rec(&mut self) -> Result<Expr, ParseError> {
+        // Parse first binding
+        let name = self.expect_ident()?;
+
+        // Collect any parameters before the '='
+        let mut params = Vec::new();
+        while !self.is_at_end()
+            && !matches!(self.current_token().token, Token::Eq | Token::AndKeyword)
+        {
+            if let Token::Ident(_) = self.current_token().token {
+                params.push(self.expect_ident()?);
+            } else {
+                break;
+            }
+        }
+
+        self.expect_token(Token::Eq)?;
+
+        let mut value = Box::new(self.parse_expr()?);
+
+        // Desugar parameters to nested lambdas
+        for param in params.into_iter().rev() {
+            value = Box::new(Expr::Lambda { param, body: value });
+        }
+
+        // Collect first binding
+        let mut bindings = vec![(name.clone(), *value.clone())];
+
+        // Check for 'and' keyword for mutual recursion
+        while self.match_token(&Token::AndKeyword) {
+            let and_name = self.expect_ident()?;
+
+            // Collect parameters for this binding
+            let mut and_params = Vec::new();
+            while !self.is_at_end()
+                && !matches!(self.current_token().token, Token::Eq | Token::AndKeyword)
+            {
+                if let Token::Ident(_) = self.current_token().token {
+                    and_params.push(self.expect_ident()?);
+                } else {
+                    break;
+                }
+            }
+
+            self.expect_token(Token::Eq)?;
+
+            let mut and_value = Box::new(self.parse_expr()?);
+
+            // Desugar parameters
+            for param in and_params.into_iter().rev() {
+                and_value = Box::new(Expr::Lambda {
+                    param,
+                    body: and_value,
+                });
+            }
+
+            bindings.push((and_name, *and_value));
+        }
+
+        self.expect_token(Token::In)?;
+
+        let body = Box::new(self.parse_expr()?);
+
+        // If single binding, use LetRec; otherwise LetRecMutual
+        if bindings.len() == 1 {
+            let (name, value) = bindings.into_iter().next().unwrap();
+            Ok(Expr::LetRec {
+                name,
+                value: Box::new(value),
+                body,
+            })
+        } else {
+            Ok(Expr::LetRecMutual { bindings, body })
+        }
     }
 
     /// Parse if-then-else expression
@@ -1054,12 +1139,11 @@ mod tests {
 
     #[test]
     fn test_parse_factorial() {
+        // Now that 'rec' is implemented, this should parse successfully
         let expr =
             parse("let rec fact = fun n -> if n <= 1 then 1 else n * fact (n - 1) in fact 5");
-        // This will fail until we implement 'rec', but tests the parser's capability
-        // For now, just test without rec
-        let _expr = parse("let fact = fun n -> if n <= 1 then 1 else n in fact 5").unwrap();
-        assert!(expr.is_err()); // Should fail because 'rec' is not a valid identifier
+        assert!(expr.is_ok());
+        assert!(expr.unwrap().is_let_rec());
     }
 
     #[test]

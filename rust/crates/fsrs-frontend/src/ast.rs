@@ -162,6 +162,19 @@ pub enum Expr {
         body: Box<Expr>,
     },
 
+    /// Recursive let-binding (e.g., let rec fact n = if n <= 1 then 1 else n * fact (n - 1))
+    LetRec {
+        name: String,
+        value: Box<Expr>,
+        body: Box<Expr>,
+    },
+
+    /// Mutually recursive let-bindings (e.g., let rec even n = ... and odd n = ...)
+    LetRecMutual {
+        bindings: Vec<(String, Expr)>,
+        body: Box<Expr>,
+    },
+
     /// Lambda function (e.g., fun x -> x + 1)
     Lambda { param: String, body: Box<Expr> },
 
@@ -195,6 +208,16 @@ impl Expr {
     /// Returns true if this expression is a let-binding.
     pub fn is_let(&self) -> bool {
         matches!(self, Expr::Let { .. })
+    }
+
+    /// Returns true if this expression is a recursive let-binding.
+    pub fn is_let_rec(&self) -> bool {
+        matches!(self, Expr::LetRec { .. })
+    }
+
+    /// Returns true if this expression is a mutually recursive let-binding.
+    pub fn is_let_rec_mutual(&self) -> bool {
+        matches!(self, Expr::LetRecMutual { .. })
     }
 
     /// Returns true if this expression is a lambda.
@@ -239,6 +262,19 @@ impl fmt::Display for Expr {
             }
             Expr::Let { name, value, body } => {
                 write!(f, "(let {} = {} in {})", name, value, body)
+            }
+            Expr::LetRec { name, value, body } => {
+                write!(f, "(let rec {} = {} in {})", name, value, body)
+            }
+            Expr::LetRecMutual { bindings, body } => {
+                write!(f, "(let rec ")?;
+                for (i, (name, value)) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " and ")?;
+                    }
+                    write!(f, "{} = {}", name, value)?;
+                }
+                write!(f, " in {})", body)
             }
             Expr::Lambda { param, body } => {
                 write!(f, "(fun {} -> {})", param, body)

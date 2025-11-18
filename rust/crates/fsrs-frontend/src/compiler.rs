@@ -115,6 +115,8 @@ impl Compiler {
             Expr::Var(name) => self.compile_var(name),
             Expr::BinOp { op, left, right } => self.compile_binop(*op, left, right),
             Expr::Let { name, value, body } => self.compile_let(name, value, body),
+            Expr::LetRec { name, value, body } => self.compile_let_rec(name, value, body),
+            Expr::LetRecMutual { bindings, body } => self.compile_let_rec_mutual(bindings, body),
             Expr::Lambda { param, body } => self.compile_lambda(param, body),
             Expr::App { func, arg } => self.compile_app(func, arg),
             Expr::If {
@@ -241,6 +243,90 @@ impl Compiler {
 
         // For now, emit a placeholder (we'll improve this in Phase 2)
         // In Phase 1, lambdas are limited to immediate application
+        Ok(())
+    }
+
+    /// Compile a recursive let-binding using placeholder strategy
+    fn compile_let_rec(&mut self, name: &str, value: &Expr, body: &Expr) -> CompileResult<()> {
+        // Strategy: Create a placeholder, compile the function with
+        // the name in scope, then update the binding
+
+        // 1. Push placeholder (will be replaced by the actual value)
+        let placeholder_idx = self.add_constant(Value::Unit)?;
+        self.emit(Instruction::LoadConst(placeholder_idx));
+
+        // 2. Enter scope and add local for the recursive binding
+        self.begin_scope();
+        self.add_local(name.to_string())?;
+        let local_idx = (self.locals.len() - 1) as u8;
+
+        // 3. Store placeholder in local slot
+        self.emit(Instruction::StoreLocal(local_idx));
+
+        // 4. Compile the value (usually a lambda) with name in scope
+        // The value can now reference itself via the local
+        self.compile_expr(value)?;
+
+        // 5. Update the local slot with the actual value
+        self.emit(Instruction::StoreLocal(local_idx));
+
+        // 6. Compile body (the local is still in scope)
+        self.compile_expr(body)?;
+
+        // 7. Clean up scope
+        let locals_to_remove = self.end_scope_count();
+        for _ in 0..locals_to_remove {
+            self.locals.pop();
+        }
+        self.scope_depth -= 1;
+
+        Ok(())
+    }
+
+    /// Compile mutually recursive bindings
+    fn compile_let_rec_mutual(
+        &mut self,
+        bindings: &[(String, Expr)],
+        body: &Expr,
+    ) -> CompileResult<()> {
+        // Strategy: Create placeholders for all bindings, then fill them in
+
+        // 1. Enter scope
+        self.begin_scope();
+
+        // 2. Push placeholders and create locals for all bindings
+        let placeholder_idx = self.add_constant(Value::Unit)?;
+        let mut local_indices = Vec::new();
+
+        for (name, _) in bindings {
+            // Push placeholder
+            self.emit(Instruction::LoadConst(placeholder_idx));
+
+            // Add local
+            self.add_local(name.clone())?;
+            let local_idx = (self.locals.len() - 1) as u8;
+            local_indices.push(local_idx);
+
+            // Store placeholder
+            self.emit(Instruction::StoreLocal(local_idx));
+        }
+
+        // 3. Compile each value (with all names in scope)
+        for (i, (_name, value)) in bindings.iter().enumerate() {
+            self.compile_expr(value)?;
+            self.emit(Instruction::StoreLocal(local_indices[i]));
+        }
+
+        // 4. Compile body
+        self.compile_expr(body)?;
+
+        // 5. Clean up scope
+        let locals_to_remove = self.end_scope_count();
+        for _ in 0..locals_to_remove {
+            self.locals.pop();
+        }
+        self.scope_depth -= 1;
+
         Ok(())
     }
 
