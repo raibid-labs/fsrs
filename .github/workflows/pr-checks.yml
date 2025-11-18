@@ -1,0 +1,113 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  # Fast feedback on PR
+  pr-quick-check:
+    name: PR Quick Check
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Run clippy
+        run: just lint
+
+      - name: Quick build
+        run: just build
+
+  # PR title check
+  pr-title-check:
+    name: PR Title Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title format
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+          requireScope: false
+
+  # Check for added TODOs in PR
+  pr-todo-check:
+    name: Check for TODOs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new TODOs
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD -- '*.rs' | grep -i '^\+.*TODO' || true
+        continue-on-error: true
+
+  # File size check
+  pr-size-check:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR size
+        run: |
+          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          LINES_CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+')
+
+          echo "Files changed: $FILES_CHANGED"
+          echo "Lines changed: ${LINES_CHANGED:-0}"
+
+          if [ "$FILES_CHANGED" -gt 50 ]; then
+            echo "::warning::PR is large with $FILES_CHANGED files. Consider splitting into smaller PRs."
+          fi
+
+  # Comment on first-time contributor PRs
+  pr-first-time-contributor:
+    name: Welcome First-Time Contributors
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    steps:
+      - name: Welcome message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '👋 Welcome to FSRS! Thanks for your first contribution. Please make sure:\n\n- [ ] Tests are included\n- [ ] Documentation is updated\n- [ ] Code follows our style guide\n\nA maintainer will review your PR soon!'
+            })
