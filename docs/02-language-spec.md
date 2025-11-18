@@ -18,6 +18,8 @@ The language is intentionally small and expression‑oriented.
 - Booleans: `true`, `false`
 - Strings: `"hello"`, `"tab: " + name`
 - Unit: `()` (used rarely; mostly for host interop)
+- Tuples: `(1, 2)`, `(x, "hello", true)`
+- Lists: `[]`, `[1; 2; 3]`, `[[1; 2]; [3; 4]]`
 
 ### 1.3 Keywords (initial subset)
 
@@ -105,7 +107,64 @@ let describe n =
   else "pos"
 ```
 
-### 3.4 Pattern matching
+### 3.4 Tuples
+
+Tuples are heterogeneous, fixed-size collections of values:
+
+```fsharp
+// Creating tuples
+let pair = (1, 2)
+let triple = (42, "hello", true)
+let nested = ((1, 2), (3, 4))
+
+// Tuples in bindings
+let coordinates = (10, 20) in
+let point3d = (x, y, z) in
+```
+
+Tuples are displayed with comma separators: `(1, 2, 3)`
+
+### 3.5 Lists
+
+Lists are homogeneous, immutable sequences. FSRS supports:
+
+#### List literals
+
+```fsharp
+// Empty list
+let empty = []
+
+// List with elements (semicolon-separated)
+let numbers = [1; 2; 3; 4; 5]
+
+// Nested lists
+let matrix = [[1; 2]; [3; 4]; [5; 6]]
+```
+
+#### Cons operator (`::`）
+
+The cons operator prepends an element to a list. It is right-associative.
+
+```fsharp
+// Build list with cons
+let list1 = 1 :: 2 :: 3 :: []        // [1; 2; 3]
+
+// Prepend to existing list
+let numbers = [2; 3; 4] in
+let extended = 1 :: numbers          // [1; 2; 3; 4]
+
+// Nested list construction
+let nested = [1; 2] :: [3; 4] :: []  // [[1; 2]; [3; 4]]
+```
+
+#### List properties
+
+- Lists are printed with semicolon separators: `[1; 2; 3]`
+- Empty list is `[]` (also called `Nil`)
+- Lists can be nested: `[[1; 2]; [3; 4]]`
+- Lists support structural equality: `[1; 2] = [1; 2]` is `true`
+
+### 3.6 Pattern matching
 
 Over literals, tuples, records, and DUs:
 
@@ -124,7 +183,7 @@ let describeTab tab =
   | _ -> "other"
 ```
 
-### 3.5 Pipelines and composition
+### 3.7 Pipelines and composition
 
 ```fsharp
 let normalizeTitle (title: string) =
