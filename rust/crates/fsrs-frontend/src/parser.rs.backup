@@ -32,12 +32,10 @@
 //! add_expr   ::= mul_expr (("+" | "-") mul_expr)*
 //! mul_expr   ::= unary_expr (("*" | "/") unary_expr)*
 //! unary_expr ::= "-" unary_expr | app_expr
-//! app_expr   ::= postfix_expr (postfix_expr)*
-//! postfix_expr ::= primary (".[" expr "]" ("<-" expr)?)*
-//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list | array | "Array.length" primary
+//! app_expr   ::= primary (primary)*
+//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list
 //! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
 //! list       ::= "[" "]" | "[" expr (";" expr)* ";"? "]"
-//! array      ::= "[|" "]" | "[|" expr (";" expr)* ";"? "|]"
 //! ```
 //!
 //! # Example
@@ -420,11 +418,11 @@ impl Parser {
 
     /// Parse function application (left-associative)
     fn parse_app_expr(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_postfix_expr()?;
+        let mut left = self.parse_primary()?;
 
         // Keep parsing arguments while we see primary expressions
         while self.is_primary_start() {
-            let arg = self.parse_postfix_expr()?;
+            let arg = self.parse_primary()?;
             left = Expr::App {
                 func: Box::new(left),
                 arg: Box::new(arg),
@@ -432,44 +430,6 @@ impl Parser {
         }
 
         Ok(left)
-    }
-
-    /// Parse postfix expression (array indexing and updates)
-    /// postfix_expr ::= primary (".[" expr "]" ("<-" expr)?)*
-    fn parse_postfix_expr(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_primary()?;
-
-        // Handle array indexing and updates: arr.[idx] or arr.[idx] <- value
-        while self.match_token(&Token::Dot) {
-            if !self.match_token(&Token::LBracket) {
-                let tok = self.current_token();
-                return Err(ParseError::UnexpectedToken {
-                    expected: "'[' for array indexing".to_string(),
-                    found: tok.token.clone(),
-                    pos: tok.pos,
-                });
-            }
-
-            let index = Box::new(self.parse_expr()?);
-            self.expect_token(Token::RBracket)?;
-
-            // Check for update: arr.[idx] <- value
-            if self.match_token(&Token::LArrow) {
-                let value = Box::new(self.parse_expr()?);
-                expr = Expr::ArrayUpdate {
-                    array: Box::new(expr),
-                    index,
-                    value,
-                };
-            } else {
-                expr = Expr::ArrayIndex {
-                    array: Box::new(expr),
-                    index,
-                };
-            }
-        }
-
-        Ok(expr)
     }
 
     /// Parse primary expression (literals, variables, parenthesized expressions, tuples, lists)
@@ -500,22 +460,6 @@ impl Parser {
             Token::Ident(name) => {
                 let val = name.clone();
                 self.advance();
-
-                // Check for Array.length
-                if val == "Array" && self.match_token(&Token::Dot) {
-                    let method = self.expect_ident()?;
-                    if method == "length" {
-                        let arr = Box::new(self.parse_postfix_expr()?);
-                        return Ok(Expr::ArrayLength(arr));
-                    } else {
-                        let tok = self.current_token();
-                        return Err(ParseError::InvalidExpr {
-                            message: format!("Unknown Array method: {}", method),
-                            pos: tok.pos,
-                        });
-                    }
-                }
-
                 Ok(Expr::Var(val))
             }
             Token::LParen => {
@@ -585,30 +529,6 @@ impl Parser {
                 self.expect_token(Token::RBracket)?;
                 Ok(Expr::List(elements))
             }
-            Token::LBracketPipe => {
-                self.advance(); // consume '[|'
-                let mut elements = vec![];
-
-                // Empty array: [||]
-                if self.match_token(&Token::PipeRBracket) {
-                    return Ok(Expr::Array(elements));
-                }
-
-                // Parse first element
-                elements.push(self.parse_expr()?);
-
-                // Parse remaining elements: ; e1 ; e2 ...
-                while self.match_token(&Token::Semicolon) {
-                    // Check for trailing semicolon before |]
-                    if matches!(self.current_token().token, Token::PipeRBracket) {
-                        break; // trailing semicolon
-                    }
-                    elements.push(self.parse_expr()?);
-                }
-
-                self.expect_token(Token::PipeRBracket)?;
-                Ok(Expr::Array(elements))
-            }
             _ => Err(ParseError::UnexpectedToken {
                 expected: "expression".to_string(),
                 found: tok.token.clone(),
@@ -636,7 +556,6 @@ impl Parser {
                 | Token::Ident(_)
                 | Token::LParen
                 | Token::LBracket
-                | Token::LBracketPipe
         )
     }
 
@@ -2041,403 +1960,6 @@ mod tests {
                 assert!(tail.is_cons());
             }
             _ => panic!("Expected Cons"),
-        }
-    }
-
-    // ========================================================================
-    // Array Parser Tests (Issue #26 Layer 2)
-    // ========================================================================
-
-    #[test]
-    fn test_parse_array_empty() {
-        // [||]
-        let expr = parse("[||]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 0);
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_single_element() {
-        // [|42|]
-        let expr = parse("[|42|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 1);
-                assert_eq!(elements[0], Expr::Lit(Literal::Int(42)));
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_multi_element() {
-        // [|1; 2; 3|]
-        let expr = parse("[|1; 2; 3|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 3);
-                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
-                assert_eq!(elements[1], Expr::Lit(Literal::Int(2)));
-                assert_eq!(elements[2], Expr::Lit(Literal::Int(3)));
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_trailing_semicolon() {
-        // [|1; 2;|]
-        let expr = parse("[|1; 2;|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 2);
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_nested() {
-        // [|1; [|2; 3|]|]
-        let expr = parse("[|1; [|2; 3|]|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
-                assert!(elements[1].is_array());
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_with_variables() {
-        // [|x; y; z|]
-        let expr = parse("[|x; y; z|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 3);
-                assert_eq!(elements[0], Expr::Var("x".to_string()));
-                assert_eq!(elements[1], Expr::Var("y".to_string()));
-                assert_eq!(elements[2], Expr::Var("z".to_string()));
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_with_expressions() {
-        // [|x + 1; y * 2|]
-        let expr = parse("[|x + 1; y * 2|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert!(elements[0].is_binop());
-                assert!(elements[1].is_binop());
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_index_simple() {
-        // arr.[0]
-        let expr = parse("arr.[0]").unwrap();
-        assert!(expr.is_array_index());
-        match expr {
-            Expr::ArrayIndex { array, index } => {
-                assert_eq!(*array, Expr::Var("arr".to_string()));
-                assert_eq!(*index, Expr::Lit(Literal::Int(0)));
-            }
-            _ => panic!("Expected ArrayIndex"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_index_variable() {
-        // arr.[i]
-        let expr = parse("arr.[i]").unwrap();
-        assert!(expr.is_array_index());
-        match expr {
-            Expr::ArrayIndex { array, index } => {
-                assert_eq!(*array, Expr::Var("arr".to_string()));
-                assert_eq!(*index, Expr::Var("i".to_string()));
-            }
-            _ => panic!("Expected ArrayIndex"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_index_expression() {
-        // arr.[i + 1]
-        let expr = parse("arr.[i + 1]").unwrap();
-        assert!(expr.is_array_index());
-        match expr {
-            Expr::ArrayIndex { array, index } => {
-                assert_eq!(*array, Expr::Var("arr".to_string()));
-                assert!(index.is_binop());
-            }
-            _ => panic!("Expected ArrayIndex"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_index_chained() {
-        // matrix.[i].[j]
-        let expr = parse("matrix.[i].[j]").unwrap();
-        assert!(expr.is_array_index());
-        match expr {
-            Expr::ArrayIndex { array, index } => {
-                assert!(array.is_array_index());
-                assert_eq!(*index, Expr::Var("j".to_string()));
-            }
-            _ => panic!("Expected ArrayIndex"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_update_simple() {
-        // arr.[0] <- 99
-        let expr = parse("arr.[0] <- 99").unwrap();
-        assert!(expr.is_array_update());
-        match expr {
-            Expr::ArrayUpdate {
-                array,
-                index,
-                value,
-            } => {
-                assert_eq!(*array, Expr::Var("arr".to_string()));
-                assert_eq!(*index, Expr::Lit(Literal::Int(0)));
-                assert_eq!(*value, Expr::Lit(Literal::Int(99)));
-            }
-            _ => panic!("Expected ArrayUpdate"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_update_with_expression() {
-        // arr.[i] <- x + 1
-        let expr = parse("arr.[i] <- x + 1").unwrap();
-        assert!(expr.is_array_update());
-        match expr {
-            Expr::ArrayUpdate {
-                array,
-                index,
-                value,
-            } => {
-                assert_eq!(*array, Expr::Var("arr".to_string()));
-                assert_eq!(*index, Expr::Var("i".to_string()));
-                assert!(value.is_binop());
-            }
-            _ => panic!("Expected ArrayUpdate"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_update_chained() {
-        // matrix.[i].[j] <- 42
-        let expr = parse("matrix.[i].[j] <- 42").unwrap();
-        assert!(expr.is_array_update());
-        match expr {
-            Expr::ArrayUpdate {
-                array,
-                index,
-                value,
-            } => {
-                assert!(array.is_array_index());
-                assert_eq!(*index, Expr::Var("j".to_string()));
-                assert_eq!(*value, Expr::Lit(Literal::Int(42)));
-            }
-            _ => panic!("Expected ArrayUpdate"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_length_simple() {
-        // Array.length arr
-        let expr = parse("Array.length arr").unwrap();
-        assert!(expr.is_array_length());
-        match expr {
-            Expr::ArrayLength(arr) => {
-                assert_eq!(*arr, Expr::Var("arr".to_string()));
-            }
-            _ => panic!("Expected ArrayLength"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_length_with_literal() {
-        // Array.length [|1; 2; 3|]
-        let expr = parse("Array.length [|1; 2; 3|]").unwrap();
-        assert!(expr.is_array_length());
-        match expr {
-            Expr::ArrayLength(arr) => {
-                assert!(arr.is_array());
-            }
-            _ => panic!("Expected ArrayLength"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_length_with_index() {
-        // Array.length arr.[0]
-        let expr = parse("Array.length arr.[0]").unwrap();
-        assert!(expr.is_array_length());
-        match expr {
-            Expr::ArrayLength(arr) => {
-                assert!(arr.is_array_index());
-            }
-            _ => panic!("Expected ArrayLength"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_in_let() {
-        // let arr = [|1; 2; 3|] in arr.[0]
-        let expr = parse("let arr = [|1; 2; 3|] in arr.[0]").unwrap();
-        assert!(expr.is_let());
-        match expr {
-            Expr::Let { value, body, .. } => {
-                assert!(value.is_array());
-                assert!(body.is_array_index());
-            }
-            _ => panic!("Expected Let"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_in_lambda() {
-        // fun x -> [|x; x + 1|]
-        let expr = parse("fun x -> [|x; x + 1|]").unwrap();
-        assert!(expr.is_lambda());
-        match expr {
-            Expr::Lambda { body, .. } => {
-                assert!(body.is_array());
-            }
-            _ => panic!("Expected Lambda"),
-        }
-    }
-
-    #[test]
-    fn test_parse_mixed_array_list() {
-        // [[|1|]; [|2|]]
-        let expr = parse("[[|1|]; [|2|]]").unwrap();
-        assert!(expr.is_list());
-        match expr {
-            Expr::List(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert!(elements[0].is_array());
-                assert!(elements[1].is_array());
-            }
-            _ => panic!("Expected List"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_of_tuples() {
-        // [|(1, 2); (3, 4)|]
-        let expr = parse("[|(1, 2); (3, 4)|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert!(elements[0].is_tuple());
-                assert!(elements[1].is_tuple());
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_tuple_of_arrays() {
-        // ([|1; 2|], [|3; 4|])
-        let expr = parse("([|1; 2|], [|3; 4|])").unwrap();
-        assert!(expr.is_tuple());
-        match expr {
-            Expr::Tuple(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert!(elements[0].is_array());
-                assert!(elements[1].is_array());
-            }
-            _ => panic!("Expected Tuple"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_with_if_elements() {
-        // [|if true then 1 else 0; 2|]
-        let expr = parse("[|if true then 1 else 0; 2|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 2);
-                assert!(elements[0].is_if());
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_parse_array_large() {
-        // [|1; 2; 3; 4; 5; 6; 7; 8|]
-        let expr = parse("[|1; 2; 3; 4; 5; 6; 7; 8|]").unwrap();
-        assert!(expr.is_array());
-        match expr {
-            Expr::Array(elements) => {
-                assert_eq!(elements.len(), 8);
-            }
-            _ => panic!("Expected Array"),
-        }
-    }
-
-    #[test]
-    fn test_error_array_unclosed() {
-        // [|1; 2
-        let result = parse("[|1; 2");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_error_array_index_missing_bracket() {
-        // arr.0
-        let result = parse("arr.0");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_array_index_nested_in_expr() {
-        // x + arr.[0]
-        let expr = parse("x + arr.[0]").unwrap();
-        assert!(expr.is_binop());
-        match expr {
-            Expr::BinOp { right, .. } => {
-                assert!(right.is_array_index());
-            }
-            _ => panic!("Expected BinOp"),
-        }
-    }
-
-    #[test]
-    fn test_parse_complex_array_expression() {
-        // let arr = [|1; 2; 3|] in Array.length arr + arr.[0]
-        let expr = parse("let arr = [|1; 2; 3|] in Array.length arr + arr.[0]").unwrap();
-        assert!(expr.is_let());
-        match expr {
-            Expr::Let { body, .. } => {
-                assert!(body.is_binop());
-            }
-            _ => panic!("Expected Let"),
         }
     }
 }
