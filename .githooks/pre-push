@@ -1,0 +1,69 @@
+#!/bin/bash
+# Pre-push hook for FSRS
+# Install: ln -s ../../.githooks/pre-push .git/hooks/pre-push
+
+set -e
+
+echo "Running pre-push checks..."
+
+# Change to repository root
+cd "$(git rev-parse --show-toplevel)"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+echo_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+echo_info() {
+    echo -e "${YELLOW}ℹ${NC} $1"
+}
+
+# Run comprehensive checks before push
+echo_info "Running comprehensive CI checks..."
+
+# 1. Format check
+echo_info "Checking formatting..."
+if ! just fmt-check; then
+    echo_error "Formatting check failed"
+    exit 1
+fi
+echo_success "Formatting OK"
+
+# 2. Lint check
+echo_info "Running clippy..."
+if ! just lint; then
+    echo_error "Clippy check failed"
+    exit 1
+fi
+echo_success "Clippy OK"
+
+# 3. Build release
+echo_info "Building release..."
+if ! just build-release; then
+    echo_error "Release build failed"
+    exit 1
+fi
+echo_success "Release build OK"
+
+# 4. Run all tests
+echo_info "Running all tests..."
+if ! just test; then
+    echo_error "Tests failed"
+    exit 1
+fi
+echo_success "Tests passed"
+
+echo ""
+echo_success "All pre-push checks passed! Pushing..."
+echo ""
+
+exit 0
