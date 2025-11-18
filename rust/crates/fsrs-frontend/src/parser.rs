@@ -3,7 +3,7 @@
 //! This module implements a recursive-descent parser that converts a stream of tokens
 //! from the lexer into an Abstract Syntax Tree (AST). The parser supports:
 //!
-//! - Literals: integers, floats, booleans, strings
+//! - Literals: integers, floats, booleans, strings, unit
 //! - Variables and identifiers
 //! - Let-bindings: `let x = expr in body`
 //! - Multi-parameter functions (curried): `let f x y = expr in body`
@@ -11,6 +11,7 @@
 //! - Function application: `f x y`
 //! - Binary operations: arithmetic, comparison, logical
 //! - Conditional expressions: `if cond then expr1 else expr2`
+//! - Tuples: `(1, 2)`, `(x, y, z)`, `(42,)` (single-element)
 //! - Unary minus: `-42`, `-x`
 //! - Proper operator precedence
 //! - Error recovery and reporting
@@ -29,7 +30,8 @@
 //! mul_expr   ::= unary_expr (("*" | "/") unary_expr)*
 //! unary_expr ::= "-" unary_expr | app_expr
 //! app_expr   ::= primary (primary)*
-//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")"
+//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple
+//! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
 //! ```
 //!
 //! # Example
@@ -409,7 +411,7 @@ impl Parser {
         Ok(left)
     }
 
-    /// Parse primary expression (literals, variables, parenthesized expressions)
+    /// Parse primary expression (literals, variables, parenthesized expressions, tuples)
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let tok = self.current_token();
 
@@ -440,16 +442,46 @@ impl Parser {
                 Ok(Expr::Var(val))
             }
             Token::LParen => {
-                self.advance();
+                self.advance(); // consume '('
 
-                // Handle unit literal ()
+                // Handle empty tuple/unit: ()
                 if self.match_token(&Token::RParen) {
                     return Ok(Expr::Lit(Literal::Unit));
                 }
 
-                let expr = self.parse_expr()?;
-                self.expect_token(Token::RParen)?;
-                Ok(expr)
+                // Parse first expression
+                let first_expr = self.parse_expr()?;
+
+                // Check if it's a tuple (has comma) or grouped expression (no comma)
+                if self.match_token(&Token::Comma) {
+                    // It's a tuple: (e1, e2, ...)
+                    let mut elements = vec![first_expr];
+
+                    // Check for trailing comma: (e,) or continue with more elements
+                    if !matches!(self.current_token().token, Token::RParen) {
+                        // Parse remaining elements
+                        loop {
+                            elements.push(self.parse_expr()?);
+
+                            if self.match_token(&Token::Comma) {
+                                // Check for trailing comma before RParen
+                                if matches!(self.current_token().token, Token::RParen) {
+                                    break;
+                                }
+                                // Otherwise continue parsing
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.expect_token(Token::RParen)?;
+                    Ok(Expr::Tuple(elements))
+                } else {
+                    // No comma, it's a grouped expression: (e)
+                    self.expect_token(Token::RParen)?;
+                    Ok(first_expr)
+                }
             }
             _ => Err(ParseError::UnexpectedToken {
                 expected: "expression".to_string(),
@@ -1321,6 +1353,233 @@ mod tests {
                 assert_eq!(*right, Expr::Var("x".to_string()));
             }
             _ => unreachable!(),
+        }
+    }
+
+    // ========================================================================
+    // Tuple Parser Tests (Issue #24 Layer 2)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_tuple_empty() {
+        // () is unit literal, not empty tuple
+        let expr = parse("()").unwrap();
+        assert_eq!(expr, Expr::Lit(Literal::Unit));
+        assert!(!expr.is_tuple());
+    }
+
+    #[test]
+    fn test_parse_tuple_pair() {
+        // (1, 2)
+        let expr = parse("(1, 2)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(2)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_triple() {
+        // (1, 2, 3)
+        let expr = parse("(1, 2, 3)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(2)));
+                assert_eq!(elements[2], Expr::Lit(Literal::Int(3)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_single_element() {
+        // (42,) is a single-element tuple
+        let expr = parse("(42,)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 1);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(42)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_grouped_expression() {
+        // (42) is just 42, not a tuple
+        let expr = parse("(42)").unwrap();
+        assert_eq!(expr, Expr::Lit(Literal::Int(42)));
+        assert!(!expr.is_tuple());
+    }
+
+    #[test]
+    fn test_parse_tuple_nested() {
+        // (1, (2, 3))
+        let expr = parse("(1, (2, 3))").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert!(elements[1].is_tuple());
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_variables() {
+        // (x, y, z)
+        let expr = parse("(x, y, z)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(elements[0], Expr::Var("x".to_string()));
+                assert_eq!(elements[1], Expr::Var("y".to_string()));
+                assert_eq!(elements[2], Expr::Var("z".to_string()));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_expressions() {
+        // (x + 1, y * 2)
+        let expr = parse("(x + 1, y * 2)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_binop());
+                assert!(elements[1].is_binop());
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_trailing_comma() {
+        // (1, 2,) should be same as (1, 2)
+        let expr = parse("(1, 2,)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_deeply_nested() {
+        // ((1, 2), (3, 4))
+        let expr = parse("((1, 2), (3, 4))").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_tuple());
+                assert!(elements[1].is_tuple());
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_mixed_types() {
+        // (1, "hello", true)
+        let expr = parse(r#"(1, "hello", true)"#).unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(elements[0], Expr::Lit(Literal::Int(1)));
+                assert_eq!(elements[1], Expr::Lit(Literal::Str("hello".to_string())));
+                assert_eq!(elements[2], Expr::Lit(Literal::Bool(true)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_let() {
+        // (let x = 1 in x, 2)
+        let expr = parse("(let x = 1 in x, 2)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_let());
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(2)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_lambda() {
+        // (fun x -> x + 1, 42)
+        let expr = parse("(fun x -> x + 1, 42)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_lambda());
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(42)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_if() {
+        // (if true then 1 else 2, 3)
+        let expr = parse("(if true then 1 else 2, 3)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert!(elements[0].is_if());
+                assert_eq!(elements[1], Expr::Lit(Literal::Int(3)));
+            }
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_in_application() {
+        // f (1, 2) should parse as application of f to tuple (1, 2)
+        let expr = parse("f (1, 2)").unwrap();
+        assert!(expr.is_app());
+        match expr {
+            Expr::App { func, arg } => {
+                assert_eq!(*func, Expr::Var("f".to_string()));
+                assert!(arg.is_tuple());
+            }
+            _ => panic!("Expected App"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_large() {
+        // (1, 2, 3, 4, 5, 6, 7, 8)
+        let expr = parse("(1, 2, 3, 4, 5, 6, 7, 8)").unwrap();
+        assert!(expr.is_tuple());
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 8);
+            }
+            _ => panic!("Expected Tuple"),
         }
     }
 }

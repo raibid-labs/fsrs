@@ -7,7 +7,7 @@
 //! - Keywords: let, rec, and, in, if, then, else, fun, true, false
 //! - Identifiers: alphanumeric names starting with letter or underscore
 //! - Operators: arithmetic, comparison, logical
-//! - Punctuation: parentheses, arrows
+//! - Punctuation: parentheses, arrows, commas
 //! - Position tracking for error reporting
 //!
 //! # Example
@@ -93,6 +93,8 @@ pub enum Token {
     RParen,
     /// -> arrow
     Arrow,
+    /// , comma
+    Comma,
 
     // Special
     /// End of file marker
@@ -131,6 +133,7 @@ impl fmt::Display for Token {
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
             Token::Arrow => write!(f, "->"),
+            Token::Comma => write!(f, ","),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -287,6 +290,10 @@ impl Lexer {
             ')' => {
                 self.advance();
                 Ok(Token::RParen)
+            }
+            ',' => {
+                self.advance();
+                Ok(Token::Comma)
             }
             _ => Err(LexError::UnexpectedChar(ch, self.current_position())),
         }
@@ -766,6 +773,33 @@ mod tests {
         assert_eq!(tokens[1].token, Token::Arrow);
     }
 
+    #[test]
+    fn test_lex_comma() {
+        let mut lexer = Lexer::new(",");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Comma);
+    }
+
+    #[test]
+    fn test_lex_multiple_commas() {
+        let mut lexer = Lexer::new(", , ,");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Comma);
+        assert_eq!(tokens[1].token, Token::Comma);
+        assert_eq!(tokens[2].token, Token::Comma);
+    }
+
+    #[test]
+    fn test_lex_comma_separated_values() {
+        let mut lexer = Lexer::new("1, 2, 3");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Int(1));
+        assert_eq!(tokens[1].token, Token::Comma);
+        assert_eq!(tokens[2].token, Token::Int(2));
+        assert_eq!(tokens[3].token, Token::Comma);
+        assert_eq!(tokens[4].token, Token::Int(3));
+    }
+
     // ========================================================================
     // Position Tracking Tests
     // ========================================================================
@@ -1022,6 +1056,7 @@ mod tests {
         );
         assert_eq!(format!("{}", Token::Plus), "+");
         assert_eq!(format!("{}", Token::Arrow), "->");
+        assert_eq!(format!("{}", Token::Comma), ",");
         assert_eq!(format!("{}", Token::Eof), "EOF");
     }
 
@@ -1081,5 +1116,58 @@ mod tests {
         assert_eq!(tokens[3].token, Token::Eq);
         assert_eq!(tokens[8].token, Token::AndKeyword);
         assert_eq!(tokens[9].token, Token::Ident("g".to_string()));
+    }
+
+    // ========================================================================
+    // Tuple Lexer Tests (Issue #24 Layer 2)
+    // ========================================================================
+
+    #[test]
+    fn test_lex_tuple_simple() {
+        let mut lexer = Lexer::new("(1, 2)");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LParen);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Comma);
+        assert_eq!(tokens[3].token, Token::Int(2));
+        assert_eq!(tokens[4].token, Token::RParen);
+    }
+
+    #[test]
+    fn test_lex_tuple_triple() {
+        let mut lexer = Lexer::new("(1, 2, 3)");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LParen);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Comma);
+        assert_eq!(tokens[3].token, Token::Int(2));
+        assert_eq!(tokens[4].token, Token::Comma);
+        assert_eq!(tokens[5].token, Token::Int(3));
+        assert_eq!(tokens[6].token, Token::RParen);
+    }
+
+    #[test]
+    fn test_lex_tuple_with_trailing_comma() {
+        let mut lexer = Lexer::new("(42,)");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LParen);
+        assert_eq!(tokens[1].token, Token::Int(42));
+        assert_eq!(tokens[2].token, Token::Comma);
+        assert_eq!(tokens[3].token, Token::RParen);
+    }
+
+    #[test]
+    fn test_lex_tuple_nested() {
+        let mut lexer = Lexer::new("(1, (2, 3))");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::LParen);
+        assert_eq!(tokens[1].token, Token::Int(1));
+        assert_eq!(tokens[2].token, Token::Comma);
+        assert_eq!(tokens[3].token, Token::LParen);
+        assert_eq!(tokens[4].token, Token::Int(2));
+        assert_eq!(tokens[5].token, Token::Comma);
+        assert_eq!(tokens[6].token, Token::Int(3));
+        assert_eq!(tokens[7].token, Token::RParen);
+        assert_eq!(tokens[8].token, Token::RParen);
     }
 }
