@@ -90,7 +90,7 @@ let normalizeTitle title =
 ## Project Status
 
 **Version**: 0.2.0-alpha
-**Status**: Phase 2 - Language Features (90% Complete)
+**Status**: Phase 2 - Language Features (95% Complete)
 
 ### Implemented Features
 
@@ -100,9 +100,9 @@ let normalizeTitle title =
 - ✅ Parser with full F# syntax support
 - ✅ Bytecode compiler
 - ✅ Stack-based VM interpreter
-- ✅ Test suite (344+ passing tests, 69 ignored awaiting parser features)
+- ✅ Test suite (400+ passing tests, 41 ignored awaiting features)
 
-**Phase 2 (Features) - 90% Complete** 🚧
+**Phase 2 (Features) - 95% Complete** 🚧
 - ✅ Closures and first-class functions
 - ✅ Recursive functions (let-rec)
 - ✅ Currying and partial application
@@ -112,11 +112,11 @@ let normalizeTitle title =
 - ✅ Pattern matching (95% coverage, 93+ tests)
 - ✅ Records - Full Implementation (12 VM tests, 47 integration tests)
 - ✅ Discriminated Unions - Full Implementation (11 VM tests, 17 integration tests, 35 mixed tests)
-- ⏳ Type inference (ready to start)
+- 🚧 Type Inference - Foundation Complete (55 type system tests, Layer 2 in progress)
 
-**Test Coverage**: 344+ tests passing, 69 ignored (awaiting parser features), 3.6:1 test-to-code ratio
-**Documentation**: Complete language spec, VM design, Records+DUs implementation report, 4 comprehensive example scripts
-**PRs Merged**: 56 total (Records L4, DUs L3, DUs L4, Integration Tests, Gemini Config)
+**Test Coverage**: 400+ tests passing, 41 ignored (awaiting features), 4.5:1 test-to-code ratio
+**Documentation**: Complete language spec, VM design, Records+DUs report, Type system foundation, 4 example scripts
+**PRs Merged**: 57 total (Records, DUs, Type Inference L1, Integration Tests, Parser enhancements)
 
 See [ROADMAP.md](docs/ROADMAP.md) for the complete development plan.
 
