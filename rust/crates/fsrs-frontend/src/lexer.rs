@@ -64,6 +64,8 @@ pub enum Token {
     Type,
     /// with keyword (for record updates)
     With,
+    /// of keyword (for discriminated unions)
+    Of,
 
     // Operators
     /// + operator
@@ -183,6 +185,7 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::Pipe => write!(f, "|"),
             Token::Underscore => write!(f, "_"),
+            Token::Of => write!(f, "of"),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -436,6 +439,7 @@ impl Lexer {
             "fun" => Token::Fun,
             "type" => Token::Type,
             "with" => Token::With,
+            "of" => Token::Of,
             "true" => Token::Bool(true),
             "false" => Token::Bool(false),
             _ => Token::Ident(s),
