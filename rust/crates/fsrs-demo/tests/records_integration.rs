@@ -100,7 +100,6 @@ fn test_chained_field_access() {
 // RECORD UPDATE TESTS
 // ============================================================================
 
-#[ignore]
 #[test]
 fn test_single_field_update() {
     let source = r#"
@@ -112,7 +111,6 @@ fn test_single_field_update() {
     assert_eq!(result, Value::Int(29));
 }
 
-#[ignore]
 #[test]
 fn test_multi_field_update() {
     let source = r#"
@@ -124,7 +122,6 @@ fn test_multi_field_update() {
     assert_eq!(result, Value::Str("SF".to_string()));
 }
 
-#[ignore]
 #[test]
 fn test_update_preserves_original() {
     let source = r#"
@@ -171,7 +168,6 @@ fn test_nested_record_access() {
     assert_eq!(result, Value::Str("Developer".to_string()));
 }
 
-#[ignore]
 #[test]
 fn test_nested_record_update() {
     let source = r#"
@@ -187,7 +183,6 @@ fn test_nested_record_update() {
 // RECORDS WITH FUNCTIONS
 // ============================================================================
 
-#[ignore]
 #[test]
 fn test_function_returning_record() {
     let source = r#"
@@ -205,7 +200,6 @@ fn test_function_returning_record() {
     }
 }
 
-#[ignore]
 #[test]
 fn test_function_taking_record() {
     let source = r#"
@@ -217,7 +211,6 @@ fn test_function_taking_record() {
     assert_eq!(result, Value::Int(45));
 }
 
-#[ignore]
 #[test]
 fn test_function_updating_record() {
     let source = r#"
@@ -260,7 +253,6 @@ fn test_destructured_let_binding() {
 // RECORDS IN DATA STRUCTURES
 // ============================================================================
 
-#[ignore]
 #[test]
 fn test_record_in_list() {
     let source = r#"
@@ -275,7 +267,6 @@ fn test_record_in_list() {
     assert_eq!(result, Value::Str("Oscar".to_string()));
 }
 
-#[ignore]
 #[test]
 fn test_list_of_records_map() {
     let source = r#"
@@ -342,7 +333,6 @@ fn test_record_with_list_field() {
     assert_eq!(result, Value::Int(3));
 }
 
-#[ignore]
 #[test]
 fn test_multiple_record_updates() {
     let source = r#"
@@ -386,7 +376,6 @@ fn test_record_field_arithmetic() {
     assert_eq!(result, Value::Int(200));
 }
 
-#[ignore]
 #[test]
 fn test_record_update_with_computation() {
     let source = r#"

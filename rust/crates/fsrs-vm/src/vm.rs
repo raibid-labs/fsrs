@@ -597,6 +597,67 @@ impl Vm {
                     self.push(new_record);
                 }
 
+                // Discriminated union operations
+                Instruction::MakeVariant(n) => {
+                    // Pop N fields, then variant_name, then type_name from stack
+                    // Stack: [..., type_name, variant_name, field_0, ..., field_N-1] (top)
+
+                    // Collect fields in reverse order (stack is LIFO)
+                    let mut fields = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        fields.push(self.pop()?);
+                    }
+                    fields.reverse(); // Restore correct field order
+
+                    // Pop variant_name and type_name
+                    let variant_name = self.pop()?;
+                    let type_name = self.pop()?;
+
+                    // Type name and variant name must be strings
+                    let type_name_str =
+                        type_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+                            expected: "string",
+                            got: type_name.type_name(),
+                        })?;
+
+                    let variant_name_str =
+                        variant_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+                            expected: "string",
+                            got: variant_name.type_name(),
+                        })?;
+
+                    // Create variant value
+                    let variant = Value::Variant {
+                        type_name: type_name_str.to_string(),
+                        variant_name: variant_name_str.to_string(),
+                        fields,
+                    };
+
+                    self.push(variant);
+                }
+
+                Instruction::CheckVariantTag(ref tag) => {
+                    // Pop variant from stack, push bool indicating if tag matches
+                    let variant = self.pop()?;
+
+                    // Check if value is a variant with the specified tag
+                    let matches = variant.is_variant_named(tag);
+
+                    self.push(Value::Bool(matches));
+                }
+
+                Instruction::GetVariantField(idx) => {
+                    // Pop variant from stack, push field at index
+                    let variant = self.pop()?;
+
+                    // Get the field value
+                    let field_value = variant
+                        .variant_get_field(idx as usize)
+                        .map_err(VmError::Runtime)?;
+
+                    self.push(field_value);
+                }
+
                 _ => {
                     unimplemented!("Instruction not implemented in Phase 1: {:?}", instruction)
                 }
@@ -1737,5 +1798,240 @@ mod tests {
         let outer_elem = result.array_get(0).unwrap();
         assert_eq!(outer_elem.array_get(0), Ok(Value::Int(1)));
         assert_eq!(outer_elem.array_get(1), Ok(Value::Int(2)));
+    }
+
+    // ========== Variant (DU) VM Tests ==========
+
+    #[test]
+    fn test_vm_make_variant_simple() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Direction".to_string()))
+            .constant(Value::Str("Left".to_string()))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::MakeVariant(0)) // 0 fields
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_variant());
+        assert_eq!(result.variant_name(), Ok("Left"));
+        assert_eq!(result.variant_type_name(), Ok("Direction"));
+        assert_eq!(format!("{}", result), "Left");
+    }
+
+    #[test]
+    fn test_vm_make_variant_with_field() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Option".to_string()))
+            .constant(Value::Str("Some".to_string()))
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field value
+            .instruction(Instruction::MakeVariant(1)) // 1 field
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_variant());
+        assert_eq!(result.variant_name(), Ok("Some"));
+        assert_eq!(result.variant_get_field(0), Ok(Value::Int(42)));
+        assert_eq!(format!("{}", result), "Some(42)");
+    }
+
+    #[test]
+    fn test_vm_make_variant_with_multiple_fields() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Shape".to_string()))
+            .constant(Value::Str("Rectangle".to_string()))
+            .constant(Value::Int(10))
+            .constant(Value::Int(20))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field 0
+            .instruction(Instruction::LoadConst(3)) // field 1
+            .instruction(Instruction::MakeVariant(2)) // 2 fields
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_variant());
+        assert_eq!(result.variant_name(), Ok("Rectangle"));
+        assert_eq!(result.variant_get_field(0), Ok(Value::Int(10)));
+        assert_eq!(result.variant_get_field(1), Ok(Value::Int(20)));
+        assert_eq!(format!("{}", result), "Rectangle(10, 20)");
+    }
+
+    #[test]
+    fn test_vm_check_variant_tag_true() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Option".to_string()))
+            .constant(Value::Str("Some".to_string()))
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field
+            .instruction(Instruction::MakeVariant(1)) // Create Some(42)
+            .instruction(Instruction::CheckVariantTag("Some".to_string()))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_vm_check_variant_tag_false() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Option".to_string()))
+            .constant(Value::Str("Some".to_string()))
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field
+            .instruction(Instruction::MakeVariant(1)) // Create Some(42)
+            .instruction(Instruction::CheckVariantTag("None".to_string()))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_vm_check_variant_tag_not_variant() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::CheckVariantTag("Some".to_string()))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_vm_get_variant_field() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Shape".to_string()))
+            .constant(Value::Str("Rectangle".to_string()))
+            .constant(Value::Int(10))
+            .constant(Value::Int(20))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field 0
+            .instruction(Instruction::LoadConst(3)) // field 1
+            .instruction(Instruction::MakeVariant(2)) // Create Rectangle(10, 20)
+            .instruction(Instruction::GetVariantField(1)) // Get field 1
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(20));
+    }
+
+    #[test]
+    fn test_vm_variant_nested() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Option".to_string()))
+            .constant(Value::Str("Some".to_string()))
+            .constant(Value::Int(42))
+            .constant(Value::Str("Result".to_string()))
+            .constant(Value::Str("Ok".to_string()))
+            // Create Some(42) and store it
+            .instruction(Instruction::LoadConst(0)) // Option
+            .instruction(Instruction::LoadConst(1)) // Some
+            .instruction(Instruction::LoadConst(2)) // 42
+            .instruction(Instruction::MakeVariant(1)) // Stack: [Some(42)]
+            .instruction(Instruction::StoreLocal(0)) // Store Some(42) in local 0
+            // Create Ok(Some(42))
+            .instruction(Instruction::LoadConst(3)) // Result
+            .instruction(Instruction::LoadConst(4)) // Ok
+            .instruction(Instruction::LoadLocal(0)) // Load Some(42)
+            .instruction(Instruction::MakeVariant(1)) // Ok(Some(42))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_variant());
+        assert_eq!(result.variant_name(), Ok("Ok"));
+        let inner = result.variant_get_field(0).unwrap();
+        assert!(inner.is_variant());
+        assert_eq!(inner.variant_name(), Ok("Some"));
+        assert_eq!(format!("{}", result), "Ok(Some(42))");
+    }
+
+    #[test]
+    fn test_vm_variant_in_local() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Option".to_string()))
+            .constant(Value::Str("Some".to_string()))
+            .constant(Value::Int(42))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // field
+            .instruction(Instruction::MakeVariant(1))
+            .instruction(Instruction::StoreLocal(0))
+            .instruction(Instruction::LoadLocal(0))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result.variant_name(), Ok("Some"));
+        assert_eq!(result.variant_get_field(0), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_vm_variant_with_tuple_field() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Point".to_string()))
+            .constant(Value::Str("Coordinate".to_string()))
+            .constant(Value::Int(1))
+            .constant(Value::Int(2))
+            .instruction(Instruction::LoadConst(2)) // 1
+            .instruction(Instruction::LoadConst(3)) // 2
+            .instruction(Instruction::MakeTuple(2)) // (1, 2)
+            .instruction(Instruction::StoreLocal(0)) // Store tuple in local 0
+            .instruction(Instruction::LoadConst(0)) // Point
+            .instruction(Instruction::LoadConst(1)) // Coordinate
+            .instruction(Instruction::LoadLocal(0)) // Load tuple
+            .instruction(Instruction::MakeVariant(1)) // Coordinate((1, 2))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert!(result.is_variant());
+        let field = result.variant_get_field(0).unwrap();
+        assert!(field.is_tuple());
+        assert_eq!(format!("{}", result), "Coordinate((1, 2))");
+    }
+
+    #[test]
+    fn test_vm_variant_mixed_field_types() {
+        let mut vm = Vm::new();
+        let chunk = ChunkBuilder::new()
+            .constant(Value::Str("Mixed".to_string()))
+            .constant(Value::Str("Data".to_string()))
+            .constant(Value::Int(42))
+            .constant(Value::Str("hello".to_string()))
+            .constant(Value::Bool(true))
+            .instruction(Instruction::LoadConst(0)) // type_name
+            .instruction(Instruction::LoadConst(1)) // variant_name
+            .instruction(Instruction::LoadConst(2)) // 42
+            .instruction(Instruction::LoadConst(3)) // "hello"
+            .instruction(Instruction::LoadConst(4)) // true
+            .instruction(Instruction::MakeVariant(3))
+            .instruction(Instruction::Return)
+            .build();
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result.variant_get_field(0), Ok(Value::Int(42)));
+        assert_eq!(
+            result.variant_get_field(1),
+            Ok(Value::Str("hello".to_string()))
+        );
+        assert_eq!(result.variant_get_field(2), Ok(Value::Bool(true)));
+        assert_eq!(format!("{}", result), "Data(42, hello, true)");
     }
 }

@@ -162,6 +162,20 @@ pub enum Instruction {
     /// Stack layout: [..., field_name_0, value_0, ..., record, N (count)]
     /// Pop count, pop record, pop N field-value pairs, create new record, push new record
     UpdateRecord(u16),
+
+    // ===== Discriminated Union Operations =====
+    /// Create discriminated union variant
+    /// Stack layout: [type_name (String), variant_name (String), field_0, field_1, ..., field_N-1]
+    /// Pop N+2 values (type_name, variant_name, N fields), create variant, push variant
+    MakeVariant(u16),
+
+    /// Check if variant has specific tag/name
+    /// Pop variant from stack, push bool (true if variant name matches)
+    CheckVariantTag(String),
+
+    /// Get variant field by index
+    /// Pop variant from stack, push field value at index
+    GetVariantField(u8),
 }
 
 impl fmt::Display for Instruction {
@@ -231,6 +245,11 @@ impl fmt::Display for Instruction {
             Instruction::MakeRecord(n) => write!(f, "MAKE_RECORD {}", n),
             Instruction::GetRecordField => write!(f, "GET_RECORD_FIELD"),
             Instruction::UpdateRecord(n) => write!(f, "UPDATE_RECORD {}", n),
+
+            // Discriminated union operations
+            Instruction::MakeVariant(n) => write!(f, "MAKE_VARIANT {}", n),
+            Instruction::CheckVariantTag(tag) => write!(f, "CHECK_VARIANT_TAG \"{}\"", tag),
+            Instruction::GetVariantField(idx) => write!(f, "GET_VARIANT_FIELD {}", idx),
         }
     }
 }

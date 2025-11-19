@@ -28,6 +28,13 @@ pub enum Value {
     /// Record with field name -> value mapping
     /// Records are immutable - updates create new instances
     Record(Rc<RefCell<HashMap<String, Value>>>),
+    /// Discriminated union variant value
+    /// Contains: type_name, variant_name, field values
+    Variant {
+        type_name: String,
+        variant_name: String,
+        fields: Vec<Value>,
+    },
 }
 
 impl Value {
@@ -43,6 +50,7 @@ impl Value {
             Value::Nil => "list",
             Value::Array(_) => "array",
             Value::Record(_) => "record",
+            Value::Variant { .. } => "variant",
         }
     }
 
@@ -107,6 +115,7 @@ impl Value {
             Value::Nil => false,
             Value::Array(arr) => !arr.borrow().is_empty(),
             Value::Record(fields) => !fields.borrow().is_empty(),
+            Value::Variant { .. } => true,
         }
     }
 
@@ -257,6 +266,72 @@ impl Value {
         }
     }
 
+    /// Checks if the value is a Variant
+    pub fn is_variant(&self) -> bool {
+        matches!(self, Value::Variant { .. })
+    }
+
+    /// Attempts to extract variant information from the value
+    /// Returns Some((type_name, variant_name, fields)) if the value is Variant, None otherwise
+    pub fn as_variant(&self) -> Option<(&str, &str, &Vec<Value>)> {
+        match self {
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => Some((type_name.as_str(), variant_name.as_str(), fields)),
+            _ => None,
+        }
+    }
+
+    /// Get the variant name from a variant value
+    /// Returns Err if not a variant
+    pub fn variant_name(&self) -> Result<&str, String> {
+        match self {
+            Value::Variant { variant_name, .. } => Ok(variant_name.as_str()),
+            _ => Err("Not a variant".to_string()),
+        }
+    }
+
+    /// Get the type name from a variant value
+    /// Returns Err if not a variant
+    pub fn variant_type_name(&self) -> Result<&str, String> {
+        match self {
+            Value::Variant { type_name, .. } => Ok(type_name.as_str()),
+            _ => Err("Not a variant".to_string()),
+        }
+    }
+
+    /// Get the fields from a variant value
+    /// Returns Err if not a variant
+    pub fn variant_fields(&self) -> Result<&Vec<Value>, String> {
+        match self {
+            Value::Variant { fields, .. } => Ok(fields),
+            _ => Err("Not a variant".to_string()),
+        }
+    }
+
+    /// Get a specific field from a variant by index
+    /// Returns Err if not a variant or index out of bounds
+    pub fn variant_get_field(&self, index: usize) -> Result<Value, String> {
+        match self {
+            Value::Variant { fields, .. } => fields
+                .get(index)
+                .cloned()
+                .ok_or_else(|| format!("Variant field index out of bounds: {}", index)),
+            _ => Err("Not a variant".to_string()),
+        }
+    }
+
+    /// Check if this variant has the given variant name
+    /// Returns false if not a variant
+    pub fn is_variant_named(&self, name: &str) -> bool {
+        match self {
+            Value::Variant { variant_name, .. } => variant_name == name,
+            _ => false,
+        }
+    }
+
     /// Convert a list to a vector of values
     /// Returns None if the list is malformed (tail is not Nil or Cons)
     pub fn list_to_vec(&self) -> Option<Vec<Value>> {
@@ -354,6 +429,25 @@ impl fmt::Display for Value {
                     write!(f, "{} = {}", field_name, field_value)?;
                 }
                 write!(f, " }}")
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
+                // Pretty-print as VariantName(field1, field2, ...)
+                write!(f, "{}", variant_name)?;
+                if !fields.is_empty() {
+                    write!(f, "(")?;
+                    for (i, field_value) in fields.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", field_value)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
         }
     }
@@ -1594,5 +1688,351 @@ mod tests {
         assert_eq!(arr.array_get(0), Ok(Value::Int(10)));
         assert_eq!(arr.array_get(1), Ok(Value::Int(2)));
         assert_eq!(arr.array_get(2), Ok(Value::Int(30)));
+    }
+
+    // ========== Variant Tests (Layer 3 - DUs) ==========
+
+    #[test]
+    fn test_variant_simple_construction() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "None".to_string(),
+            fields: vec![],
+        };
+        assert!(variant.is_variant());
+        assert_eq!(variant.type_name(), "variant");
+    }
+
+    #[test]
+    fn test_variant_with_field_construction() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert!(variant.is_variant());
+    }
+
+    #[test]
+    fn test_variant_with_multiple_fields_construction() {
+        let variant = Value::Variant {
+            type_name: "Shape".to_string(),
+            variant_name: "Rectangle".to_string(),
+            fields: vec![Value::Int(10), Value::Int(20)],
+        };
+        assert!(variant.is_variant());
+    }
+
+    #[test]
+    fn test_variant_type_name() {
+        let variant = Value::Variant {
+            type_name: "Bool".to_string(),
+            variant_name: "True".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(variant.type_name(), "variant");
+    }
+
+    #[test]
+    fn test_variant_is_variant() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "None".to_string(),
+            fields: vec![],
+        };
+        assert!(variant.is_variant());
+        assert!(!Value::Int(42).is_variant());
+        assert!(!Value::Tuple(vec![]).is_variant());
+        assert!(!Value::Record(Rc::new(RefCell::new(HashMap::new()))).is_variant());
+    }
+
+    #[test]
+    fn test_variant_as_variant_success() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let as_variant = variant.as_variant();
+        assert!(as_variant.is_some());
+        let (type_name, variant_name, fields) = as_variant.unwrap();
+        assert_eq!(type_name, "Option");
+        assert_eq!(variant_name, "Some");
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0], Value::Int(42));
+    }
+
+    #[test]
+    fn test_variant_as_variant_failure() {
+        assert!(Value::Int(42).as_variant().is_none());
+        assert!(Value::Tuple(vec![]).as_variant().is_none());
+        assert!(Value::Record(Rc::new(RefCell::new(HashMap::new())))
+            .as_variant()
+            .is_none());
+    }
+
+    #[test]
+    fn test_variant_variant_name_success() {
+        let variant = Value::Variant {
+            type_name: "Direction".to_string(),
+            variant_name: "Left".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(variant.variant_name(), Ok("Left"));
+    }
+
+    #[test]
+    fn test_variant_variant_name_failure() {
+        assert_eq!(
+            Value::Int(42).variant_name(),
+            Err("Not a variant".to_string())
+        );
+    }
+
+    #[test]
+    fn test_variant_variant_type_name_success() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(1)],
+        };
+        assert_eq!(variant.variant_type_name(), Ok("Option"));
+    }
+
+    #[test]
+    fn test_variant_variant_type_name_failure() {
+        assert_eq!(
+            Value::Bool(true).variant_type_name(),
+            Err("Not a variant".to_string())
+        );
+    }
+
+    #[test]
+    fn test_variant_variant_fields_success() {
+        let fields = vec![Value::Int(1), Value::Int(2)];
+        let variant = Value::Variant {
+            type_name: "Point".to_string(),
+            variant_name: "Coordinate".to_string(),
+            fields: fields.clone(),
+        };
+        assert_eq!(variant.variant_fields(), Ok(&fields));
+    }
+
+    #[test]
+    fn test_variant_variant_fields_failure() {
+        assert_eq!(
+            Value::Unit.variant_fields(),
+            Err("Not a variant".to_string())
+        );
+    }
+
+    #[test]
+    fn test_variant_get_field_success() {
+        let variant = Value::Variant {
+            type_name: "Shape".to_string(),
+            variant_name: "Rectangle".to_string(),
+            fields: vec![Value::Int(10), Value::Int(20)],
+        };
+        assert_eq!(variant.variant_get_field(0), Ok(Value::Int(10)));
+        assert_eq!(variant.variant_get_field(1), Ok(Value::Int(20)));
+    }
+
+    #[test]
+    fn test_variant_get_field_out_of_bounds() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert!(variant.variant_get_field(1).is_err());
+        assert!(variant.variant_get_field(10).is_err());
+    }
+
+    #[test]
+    fn test_variant_get_field_not_variant() {
+        assert_eq!(
+            Value::Int(42).variant_get_field(0),
+            Err("Not a variant".to_string())
+        );
+    }
+
+    #[test]
+    fn test_variant_is_variant_named_true() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert!(variant.is_variant_named("Some"));
+    }
+
+    #[test]
+    fn test_variant_is_variant_named_false() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert!(!variant.is_variant_named("None"));
+        assert!(!variant.is_variant_named("Other"));
+    }
+
+    #[test]
+    fn test_variant_is_variant_named_not_variant() {
+        assert!(!Value::Int(42).is_variant_named("Some"));
+        assert!(!Value::Bool(true).is_variant_named("True"));
+    }
+
+    #[test]
+    fn test_variant_display_simple() {
+        let variant = Value::Variant {
+            type_name: "Direction".to_string(),
+            variant_name: "Left".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(format!("{}", variant), "Left");
+    }
+
+    #[test]
+    fn test_variant_display_with_field() {
+        let variant = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert_eq!(format!("{}", variant), "Some(42)");
+    }
+
+    #[test]
+    fn test_variant_display_with_multiple_fields() {
+        let variant = Value::Variant {
+            type_name: "Shape".to_string(),
+            variant_name: "Rectangle".to_string(),
+            fields: vec![Value::Int(10), Value::Int(20)],
+        };
+        assert_eq!(format!("{}", variant), "Rectangle(10, 20)");
+    }
+
+    #[test]
+    fn test_variant_display_nested() {
+        let inner = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let outer = Value::Variant {
+            type_name: "Result".to_string(),
+            variant_name: "Ok".to_string(),
+            fields: vec![inner],
+        };
+        assert_eq!(format!("{}", outer), "Ok(Some(42))");
+    }
+
+    #[test]
+    fn test_variant_equality_same_variant() {
+        let v1 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let v2 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_variant_equality_different_fields() {
+        let v1 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let v2 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(99)],
+        };
+        assert_ne!(v1, v2);
+    }
+
+    #[test]
+    fn test_variant_equality_different_variant_names() {
+        let v1 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let v2 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "None".to_string(),
+            fields: vec![],
+        };
+        assert_ne!(v1, v2);
+    }
+
+    #[test]
+    fn test_variant_is_truthy() {
+        let v1 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "None".to_string(),
+            fields: vec![],
+        };
+        assert!(v1.is_truthy());
+
+        let v2 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        assert!(v2.is_truthy());
+    }
+
+    #[test]
+    fn test_variant_clone() {
+        let v1 = Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "Some".to_string(),
+            fields: vec![Value::Int(42)],
+        };
+        let v2 = v1.clone();
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_variant_with_tuple_field() {
+        let variant = Value::Variant {
+            type_name: "Point".to_string(),
+            variant_name: "Coordinate".to_string(),
+            fields: vec![Value::Tuple(vec![Value::Int(1), Value::Int(2)])],
+        };
+        assert_eq!(format!("{}", variant), "Coordinate((1, 2))");
+    }
+
+    #[test]
+    fn test_variant_with_list_field() {
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let variant = Value::Variant {
+            type_name: "Container".to_string(),
+            variant_name: "Items".to_string(),
+            fields: vec![list],
+        };
+        assert_eq!(format!("{}", variant), "Items([1; 2; 3])");
+    }
+
+    #[test]
+    fn test_variant_mixed_field_types() {
+        let variant = Value::Variant {
+            type_name: "Mixed".to_string(),
+            variant_name: "Data".to_string(),
+            fields: vec![
+                Value::Int(42),
+                Value::Str("hello".to_string()),
+                Value::Bool(true),
+            ],
+        };
+        assert_eq!(format!("{}", variant), "Data(42, hello, true)");
     }
 }
