@@ -521,6 +521,82 @@ impl Vm {
 
                     self.push(new_arr);
                 }
+
+                // Record operations
+                Instruction::MakeRecord(n) => {
+                    // Pop N field name/value pairs from stack in reverse order
+                    use std::cell::RefCell;
+                    use std::collections::HashMap;
+                    use std::rc::Rc;
+
+                    let mut fields = HashMap::new();
+                    for _ in 0..n {
+                        // Stack: [..., value, field_name] (top)
+                        let field_value = self.pop()?;
+                        let field_name = self.pop()?;
+
+                        // Field name must be a string
+                        let field_name_str =
+                            field_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+                                expected: "string",
+                                got: field_name.type_name(),
+                            })?;
+
+                        fields.insert(field_name_str.to_string(), field_value);
+                    }
+
+                    let record = Value::Record(Rc::new(RefCell::new(fields)));
+                    self.push(record);
+                }
+
+                Instruction::GetRecordField => {
+                    // Stack: [..., field_name, record] (top)
+                    let field_name = self.pop()?;
+                    let record = self.pop()?;
+
+                    // Field name must be a string
+                    let field_name_str =
+                        field_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+                            expected: "string",
+                            got: field_name.type_name(),
+                        })?;
+
+                    // Get the field value
+                    let field_value = record
+                        .record_get(field_name_str)
+                        .map_err(VmError::Runtime)?;
+
+                    self.push(field_value);
+                }
+
+                Instruction::UpdateRecord(n) => {
+                    // Pop N field name/value pairs, then the record
+                    use std::collections::HashMap;
+
+                    let mut updates = HashMap::new();
+                    for _ in 0..n {
+                        // Stack: [..., value, field_name] (top)
+                        let field_value = self.pop()?;
+                        let field_name = self.pop()?;
+
+                        // Field name must be a string
+                        let field_name_str =
+                            field_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+                                expected: "string",
+                                got: field_name.type_name(),
+                            })?;
+
+                        updates.insert(field_name_str.to_string(), field_value);
+                    }
+
+                    let record = self.pop()?;
+
+                    // Create updated record (immutable)
+                    let new_record = record.record_update(updates).map_err(VmError::Runtime)?;
+
+                    self.push(new_record);
+                }
+
                 _ => {
                     unimplemented!("Instruction not implemented in Phase 1: {:?}", instruction)
                 }

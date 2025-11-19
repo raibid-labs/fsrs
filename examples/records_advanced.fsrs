@@ -1,0 +1,86 @@
+(* FSRS Records - Advanced Features Demo
+
+   This example demonstrates advanced record usage patterns:
+   - Records with functions
+   - Pattern matching on record fields
+   - Records in complex data structures
+   - Deeply nested record access
+*)
+
+(* Example 1: Factory function for creating records *)
+let makeUser name age email = {
+    name = name;
+    age = age;
+    email = email;
+    active = true
+} in
+
+(* Example 2: Function taking a record *)
+let getFullInfo user = user.name in
+let user1 = makeUser "Alice" 30 "alice@example.com" in
+let info = getFullInfo user1 in
+
+(* Example 3: Records with arrays *)
+let dataset = {
+    values = [|10; 20; 30; 40|];
+    count = 4;
+    mean = 25
+} in
+let dataCount = dataset.count in
+
+(* Example 4: Deeply nested configuration *)
+let appConfig = {
+    database = {
+        connection = {
+            host = "db.example.com";
+            port = 5432;
+            credentials = {
+                username = "admin";
+                encrypted = true
+            }
+        };
+        pool = {
+            min = 5;
+            max = 20
+        }
+    };
+    logging = {
+        level = "INFO";
+        enabled = true
+    }
+} in
+
+(* Example 5: Accessing deeply nested values *)
+let dbHost = appConfig.database.connection.host in
+let dbUser = appConfig.database.connection.credentials.username in
+let poolMax = appConfig.database.pool.max in
+
+(* Example 6: Pattern matching on record fields *)
+let status = { code = 200; message = "OK" } in
+let result = match status.code with
+    | 200 -> "Success"
+    | 404 -> "Not Found"
+    | 500 -> "Server Error"
+    | _ -> "Unknown"
+in
+
+(* Example 7: Records with computed fields from other records *)
+let rect1 = { width = 10; height = 20 } in
+let rect2 = {
+    width = rect1.width * 2;
+    height = rect1.height * 2;
+    area = (rect1.width * 2) * (rect1.height * 2)
+} in
+
+(* Example 8: List of records with map *)
+let people = [
+    { name = "Alice"; age = 30 };
+    { name = "Bob"; age = 25 };
+    { name = "Carol"; age = 35 }
+] in
+let ages = List.map (fun p -> p.age) people in
+let firstAge = List.head ages in
+
+firstAge
+
+(* Result: 30 *)

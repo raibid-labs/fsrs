@@ -140,9 +140,9 @@ impl Compiler {
                 value,
             } => self.compile_array_update(array, index, value),
             Expr::ArrayLength(array) => self.compile_array_length(array),
-            Expr::RecordLiteral { .. } => unimplemented!("Records - Layer 3"),
-            Expr::RecordAccess { .. } => unimplemented!("Records - Layer 3"),
-            Expr::RecordUpdate { .. } => unimplemented!("Records - Layer 3"),
+            Expr::RecordLiteral { fields, .. } => self.compile_record_literal(fields),
+            Expr::RecordAccess { record, field } => self.compile_record_access(record, field),
+            Expr::RecordUpdate { record, fields } => self.compile_record_update(record, fields),
             Expr::Match { scrutinee, arms } => self.compile_match(scrutinee, arms),
             Expr::VariantConstruct { .. } => unimplemented!("DUs - Layer 3"),
         }
@@ -736,6 +736,80 @@ impl Compiler {
             name,
             depth: self.scope_depth,
         });
+
+        Ok(())
+    }
+    /// Compile a record literal expression
+    /// Stack effect: pushes a record value
+    fn compile_record_literal(&mut self, fields: &[(String, Box<Expr>)]) -> CompileResult<()> {
+        // Check if record size fits in u16
+        if fields.len() > u16::MAX as usize {
+            return Err(CompileError::TupleTooLarge); // Reuse error for now, or add RecordTooLarge
+        }
+
+        // Compile each field (field_name, field_value) pair
+        // Stack layout: [field_name_1, field_value_1, field_name_2, field_value_2, ...]
+        for (field_name, field_value) in fields {
+            // Push field name as a string constant
+            let field_name_idx = self.add_constant(Value::Str(field_name.clone()))?;
+            self.emit(Instruction::LoadConst(field_name_idx));
+
+            // Compile and push field value
+            self.compile_expr(field_value)?;
+        }
+
+        // Emit MakeRecord instruction with field count
+        let field_count = fields.len() as u16;
+        self.emit(Instruction::MakeRecord(field_count));
+
+        Ok(())
+    }
+
+    /// Compile a record field access expression
+    /// Stack effect: pushes the field value
+    fn compile_record_access(&mut self, record: &Expr, field: &str) -> CompileResult<()> {
+        // Compile the record expression
+        self.compile_expr(record)?;
+
+        // Push field name as a string constant
+        let field_name_idx = self.add_constant(Value::Str(field.to_string()))?;
+        self.emit(Instruction::LoadConst(field_name_idx));
+
+        // Emit GetRecordField instruction
+        self.emit(Instruction::GetRecordField);
+
+        Ok(())
+    }
+
+    /// Compile a record update expression (immutable)
+    /// Stack effect: pushes a new record with updated fields
+    fn compile_record_update(
+        &mut self,
+        record: &Expr,
+        fields: &[(String, Box<Expr>)],
+    ) -> CompileResult<()> {
+        // Check if update size fits in u16
+        if fields.len() > u16::MAX as usize {
+            return Err(CompileError::TupleTooLarge); // Reuse error for now
+        }
+
+        // Compile the base record expression
+        self.compile_expr(record)?;
+
+        // Compile each update (field_name, new_value) pair
+        // Stack layout: [record, field_name_1, new_value_1, field_name_2, new_value_2, ...]
+        for (field_name, field_value) in fields {
+            // Push field name as a string constant
+            let field_name_idx = self.add_constant(Value::Str(field_name.clone()))?;
+            self.emit(Instruction::LoadConst(field_name_idx));
+
+            // Compile and push new field value
+            self.compile_expr(field_value)?;
+        }
+
+        // Emit UpdateRecord instruction with update count
+        let update_count = fields.len() as u16;
+        self.emit(Instruction::UpdateRecord(update_count));
 
         Ok(())
     }
