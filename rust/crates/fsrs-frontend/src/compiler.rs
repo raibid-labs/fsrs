@@ -144,7 +144,7 @@ impl Compiler {
             Expr::RecordAccess { .. } => unimplemented!("Records - Layer 3"),
             Expr::RecordUpdate { .. } => unimplemented!("Records - Layer 3"),
             Expr::Match { scrutinee, arms } => self.compile_match(scrutinee, arms),
-            Expr::VariantConstruct { .. } => unimplemented!("DU construction in Layer 3"),
+            Expr::VariantConstruct { .. } => unimplemented!("DUs - Layer 3"),
         }
     }
 
@@ -541,7 +541,9 @@ impl Compiler {
             let jump_to_next = if !is_last_arm {
                 self.emit_jump(Instruction::JumpIfFalse(0))
             } else {
-                0 // Last arm always matches if reached
+                // Pop the boolean since it's not consumed by jump
+                self.emit(Instruction::Pop);
+                0
             };
 
             // Pattern matched - now bind variables from the pattern
@@ -631,7 +633,7 @@ impl Compiler {
 
                 Ok(())
             }
-            Pattern::Variant { .. } => unimplemented!("DU patterns in Layer 3"),
+            Pattern::Variant { .. } => unimplemented!("DU patterns - Layer 3"),
         }
     }
 
@@ -662,7 +664,7 @@ impl Compiler {
                 self.emit(Instruction::Pop);
                 Ok(())
             }
-            Pattern::Variant { .. } => unimplemented!("DU patterns in Layer 3"),
+            Pattern::Variant { .. } => unimplemented!("DU pattern bindings - Layer 3"),
         }
     }
 
