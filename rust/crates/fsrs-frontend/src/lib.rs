@@ -11,6 +11,7 @@
 //! - `parser`: Recursive-descent parser for Mini-F# expressions
 //! - `compiler`: Bytecode compiler (AST → Bytecode)
 //! - `types`: Type system infrastructure for Hindley-Milner type inference
+//! - `typed_ast`: Optional typed AST with type annotations
 //!
 //! # Example
 //!
@@ -18,7 +19,7 @@
 //! use fsrs_frontend::ast::{Expr, Literal, BinOp};
 //! use fsrs_frontend::lexer::Lexer;
 //! use fsrs_frontend::parser::Parser;
-//! use fsrs_frontend::compiler::Compiler;
+//! use fsrs_frontend::compiler::{Compiler, CompileOptions};
 //!
 //! // Full pipeline: source -> tokens -> AST -> bytecode
 //! let source = "let x = 42 in x + 1";
@@ -26,7 +27,16 @@
 //! let tokens = lexer.tokenize().unwrap();
 //! let mut parser = Parser::new(tokens);
 //! let ast = parser.parse().unwrap();
+//!
+//! // Compile without type checking (backward compatible)
 //! let chunk = Compiler::compile(&ast).unwrap();
+//!
+//! // Or compile with type checking enabled
+//! let options = CompileOptions {
+//!     enable_type_checking: true,
+//!     ..Default::default()
+//! };
+//! let chunk_checked = Compiler::compile_with_options(&ast, options).unwrap();
 //!
 //! // Chunk is ready for VM execution
 //! assert!(chunk.instructions.len() > 0);
@@ -36,11 +46,13 @@ pub mod ast;
 pub mod compiler;
 pub mod lexer;
 pub mod parser;
+pub mod typed_ast;
 pub mod types;
 
 // Re-export commonly used types for convenience
-pub use ast::{BinOp, Expr, Literal};
-pub use compiler::{CompileError, Compiler};
+pub use ast::{BinOp, Expr, Literal, Pattern};
+pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
 pub use parser::{ParseError, Parser};
+pub use typed_ast::{Span, TypedExpr, TypedPattern};
 pub use types::{Substitution, Type, TypeEnv, TypeScheme, TypeVar};
