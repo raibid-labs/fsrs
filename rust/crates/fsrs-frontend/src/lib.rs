@@ -11,7 +11,7 @@
 //! - `parser`: Recursive-descent parser for Mini-F# expressions
 //! - `compiler`: Bytecode compiler (AST → Bytecode)
 //! - `types`: Type system infrastructure for Hindley-Milner type inference
-//! - `inference`: Type inference engine (Hindley-Milner algorithm)
+//! - `typed_ast`: Optional typed AST with type annotations
 //! - `span`: Source location tracking for error reporting
 //! - `error`: Error types with beautiful formatting and suggestions
 //!
@@ -21,8 +21,7 @@
 //! use fsrs_frontend::ast::{Expr, Literal, BinOp};
 //! use fsrs_frontend::lexer::Lexer;
 //! use fsrs_frontend::parser::Parser;
-//! use fsrs_frontend::compiler::Compiler;
-//! use fsrs_frontend::inference::TypeInference;
+//! use fsrs_frontend::compiler::{Compiler, CompileOptions};
 //! use fsrs_frontend::types::TypeEnv;
 //!
 //! // Full pipeline: source -> tokens -> AST -> type check -> bytecode
@@ -32,13 +31,15 @@
 //! let mut parser = Parser::new(tokens);
 //! let ast = parser.parse().unwrap();
 //!
-//! // Type check
-//! let mut infer = TypeInference::new();
-//! let env = TypeEnv::new();
-//! let ty = infer.infer_and_solve(&ast, &env).unwrap();
-//!
-//! // Compile
+//! // Compile without type checking (backward compatible)
 //! let chunk = Compiler::compile(&ast).unwrap();
+//!
+//! // Or compile with type checking enabled
+//! let options = CompileOptions {
+//!     enable_type_checking: true,
+//!     ..Default::default()
+//! };
+//! let chunk_checked = Compiler::compile_with_options(&ast, options).unwrap();
 //!
 //! // Chunk is ready for VM execution
 //! assert!(chunk.instructions.len() > 0);
@@ -47,18 +48,18 @@
 pub mod ast;
 pub mod compiler;
 pub mod error;
-pub mod inference;
 pub mod lexer;
 pub mod parser;
 pub mod span;
+pub mod typed_ast;
 pub mod types;
 
 // Re-export commonly used types for convenience
-pub use ast::{BinOp, Expr, Literal};
-pub use compiler::{CompileError, Compiler};
+pub use ast::{BinOp, Expr, Literal, Pattern};
+pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use error::{TypeError, TypeErrorKind};
-pub use inference::TypeInference;
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
 pub use parser::{ParseError, Parser};
 pub use span::Span;
+pub use typed_ast::{TypedExpr, TypedPattern};
 pub use types::{Substitution, Type, TypeEnv, TypeScheme, TypeVar};

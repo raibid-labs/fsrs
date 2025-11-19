@@ -2,7 +2,13 @@
 //!
 //! This library provides the core functionality for executing Mini-F# scripts
 //! through the complete FSRS pipeline: Lexer -> Parser -> Compiler -> VM.
+//!
+//! # Type Checking Support
+//!
+//! The library now supports optional type checking through compilation options.
+//! You can run programs with or without type checking enabled.
 
+use fsrs_frontend::compiler::CompileOptions;
 use fsrs_frontend::{Compiler, Lexer, Parser};
 use fsrs_vm::{Value, Vm};
 use std::error::Error;
@@ -78,12 +84,22 @@ impl From<fsrs_vm::VmError> for FsrsError {
     }
 }
 
-/// Execute Mini-F# source code from a string
+#[derive(Debug, Clone, Default)]
+pub struct RunOptions {
+    /// Enable type checking before compilation
+    pub enable_type_checking: bool,
+    /// Verbose output for debugging
+    pub verbose: bool,
+    /// Strict mode - treat warnings as errors
+    pub strict_mode: bool,
+}
+
+/// Execute Mini-F# source code from a string (backward compatible)
 ///
 /// # Pipeline
 /// 1. Tokenize the source using the Lexer
 /// 2. Parse tokens into an AST using the Parser
-/// 3. Compile AST to bytecode using the Compiler
+/// 3. Compile AST to bytecode using the Compiler (no type checking)
 /// 4. Execute bytecode in the VM
 ///
 /// # Example
@@ -95,25 +111,109 @@ impl From<fsrs_vm::VmError> for FsrsError {
 /// assert_eq!(result, Value::Int(43));
 /// ```
 pub fn run_source(source: &str) -> Result<Value, FsrsError> {
+    run_source_with_options(source, RunOptions::default())
+}
+
+/// Execute Mini-F# source code with type checking enabled
+///
+/// This function enables type checking before compilation, which can
+/// catch type errors early in the pipeline.
+///
+/// # Example
+/// ```
+/// use fsrs_demo::run_source_checked;
+/// use fsrs_vm::Value;
+///
+/// let result = run_source_checked("let x = 5 in x + 10").unwrap();
+/// assert_eq!(result, Value::Int(15));
+/// ```
+pub fn run_source_checked(source: &str) -> Result<Value, FsrsError> {
+    let options = RunOptions {
+        enable_type_checking: true,
+        ..Default::default()
+    };
+    run_source_with_options(source, options)
+}
+
+/// Execute Mini-F# source code with custom run options
+///
+/// Provides full control over the execution pipeline, including:
+/// - Type checking enabled/disabled
+/// - Verbose output
+/// - Strict mode
+///
+/// # Example
+/// ```
+/// use fsrs_demo::{run_source_with_options, RunOptions};
+/// use fsrs_vm::Value;
+///
+/// let options = RunOptions {
+///     enable_type_checking: true,
+///     verbose: false,
+///     strict_mode: false,
+/// };
+///
+/// let result = run_source_with_options("42 + 1", options).unwrap();
+/// assert_eq!(result, Value::Int(43));
+/// ```
+pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Value, FsrsError> {
+    if options.verbose {
+        println!("=== FSRS Execution Pipeline ===");
+        println!("Type checking: {}", options.enable_type_checking);
+        println!("Strict mode: {}", options.strict_mode);
+        println!();
+    }
+
     // Stage 1: Lexical Analysis
+    if options.verbose {
+        println!("Stage 1: Lexical Analysis");
+    }
     let mut lexer = Lexer::new(source);
     let tokens = lexer.tokenize()?;
+    if options.verbose {
+        println!("  Generated {} tokens", tokens.len());
+    }
 
     // Stage 2: Parsing
+    if options.verbose {
+        println!("Stage 2: Parsing");
+    }
     let mut parser = Parser::new(tokens);
     let ast = parser.parse()?;
+    if options.verbose {
+        println!("  Parsed AST successfully");
+    }
 
-    // Stage 3: Compilation
-    let chunk = Compiler::compile(&ast)?;
+    // Stage 3: Compilation (with optional type checking)
+    if options.verbose {
+        println!("Stage 3: Compilation");
+    }
+    let compile_options = CompileOptions {
+        enable_type_checking: options.enable_type_checking,
+        strict_mode: options.strict_mode,
+        allow_warnings: !options.strict_mode,
+    };
+    let chunk = Compiler::compile_with_options(&ast, compile_options)?;
+    if options.verbose {
+        println!("  Generated {} instructions", chunk.instructions.len());
+        println!("  Constant pool size: {}", chunk.constants.len());
+    }
 
     // Stage 4: Execution
+    if options.verbose {
+        println!("Stage 4: Execution");
+    }
     let mut vm = Vm::new();
     let result = vm.execute(chunk)?;
+    if options.verbose {
+        println!("  Result: {:?}", result);
+        println!();
+    }
 
     Ok(result)
 }
 
-/// Execute a Mini-F# script from a file
+/// Execute a Mini-F# script from a file (backward compatible)
 ///
 /// # Example
 /// ```no_run
@@ -127,7 +227,41 @@ pub fn run_file(path: &str) -> Result<Value, FsrsError> {
     run_source(&source)
 }
 
-/// Execute source with optional disassembly output
+/// Execute a Mini-F# script from a file with type checking enabled
+///
+/// # Example
+/// ```no_run
+/// use fsrs_demo::run_file_checked;
+///
+/// let result = run_file_checked("examples/hello.fsrs").unwrap();
+/// println!("Result: {}", result);
+/// ```
+pub fn run_file_checked(path: &str) -> Result<Value, FsrsError> {
+    let source = fs::read_to_string(path)?;
+    run_source_checked(&source)
+}
+
+/// Execute a Mini-F# script from a file with custom options
+///
+/// # Example
+/// ```no_run
+/// use fsrs_demo::{run_file_with_options, RunOptions};
+///
+/// let options = RunOptions {
+///     enable_type_checking: true,
+///     verbose: true,
+///     ..Default::default()
+/// };
+///
+/// let result = run_file_with_options("examples/hello.fsrs", options).unwrap();
+/// println!("Result: {}", result);
+/// ```
+pub fn run_file_with_options(path: &str, options: RunOptions) -> Result<Value, FsrsError> {
+    let source = fs::read_to_string(path)?;
+    run_source_with_options(&source, options)
+}
+
+/// Execute source with optional disassembly output (backward compatible)
 ///
 /// Useful for debugging - prints the generated bytecode before execution
 pub fn run_source_with_disasm(source: &str, name: &str) -> Result<Value, FsrsError> {
@@ -164,6 +298,10 @@ pub fn run_file_with_disasm(path: &str) -> Result<Value, FsrsError> {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Backward Compatibility Tests
+    // ========================================================================
+
     #[test]
     fn test_run_source_simple() {
         let result = run_source("42").unwrap();
@@ -192,5 +330,128 @@ mod tests {
     fn test_run_source_error_lex() {
         let result = run_source("42 @ 10");
         assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Type Checking Integration Tests
+    // ========================================================================
+
+    #[test]
+    fn test_run_source_checked_simple() {
+        let result = run_source_checked("42").unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_run_source_checked_arithmetic() {
+        let result = run_source_checked("10 + 5").unwrap();
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_run_source_checked_let_binding() {
+        let result = run_source_checked("let x = 20 in x * 2").unwrap();
+        assert_eq!(result, Value::Int(40));
+    }
+
+    #[test]
+    fn test_run_source_with_options_no_type_checking() {
+        let options = RunOptions {
+            enable_type_checking: false,
+            verbose: false,
+            strict_mode: false,
+        };
+        let result = run_source_with_options("5 + 10", options).unwrap();
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_run_source_with_options_type_checking_enabled() {
+        let options = RunOptions {
+            enable_type_checking: true,
+            verbose: false,
+            strict_mode: false,
+        };
+        let result = run_source_with_options("5 + 10", options).unwrap();
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_run_options_default() {
+        let options = RunOptions::default();
+        assert!(!options.enable_type_checking);
+        assert!(!options.verbose);
+        assert!(!options.strict_mode);
+    }
+
+    // ========================================================================
+    // Complex Expression Tests
+    // ========================================================================
+
+    #[test]
+    fn test_run_checked_complex_let() {
+        let source = "let x = 10 in let y = 20 in x + y";
+        let result = run_source_checked(source).unwrap();
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_run_checked_if_expression() {
+        let source = "if true then 42 else 0";
+        let result = run_source_checked(source).unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_run_checked_comparison() {
+        let source = "if 10 > 5 then 1 else 0";
+        let result = run_source_checked(source).unwrap();
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_run_checked_nested_let() {
+        let source = r#"
+            let x = 5 in
+            let y = 10 in
+            let z = x + y in
+            z * 2
+        "#;
+        let result = run_source_checked(source).unwrap();
+        assert_eq!(result, Value::Int(30));
+    }
+
+    // ========================================================================
+    // Error Handling Tests
+    // ========================================================================
+
+    #[test]
+    fn test_run_checked_undefined_variable() {
+        let result = run_source_checked("undefined_var");
+        assert!(result.is_err());
+        match result {
+            Err(FsrsError::Compile(_)) => (),
+            _ => panic!("Expected compile error for undefined variable"),
+        }
+    }
+
+    #[test]
+    fn test_run_checked_lex_error() {
+        let result = run_source_checked("42 @ 10");
+        assert!(result.is_err());
+        match result {
+            Err(FsrsError::Lex(_)) => (),
+            _ => panic!("Expected lex error"),
+        }
+    }
+
+    #[test]
+    fn test_run_checked_parse_error() {
+        let result = run_source_checked("let x =");
+        assert!(result.is_err());
+        match result {
+            Err(FsrsError::Parse(_)) => (),
+            _ => panic!("Expected parse error"),
+        }
     }
 }
