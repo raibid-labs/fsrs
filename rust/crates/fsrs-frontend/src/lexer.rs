@@ -64,7 +64,7 @@ pub enum Token {
     Type,
     /// with keyword (for record updates)
     With,
-    /// of keyword (for DU variant fields)
+    /// of keyword (for discriminated unions)
     Of,
 
     // Operators
@@ -155,7 +155,6 @@ impl fmt::Display for Token {
             Token::Match => write!(f, "match"),
             Token::Type => write!(f, "type"),
             Token::With => write!(f, "with"),
-            Token::Of => write!(f, "of"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -186,6 +185,7 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::Pipe => write!(f, "|"),
             Token::Underscore => write!(f, "_"),
+            Token::Of => write!(f, "of"),
             Token::Eof => write!(f, "EOF"),
         }
     }

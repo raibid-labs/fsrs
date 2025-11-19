@@ -143,8 +143,8 @@ impl Compiler {
             Expr::RecordLiteral { .. } => unimplemented!("Records - Layer 3"),
             Expr::RecordAccess { .. } => unimplemented!("Records - Layer 3"),
             Expr::RecordUpdate { .. } => unimplemented!("Records - Layer 3"),
-            Expr::VariantConstruct { .. } => unimplemented!("DUs - Layer 2"),
             Expr::Match { scrutinee, arms } => self.compile_match(scrutinee, arms),
+            Expr::VariantConstruct { .. } => unimplemented!("DUs - Layer 3"),
         }
     }
 
@@ -633,9 +633,7 @@ impl Compiler {
 
                 Ok(())
             }
-            Pattern::Variant { .. } => {
-                unimplemented!("DUs - Layer 2: Pattern::Variant compilation")
-            }
+            Pattern::Variant { .. } => unimplemented!("DU patterns - Layer 3"),
         }
     }
 
@@ -666,9 +664,7 @@ impl Compiler {
                 self.emit(Instruction::Pop);
                 Ok(())
             }
-            Pattern::Variant { .. } => {
-                unimplemented!("DUs - Layer 2: Pattern::Variant bindings")
-            }
+            Pattern::Variant { .. } => unimplemented!("DU pattern bindings - Layer 3"),
         }
     }
 
