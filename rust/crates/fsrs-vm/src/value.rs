@@ -2,6 +2,7 @@
 // Defines runtime values for the bytecode VM
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -24,6 +25,9 @@ pub enum Value {
     Nil,
     /// Mutable array with vector-based storage
     Array(Rc<RefCell<Vec<Value>>>),
+    /// Record with field name -> value mapping
+    /// Records are immutable - updates create new instances
+    Record(Rc<RefCell<HashMap<String, Value>>>),
 }
 
 impl Value {
@@ -38,6 +42,7 @@ impl Value {
             Value::Cons { .. } => "list",
             Value::Nil => "list",
             Value::Array(_) => "array",
+            Value::Record(_) => "record",
         }
     }
 
@@ -101,6 +106,7 @@ impl Value {
             Value::Cons { .. } => true,
             Value::Nil => false,
             Value::Array(arr) => !arr.borrow().is_empty(),
+            Value::Record(fields) => !fields.borrow().is_empty(),
         }
     }
 
@@ -129,11 +135,26 @@ impl Value {
         matches!(self, Value::Array(_))
     }
 
+    /// Checks if the value is a Record
+    pub fn is_record(&self) -> bool {
+        matches!(self, Value::Record(_))
+    }
+
     /// Attempts to extract an array reference from the value
     /// Returns Some(Rc<RefCell<Vec<Value>>>) if the value is Array, None otherwise
     pub fn as_array(&self) -> Option<Rc<RefCell<Vec<Value>>>> {
         if let Value::Array(arr) = self {
             Some(arr.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Attempts to extract a record reference from the value
+    /// Returns Some(Rc<RefCell<HashMap<String, Value>>>) if the value is Record, None otherwise
+    pub fn as_record(&self) -> Option<Rc<RefCell<HashMap<String, Value>>>> {
+        if let Value::Record(fields) = self {
+            Some(fields.clone())
         } else {
             None
         }
@@ -176,6 +197,63 @@ impl Value {
         match self {
             Value::Array(arr) => Ok(arr.borrow().len() as i64),
             _ => Err("Not an array".to_string()),
+        }
+    }
+
+    /// Get a field value from a record by name
+    /// Returns Err if not a record or field not found
+    pub fn record_get(&self, field: &str) -> Result<Value, String> {
+        match self {
+            Value::Record(fields) => {
+                let fields = fields.borrow();
+                fields
+                    .get(field)
+                    .cloned()
+                    .ok_or_else(|| format!("Record field not found: {}", field))
+            }
+            _ => Err("Not a record".to_string()),
+        }
+    }
+
+    /// Update a record field (immutable - creates new record)
+    /// Returns Err if not a record
+    pub fn record_update(&self, updates: HashMap<String, Value>) -> Result<Value, String> {
+        match self {
+            Value::Record(fields) => {
+                let mut new_fields = fields.borrow().clone();
+                for (key, value) in updates {
+                    new_fields.insert(key, value);
+                }
+                Ok(Value::Record(Rc::new(RefCell::new(new_fields))))
+            }
+            _ => Err("Not a record".to_string()),
+        }
+    }
+
+    /// Get the number of fields in a record
+    /// Returns Err if not a record
+    pub fn record_size(&self) -> Result<usize, String> {
+        match self {
+            Value::Record(fields) => Ok(fields.borrow().len()),
+            _ => Err("Not a record".to_string()),
+        }
+    }
+
+    /// Check if a record has a specific field
+    /// Returns false if not a record
+    pub fn record_has_field(&self, field: &str) -> bool {
+        match self {
+            Value::Record(fields) => fields.borrow().contains_key(field),
+            _ => false,
+        }
+    }
+
+    /// Get all field names from a record
+    /// Returns empty vector if not a record
+    pub fn record_field_names(&self) -> Vec<String> {
+        match self {
+            Value::Record(fields) => fields.borrow().keys().cloned().collect(),
+            _ => vec![],
         }
     }
 
@@ -263,6 +341,20 @@ impl fmt::Display for Value {
                 }
                 write!(f, "|]")
             }
+            Value::Record(fields) => {
+                // Pretty-print as { field1 = value1; field2 = value2 }
+                write!(f, "{{ ")?;
+                let fields = fields.borrow();
+                let mut sorted_fields: Vec<_> = fields.iter().collect();
+                sorted_fields.sort_by_key(|(k, _)| *k);
+                for (i, (field_name, field_value)) in sorted_fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{} = {}", field_name, field_value)?;
+                }
+                write!(f, " }}")
+            }
         }
     }
 }
@@ -335,6 +427,12 @@ mod tests {
     fn test_type_name_tuple() {
         let val = Value::Tuple(vec![Value::Int(1), Value::Int(2)]);
         assert_eq!(val.type_name(), "tuple");
+    }
+
+    #[test]
+    fn test_type_name_record() {
+        let val = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(val.type_name(), "record");
     }
 
     // ========== Extraction Tests (as_*) ==========
@@ -453,6 +551,20 @@ mod tests {
         assert!(Value::Tuple(vec![Value::Int(1), Value::Int(2)]).is_truthy());
     }
 
+    #[test]
+    fn test_is_truthy_record_empty() {
+        let val = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert!(!val.is_truthy());
+    }
+
+    #[test]
+    fn test_is_truthy_record_non_empty() {
+        let mut fields = HashMap::new();
+        fields.insert("x".to_string(), Value::Int(1));
+        let val = Value::Record(Rc::new(RefCell::new(fields)));
+        assert!(val.is_truthy());
+    }
+
     // ========== Unit Check Tests ==========
 
     #[test]
@@ -473,6 +585,299 @@ mod tests {
         assert!(!Value::Int(42).is_tuple());
         assert!(!Value::Bool(true).is_tuple());
         assert!(!Value::Unit.is_tuple());
+    }
+
+    // ========== Record Tests ==========
+
+    #[test]
+    fn test_record_empty_construction() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert!(rec.is_record());
+        assert_eq!(format!("{}", rec), "{  }");
+    }
+
+    #[test]
+    fn test_record_single_field() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("John".to_string()));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        assert!(rec.is_record());
+        assert_eq!(format!("{}", rec), "{ name = John }");
+    }
+
+    #[test]
+    fn test_record_multiple_fields() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("Alice".to_string()));
+        fields.insert("age".to_string(), Value::Int(30));
+        fields.insert("active".to_string(), Value::Bool(true));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        assert!(rec.is_record());
+        // Fields are sorted alphabetically in display
+        let display = format!("{}", rec);
+        assert!(display.contains("active = true"));
+        assert!(display.contains("age = 30"));
+        assert!(display.contains("name = Alice"));
+    }
+
+    #[test]
+    fn test_record_type_name() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(rec.type_name(), "record");
+    }
+
+    #[test]
+    fn test_record_is_record() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert!(rec.is_record());
+        assert!(!Value::Int(42).is_record());
+        assert!(!Value::Tuple(vec![]).is_record());
+    }
+
+    #[test]
+    fn test_record_as_record_success() {
+        let mut fields = HashMap::new();
+        fields.insert("x".to_string(), Value::Int(1));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        let rec_ref = rec.as_record();
+        assert!(rec_ref.is_some());
+        let rec_ref = rec_ref.unwrap();
+        assert_eq!(rec_ref.borrow().len(), 1);
+        assert_eq!(*rec_ref.borrow().get("x").unwrap(), Value::Int(1));
+    }
+
+    #[test]
+    fn test_record_as_record_failure() {
+        assert!(Value::Int(42).as_record().is_none());
+        assert!(Value::Tuple(vec![]).as_record().is_none());
+        assert!(Value::Array(Rc::new(RefCell::new(vec![])))
+            .as_record()
+            .is_none());
+    }
+
+    #[test]
+    fn test_record_get_success() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("Bob".to_string()));
+        fields.insert("age".to_string(), Value::Int(25));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+
+        assert_eq!(rec.record_get("name"), Ok(Value::Str("Bob".to_string())));
+        assert_eq!(rec.record_get("age"), Ok(Value::Int(25)));
+    }
+
+    #[test]
+    fn test_record_get_field_not_found() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert!(rec.record_get("missing").is_err());
+    }
+
+    #[test]
+    fn test_record_get_not_record() {
+        let val = Value::Int(42);
+        assert_eq!(val.record_get("x"), Err("Not a record".to_string()));
+    }
+
+    #[test]
+    fn test_record_update_success() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("Alice".to_string()));
+        fields.insert("age".to_string(), Value::Int(30));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+
+        let mut updates = HashMap::new();
+        updates.insert("age".to_string(), Value::Int(31));
+        let new_rec = rec.record_update(updates).unwrap();
+
+        // Original unchanged
+        assert_eq!(rec.record_get("age"), Ok(Value::Int(30)));
+        // New record has updated value
+        assert_eq!(new_rec.record_get("age"), Ok(Value::Int(31)));
+        assert_eq!(
+            new_rec.record_get("name"),
+            Ok(Value::Str("Alice".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_record_update_add_field() {
+        let mut fields = HashMap::new();
+        fields.insert("x".to_string(), Value::Int(1));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+
+        let mut updates = HashMap::new();
+        updates.insert("y".to_string(), Value::Int(2));
+        let new_rec = rec.record_update(updates).unwrap();
+
+        assert_eq!(new_rec.record_size(), Ok(2));
+        assert_eq!(new_rec.record_get("x"), Ok(Value::Int(1)));
+        assert_eq!(new_rec.record_get("y"), Ok(Value::Int(2)));
+    }
+
+    #[test]
+    fn test_record_update_not_record() {
+        let val = Value::Int(42);
+        let updates = HashMap::new();
+        assert_eq!(val.record_update(updates), Err("Not a record".to_string()));
+    }
+
+    #[test]
+    fn test_record_size_success() {
+        let mut fields = HashMap::new();
+        fields.insert("a".to_string(), Value::Int(1));
+        fields.insert("b".to_string(), Value::Int(2));
+        fields.insert("c".to_string(), Value::Int(3));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        assert_eq!(rec.record_size(), Ok(3));
+    }
+
+    #[test]
+    fn test_record_size_empty() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(rec.record_size(), Ok(0));
+    }
+
+    #[test]
+    fn test_record_size_not_record() {
+        let val = Value::Int(42);
+        assert_eq!(val.record_size(), Err("Not a record".to_string()));
+    }
+
+    #[test]
+    fn test_record_has_field_success() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("Test".to_string()));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        assert!(rec.record_has_field("name"));
+        assert!(!rec.record_has_field("age"));
+    }
+
+    #[test]
+    fn test_record_has_field_not_record() {
+        let val = Value::Int(42);
+        assert!(!val.record_has_field("x"));
+    }
+
+    #[test]
+    fn test_record_field_names_success() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), Value::Str("Test".to_string()));
+        fields.insert("age".to_string(), Value::Int(25));
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        let mut names = rec.record_field_names();
+        names.sort();
+        assert_eq!(names, vec!["age".to_string(), "name".to_string()]);
+    }
+
+    #[test]
+    fn test_record_field_names_empty() {
+        let rec = Value::Record(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(rec.record_field_names(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_record_field_names_not_record() {
+        let val = Value::Int(42);
+        assert_eq!(val.record_field_names(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_record_nested() {
+        let mut inner_fields = HashMap::new();
+        inner_fields.insert("x".to_string(), Value::Int(1));
+        inner_fields.insert("y".to_string(), Value::Int(2));
+        let inner = Value::Record(Rc::new(RefCell::new(inner_fields)));
+
+        let mut outer_fields = HashMap::new();
+        outer_fields.insert("point".to_string(), inner);
+        let outer = Value::Record(Rc::new(RefCell::new(outer_fields)));
+
+        let display = format!("{}", outer);
+        assert!(display.contains("point = {"));
+    }
+
+    #[test]
+    fn test_record_mixed_types() {
+        let mut fields = HashMap::new();
+        fields.insert("id".to_string(), Value::Int(42));
+        fields.insert("name".to_string(), Value::Str("test".to_string()));
+        fields.insert("active".to_string(), Value::Bool(true));
+        fields.insert(
+            "tags".to_string(),
+            Value::vec_to_cons(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
+        );
+        let rec = Value::Record(Rc::new(RefCell::new(fields)));
+        assert_eq!(rec.record_size(), Ok(4));
+    }
+
+    #[test]
+    fn test_record_equality_structural() {
+        let mut fields1 = HashMap::new();
+        fields1.insert("x".to_string(), Value::Int(1));
+        fields1.insert("y".to_string(), Value::Int(2));
+        let rec1 = Value::Record(Rc::new(RefCell::new(fields1)));
+
+        let mut fields2 = HashMap::new();
+        fields2.insert("x".to_string(), Value::Int(1));
+        fields2.insert("y".to_string(), Value::Int(2));
+        let rec2 = Value::Record(Rc::new(RefCell::new(fields2)));
+
+        assert_eq!(rec1, rec2);
+    }
+
+    #[test]
+    fn test_record_equality_reference() {
+        let fields = Rc::new(RefCell::new(HashMap::new()));
+        let rec1 = Value::Record(fields.clone());
+        let rec2 = Value::Record(fields);
+        assert_eq!(rec1, rec2);
+    }
+
+    #[test]
+    fn test_record_inequality_different_values() {
+        let mut fields1 = HashMap::new();
+        fields1.insert("x".to_string(), Value::Int(1));
+        let rec1 = Value::Record(Rc::new(RefCell::new(fields1)));
+
+        let mut fields2 = HashMap::new();
+        fields2.insert("x".to_string(), Value::Int(2));
+        let rec2 = Value::Record(Rc::new(RefCell::new(fields2)));
+
+        assert_ne!(rec1, rec2);
+    }
+
+    #[test]
+    fn test_record_inequality_different_fields() {
+        let mut fields1 = HashMap::new();
+        fields1.insert("x".to_string(), Value::Int(1));
+        let rec1 = Value::Record(Rc::new(RefCell::new(fields1)));
+
+        let mut fields2 = HashMap::new();
+        fields2.insert("y".to_string(), Value::Int(1));
+        let rec2 = Value::Record(Rc::new(RefCell::new(fields2)));
+
+        assert_ne!(rec1, rec2);
+    }
+
+    #[test]
+    fn test_record_clone() {
+        let mut fields = HashMap::new();
+        fields.insert("x".to_string(), Value::Int(1));
+        let rec1 = Value::Record(Rc::new(RefCell::new(fields)));
+        let rec2 = rec1.clone();
+        assert_eq!(rec1, rec2);
+
+        // Verify they share the same Rc (mutation affects both)
+        let mut updates = HashMap::new();
+        updates.insert("x".to_string(), Value::Int(99));
+        rec1.as_record()
+            .unwrap()
+            .borrow_mut()
+            .insert("x".to_string(), Value::Int(99));
+        assert_eq!(rec2.record_get("x"), Ok(Value::Int(99)));
     }
 
     // ========== Clone Tests ==========

@@ -147,6 +147,21 @@ pub enum Instruction {
     /// ArrayUpdate: Create new array with updated element (immutable)
     /// Pop value, pop index, pop array, push new array
     ArrayUpdate,
+
+    // ===== Record Operations =====
+    /// Create record from N field-value pairs
+    /// Stack layout: [field_name_0, value_0, field_name_1, value_1, ..., field_name_N-1, value_N-1]
+    /// Pop 2*N values (N field-value pairs), create record, push record
+    MakeRecord(u16),
+
+    /// Get record field by name
+    /// Pop field_name (String), pop record, push field value
+    GetRecordField,
+
+    /// Update record (immutable - creates new record)
+    /// Stack layout: [..., field_name_0, value_0, ..., record, N (count)]
+    /// Pop count, pop record, pop N field-value pairs, create new record, push new record
+    UpdateRecord(u16),
 }
 
 impl fmt::Display for Instruction {
@@ -211,6 +226,11 @@ impl fmt::Display for Instruction {
             Instruction::ArraySet => write!(f, "ARRAY_SET"),
             Instruction::ArrayLength => write!(f, "ARRAY_LENGTH"),
             Instruction::ArrayUpdate => write!(f, "ARRAY_UPDATE"),
+
+            // Record operations
+            Instruction::MakeRecord(n) => write!(f, "MAKE_RECORD {}", n),
+            Instruction::GetRecordField => write!(f, "GET_RECORD_FIELD"),
+            Instruction::UpdateRecord(n) => write!(f, "UPDATE_RECORD {}", n),
         }
     }
 }
@@ -346,6 +366,26 @@ mod tests {
     fn test_instruction_array_update() {
         let instr = Instruction::ArrayUpdate;
         assert_eq!(instr, Instruction::ArrayUpdate);
+    }
+
+    // ========== Record Instruction Tests ==========
+
+    #[test]
+    fn test_instruction_make_record() {
+        let instr = Instruction::MakeRecord(3);
+        assert_eq!(instr, Instruction::MakeRecord(3));
+    }
+
+    #[test]
+    fn test_instruction_get_record_field() {
+        let instr = Instruction::GetRecordField;
+        assert_eq!(instr, Instruction::GetRecordField);
+    }
+
+    #[test]
+    fn test_instruction_update_record() {
+        let instr = Instruction::UpdateRecord(2);
+        assert_eq!(instr, Instruction::UpdateRecord(2));
     }
 
     // ========== Display Formatting Tests ==========
@@ -491,6 +531,28 @@ mod tests {
         assert_eq!(format!("{}", Instruction::ArrayUpdate), "ARRAY_UPDATE");
     }
 
+    #[test]
+    fn test_display_make_record() {
+        assert_eq!(format!("{}", Instruction::MakeRecord(3)), "MAKE_RECORD 3");
+        assert_eq!(format!("{}", Instruction::MakeRecord(0)), "MAKE_RECORD 0");
+    }
+
+    #[test]
+    fn test_display_get_record_field() {
+        assert_eq!(
+            format!("{}", Instruction::GetRecordField),
+            "GET_RECORD_FIELD"
+        );
+    }
+
+    #[test]
+    fn test_display_update_record() {
+        assert_eq!(
+            format!("{}", Instruction::UpdateRecord(2)),
+            "UPDATE_RECORD 2"
+        );
+    }
+
     // ========== Clone Tests ==========
 
     #[test]
@@ -524,6 +586,13 @@ mod tests {
     #[test]
     fn test_clone_make_array() {
         let instr1 = Instruction::MakeArray(5);
+        let instr2 = instr1.clone();
+        assert_eq!(instr1, instr2);
+    }
+
+    #[test]
+    fn test_clone_make_record() {
+        let instr1 = Instruction::MakeRecord(5);
         let instr2 = instr1.clone();
         assert_eq!(instr1, instr2);
     }
@@ -578,6 +647,18 @@ mod tests {
         assert_eq!(format!("{:?}", instr), "ArrayGet");
     }
 
+    #[test]
+    fn test_debug_make_record() {
+        let instr = Instruction::MakeRecord(3);
+        assert_eq!(format!("{:?}", instr), "MakeRecord(3)");
+    }
+
+    #[test]
+    fn test_debug_get_record_field() {
+        let instr = Instruction::GetRecordField;
+        assert_eq!(format!("{:?}", instr), "GetRecordField");
+    }
+
     // ========== Equality Tests ==========
 
     #[test]
@@ -618,6 +699,15 @@ mod tests {
         assert_eq!(Instruction::ArraySet, Instruction::ArraySet);
         assert_eq!(Instruction::ArrayLength, Instruction::ArrayLength);
         assert_eq!(Instruction::ArrayUpdate, Instruction::ArrayUpdate);
+    }
+
+    #[test]
+    fn test_equality_record_instructions() {
+        assert_eq!(Instruction::MakeRecord(3), Instruction::MakeRecord(3));
+        assert_ne!(Instruction::MakeRecord(3), Instruction::MakeRecord(5));
+        assert_eq!(Instruction::GetRecordField, Instruction::GetRecordField);
+        assert_eq!(Instruction::UpdateRecord(2), Instruction::UpdateRecord(2));
+        assert_ne!(Instruction::UpdateRecord(2), Instruction::UpdateRecord(3));
     }
 
     // ========== Edge Case Tests ==========
@@ -668,5 +758,11 @@ mod tests {
     fn test_max_array_size() {
         let instr = Instruction::MakeArray(u16::MAX);
         assert_eq!(format!("{}", instr), format!("MAKE_ARRAY {}", u16::MAX));
+    }
+
+    #[test]
+    fn test_max_record_size() {
+        let instr = Instruction::MakeRecord(u16::MAX);
+        assert_eq!(format!("{}", instr), format!("MAKE_RECORD {}", u16::MAX));
     }
 }

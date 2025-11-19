@@ -15,6 +15,7 @@
 //! - Lists: `[1; 2; 3]`, `[]`
 //! - Arrays: `[|1; 2; 3|]`, `arr.[0]`, `arr.[0] <- 99`
 //! - Records: `type Person = { name: string }`, `{ name = "John" }`, `person.name`
+//! - Discriminated Unions: `type Option = Some of int | None`, `Some(42)`, `None`
 //! - Cons operator: `1 :: [2; 3]`, `x :: xs`
 //! - Unary minus: `-42`, `-x`
 //! - Proper operator precedence
@@ -23,6 +24,8 @@
 //! module     ::= declaration*
 //! declaration::= type_def | let_binding
 //! type_def   ::= "type" IDENT "=" "{" (IDENT ":" type_expr (";" IDENT ":" type_expr)* ";"?)? "}"
+//!              | "type" IDENT "=" variant ("|" variant)*
+//! variant    ::= IDENT ("of" type_expr ("*" type_expr)*)?
 //! type_expr  ::= simple_type ("->" type_expr)? | simple_type ("*" simple_type)*
 //! simple_type::= IDENT
 //! let_binding::= "let" IDENT IDENT* "=" expr
@@ -42,12 +45,13 @@
 //! unary_expr ::= "-" unary_expr | app_expr
 //! app_expr   ::= postfix_expr (postfix_expr)*
 //! postfix_expr ::= primary (".[" expr "]" ("<-" expr)?)*
-//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list | array | "Array.length" primary
+//! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list | array | "Array.length" primary | variant_construct
 //! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
 //! list       ::= "[" "]" | "[" expr (";" expr)* ";"? "]"
 //! array      ::= "[|" "]" | "[|" expr (";" expr)* ";"? "|]"
 //! record_literal ::= "{" (IDENT "=" expr (";" IDENT "=" expr)* ";"?)? "}"
 //! record_update  ::= "{" expr "with" IDENT "=" expr (";" IDENT "=" expr)* ";"? "}"
+//! variant_construct ::= IDENT ("(" expr ("," expr)* ")")?
 //! ```
 //!
 //! # Example
@@ -65,7 +69,7 @@
 //! // AST represents: let x = 42 in (x + 1)
 //! assert!(ast.is_let());
 //! ```
-use crate::ast::{BinOp, Expr, Literal, MatchArm, Pattern, TypeExpr};
+use crate::ast::{BinOp, DuTypeDef, Expr, Literal, MatchArm, Pattern, TypeExpr, VariantDef};
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
 
@@ -399,11 +403,43 @@ impl Parser {
                 self.advance();
                 Ok(Pattern::Wildcard)
             }
-            // Variable: x
+            // Variable or Variant: x or Some or Some(...)
             Token::Ident(name) => {
-                let var_name = name.clone();
+                let variant_name = name.clone();
                 self.advance();
-                Ok(Pattern::Var(var_name))
+
+                // Check if this is a variant constructor with arguments: Some(x)
+                if self.match_token(&Token::LParen) {
+                    // Parse variant arguments
+                    let mut patterns = vec![];
+
+                    // Check for empty args: Some()
+                    if !matches!(self.current_token().token, Token::RParen) {
+                        loop {
+                            patterns.push(self.parse_pattern()?);
+
+                            if self.match_token(&Token::Comma) {
+                                // Check for trailing comma before RParen
+                                if matches!(self.current_token().token, Token::RParen) {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.expect_token(Token::RParen)?;
+                    Ok(Pattern::Variant {
+                        variant: variant_name,
+                        patterns,
+                    })
+                } else {
+                    // No parens - could be simple variant or variable binding
+                    // In pattern context, uppercase identifiers are typically variants
+                    // For now, we treat as variable - type checker will disambiguate
+                    Ok(Pattern::Var(variant_name))
+                }
             }
             // Literal: 42, true, "hello"
             Token::Int(n) => {
@@ -687,6 +723,45 @@ impl Parser {
         })
     }
 
+    /// Parse variant constructor: Some(42), Left, Rectangle(10.0, 20.0)
+    fn parse_variant_construct(&mut self, variant_name: String) -> Result<Expr> {
+        // Check if this is a variant constructor with arguments: Some(42)
+        if self.match_token(&Token::LParen) {
+            // Parse variant field values
+            let mut fields = vec![];
+
+            // Check for empty args: Some()
+            if !matches!(self.current_token().token, Token::RParen) {
+                loop {
+                    fields.push(Box::new(self.parse_expr()?));
+
+                    if self.match_token(&Token::Comma) {
+                        // Check for trailing comma before RParen
+                        if matches!(self.current_token().token, Token::RParen) {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            self.expect_token(Token::RParen)?;
+            Ok(Expr::VariantConstruct {
+                type_name: String::new(), // Filled by typechecker
+                variant: variant_name,
+                fields,
+            })
+        } else {
+            // Simple variant without fields: None, Left
+            Ok(Expr::VariantConstruct {
+                type_name: String::new(),
+                variant: variant_name,
+                fields: vec![],
+            })
+        }
+    }
+
     /// Parse primary expression (literals, variables, parenthesized expressions, tuples, lists)
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.current_token();
@@ -731,7 +806,15 @@ impl Parser {
                     }
                 }
 
-                Ok(Expr::Var(val))
+                // Check if this could be a variant constructor
+                // Peek ahead to see if there's a '(' which would indicate variant construction
+                if matches!(self.current_token().token, Token::LParen) {
+                    // This looks like a variant constructor call
+                    self.parse_variant_construct(val)
+                } else {
+                    // Just a regular variable
+                    Ok(Expr::Var(val))
+                }
             }
             Token::LParen => {
                 self.advance(); // consume '('
@@ -896,6 +979,68 @@ impl Parser {
                     pos: tok.pos,
                 })
             }
+        }
+    }
+
+    // ========================================================================
+    // Discriminated Union Parsing (Issue #29 Layer 2)
+    // ========================================================================
+
+    /// Parse discriminated union type definition
+    /// type Option = Some of int | None
+    /// type Shape = Circle of float | Rectangle of float * float
+    #[allow(dead_code)]
+    pub fn parse_du_type_def(&mut self) -> Result<DuTypeDef> {
+        // Expect 'type'
+        self.expect_token(Token::Type)?;
+
+        // Parse type name
+        let name = self.expect_ident()?;
+
+        // Expect '='
+        self.expect_token(Token::Eq)?;
+
+        // Parse variants separated by |
+        let mut variants = vec![];
+
+        // First variant (no leading |)
+        variants.push(self.parse_variant_def()?);
+
+        // Additional variants (each starts with |)
+        while self.match_token(&Token::Pipe) {
+            variants.push(self.parse_variant_def()?);
+        }
+
+        Ok(DuTypeDef { name, variants })
+    }
+
+    /// Parse a single variant definition
+    /// Some of int
+    /// None
+    /// Rectangle of float * float
+    #[allow(dead_code)]
+    fn parse_variant_def(&mut self) -> Result<VariantDef> {
+        // Parse variant name
+        let name = self.expect_ident()?;
+
+        // Check for 'of' keyword (variant with fields)
+        if self.match_token(&Token::Of) {
+            // Parse field types separated by *
+            let mut fields = vec![];
+
+            // First field type
+            fields.push(self.parse_type_primary()?);
+
+            // Additional field types (each starts with *)
+            while self.peek() == Some(&Token::Star) {
+                self.advance(); // consume *
+                fields.push(self.parse_type_primary()?);
+            }
+
+            Ok(VariantDef::new(name, fields))
+        } else {
+            // Simple variant with no fields
+            Ok(VariantDef::new_simple(name))
         }
     }
 
