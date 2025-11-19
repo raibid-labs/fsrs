@@ -144,7 +144,11 @@ impl Compiler {
             Expr::RecordAccess { record, field } => self.compile_record_access(record, field),
             Expr::RecordUpdate { record, fields } => self.compile_record_update(record, fields),
             Expr::Match { scrutinee, arms } => self.compile_match(scrutinee, arms),
-            Expr::VariantConstruct { .. } => unimplemented!("DUs - Layer 3"),
+            Expr::VariantConstruct {
+                type_name,
+                variant,
+                fields,
+            } => self.compile_variant_construct(type_name, variant, fields),
         }
     }
 
@@ -633,7 +637,15 @@ impl Compiler {
 
                 Ok(())
             }
-            Pattern::Variant { .. } => unimplemented!("DU patterns - Layer 3"),
+            Pattern::Variant {
+                variant,
+                patterns: _,
+            } => {
+                // Check variant tag
+                self.emit(Instruction::Dup);
+                self.emit(Instruction::CheckVariantTag(variant.clone()));
+                Ok(())
+            }
         }
     }
 
@@ -664,11 +676,57 @@ impl Compiler {
                 self.emit(Instruction::Pop);
                 Ok(())
             }
-            Pattern::Variant { .. } => unimplemented!("DU pattern bindings - Layer 3"),
+            Pattern::Variant {
+                variant: _,
+                patterns,
+            } => {
+                // Extract each field from the variant and bind recursively
+                for (i, pat) in patterns.iter().enumerate() {
+                    self.emit(Instruction::Dup); // Dup the variant
+                    self.emit(Instruction::GetVariantField(i as u8)); // Get field
+                    self.compile_pattern_bindings(pat)?; // Bind it
+                }
+                // Pop the original variant
+                self.emit(Instruction::Pop);
+                Ok(())
+            }
         }
     }
 
     /// Emit an instruction
+    /// Compile a variant construction expression
+    /// Stack effect: pushes a variant value
+    fn compile_variant_construct(
+        &mut self,
+        type_name: &str,
+        variant_name: &str,
+        fields: &[Box<Expr>],
+    ) -> CompileResult<()> {
+        // Check if field count fits in u16
+        if fields.len() > u16::MAX as usize {
+            return Err(CompileError::TupleTooLarge); // Reuse error for now
+        }
+
+        // Push type name as a string constant
+        let type_name_idx = self.add_constant(Value::Str(type_name.to_string()))?;
+        self.emit(Instruction::LoadConst(type_name_idx));
+
+        // Push variant name as a string constant
+        let variant_name_idx = self.add_constant(Value::Str(variant_name.to_string()))?;
+        self.emit(Instruction::LoadConst(variant_name_idx));
+
+        // Compile each field expression
+        for field in fields {
+            self.compile_expr(field)?;
+        }
+
+        // Emit MakeVariant instruction with field count
+        let field_count = fields.len() as u16;
+        self.emit(Instruction::MakeVariant(field_count));
+
+        Ok(())
+    }
+
     fn emit(&mut self, instruction: Instruction) {
         self.chunk.emit(instruction);
     }
