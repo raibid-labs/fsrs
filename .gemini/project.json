@@ -1,0 +1,4 @@
+{
+  "extends": "github:raibid-labs/workspace/.gemini/base-project.json",
+  "name": "fsrs"
+}
