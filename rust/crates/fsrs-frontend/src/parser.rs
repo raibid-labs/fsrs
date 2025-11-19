@@ -14,7 +14,7 @@
 //! - Tuples: `(1, 2)`, `(x, y, z)`, `(42,)` (single-element)
 //! - Lists: `[1; 2; 3]`, `[]`
 //! - Arrays: `[|1; 2; 3|]`, `arr.[0]`, `arr.[0] <- 99`
-//! - Records: `type Person = { name: string }`, `{ name = "John" }`, `person.name`
+//! - Records: `type Person = { name: string }`, `{ name = "John" }`, `person.name`, `{ person with age = 31 }`
 //! - Discriminated Unions: `type Option = Some of int | None`, `Some(42)`, `None`
 //! - Cons operator: `1 :: [2; 3]`, `x :: xs`
 //! - Unary minus: `-42`, `-x`
@@ -681,27 +681,93 @@ impl Parser {
         Ok(expr)
     }
 
-    /// Parse record literal: { name = "John"; age = 30 }
+    /// Parse record literal or record update: { name = "John" } or { person with age = 31 }
     fn parse_record_literal(&mut self) -> Result<Expr> {
         self.expect_token(Token::LBrace)?;
+
+        // Empty record: {}
+        if self.match_token(&Token::RBrace) {
+            return Ok(Expr::RecordLiteral {
+                type_name: String::new(),
+                fields: vec![],
+            });
+        }
+
+        // Check if this is a record update: { record with field = value }
+        // We need to lookahead to distinguish between:
+        // - { person with age = 31 }  (record update)
+        // - { name = "John" }          (record literal)
+
+        // Save position to potentially backtrack
+        let save_pos = self.pos;
+
+        // Try to parse first identifier
+        if let Ok(_first_ident) = self.expect_ident() {
+            // Check if followed by 'with' keyword
+            if self.match_token(&Token::With) {
+                // This is a record update: { record with ... }
+                // The first_ident is actually an expression (variable), so restore and parse it properly
+                self.pos = save_pos;
+                let record = Box::new(self.parse_expr()?);
+
+                // Expect 'with' keyword
+                self.expect_token(Token::With)?;
+
+                // Parse update fields
+                let mut fields = vec![];
+
+                loop {
+                    let field_name = self.expect_ident()?;
+                    self.expect_token(Token::Eq)?;
+                    let value = self.parse_expr()?;
+                    fields.push((field_name, Box::new(value)));
+
+                    // Check for semicolon or closing brace
+                    if self.match_token(&Token::Semicolon) {
+                        // Check for trailing semicolon before }
+                        if matches!(self.current_token().token, Token::RBrace) {
+                            break;
+                        }
+                    } else if matches!(self.current_token().token, Token::RBrace) {
+                        // No semicolon, but closing brace - this is ok for last field
+                        break;
+                    } else {
+                        // No semicolon and no closing brace - error
+                        let tok = self.current_token();
+                        return Err(ParseError::UnexpectedToken {
+                            expected: "';' or '}'".to_string(),
+                            found: tok.token.clone(),
+                            pos: tok.pos,
+                        });
+                    }
+                }
+
+                self.expect_token(Token::RBrace)?;
+
+                return Ok(Expr::RecordUpdate { record, fields });
+            }
+        }
+
+        // If we get here, it's a record literal
+        // Restore position and parse as record literal
+        self.pos = save_pos;
 
         let mut fields = vec![];
 
         // Parse fields
-        while self.peek() != Some(&Token::RBrace) {
+        loop {
             let field_name = self.expect_ident()?;
             self.expect_token(Token::Eq)?;
             let value = self.parse_expr()?;
             fields.push((field_name, Box::new(value)));
 
             // Check for semicolon or closing brace
-            if self.peek() == Some(&Token::Semicolon) {
-                self.advance(); // consume semicolon
-                                // Check for trailing semicolon before }
-                if self.peek() == Some(&Token::RBrace) {
+            if self.match_token(&Token::Semicolon) {
+                // Check for trailing semicolon before }
+                if matches!(self.current_token().token, Token::RBrace) {
                     break;
                 }
-            } else if self.peek() == Some(&Token::RBrace) {
+            } else if matches!(self.current_token().token, Token::RBrace) {
                 // No semicolon, but closing brace - this is ok for last field
                 break;
             } else {
@@ -915,7 +981,7 @@ impl Parser {
                 Ok(Expr::Array(elements))
             }
             Token::LBrace => {
-                // Record literal: { name = "John"; age = 30 }
+                // Record literal or record update: { name = "John" } or { person with age = 31 }
                 self.parse_record_literal()
             }
             _ => Err(ParseError::UnexpectedToken {
@@ -2122,5 +2188,43 @@ mod tests {
         assert!(arms[0].pattern.is_tuple());
         let tuple_patterns = arms[0].pattern.as_tuple().unwrap();
         assert_eq!(tuple_patterns.len(), 1);
+    }
+
+    // ========================================================================
+    // Record Update Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_record_update_simple() {
+        let source = "{ person with age = 31 }";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_record_update());
+        if let Expr::RecordUpdate { record, fields } = expr {
+            assert!(matches!(*record, Expr::Var(_)));
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].0, "age");
+        }
+    }
+
+    #[test]
+    fn test_parse_record_update_multiple_fields() {
+        let source = "{ person with age = 31; city = \"NYC\" }";
+        let expr = parse(source).unwrap();
+        assert!(expr.is_record_update());
+        if let Expr::RecordUpdate { fields, .. } = expr {
+            assert_eq!(fields.len(), 2);
+        }
+    }
+
+    #[test]
+    fn test_parse_record_literal_vs_update() {
+        // Test that we can distinguish record literal from update
+        let literal = parse("{ name = \"John\"; age = 30 }").unwrap();
+        assert!(literal.is_record_literal());
+        assert!(!literal.is_record_update());
+
+        let update = parse("{ person with age = 31 }").unwrap();
+        assert!(update.is_record_update());
+        assert!(!update.is_record_literal());
     }
 }

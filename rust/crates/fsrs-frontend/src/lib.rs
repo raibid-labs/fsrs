@@ -10,6 +10,7 @@
 //! - `lexer`: Lexer/Tokenizer for Mini-F# source code
 //! - `parser`: Recursive-descent parser for Mini-F# expressions
 //! - `compiler`: Bytecode compiler (AST → Bytecode)
+//! - `types`: Type system infrastructure for Hindley-Milner type inference
 //!
 //! # Example
 //!
@@ -35,9 +36,11 @@ pub mod ast;
 pub mod compiler;
 pub mod lexer;
 pub mod parser;
+pub mod types;
 
 // Re-export commonly used types for convenience
 pub use ast::{BinOp, Expr, Literal};
 pub use compiler::{CompileError, Compiler};
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
 pub use parser::{ParseError, Parser};
+pub use types::{Substitution, Type, TypeEnv, TypeScheme, TypeVar};
