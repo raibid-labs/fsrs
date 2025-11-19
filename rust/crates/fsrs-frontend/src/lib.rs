@@ -11,6 +11,7 @@
 //! - `parser`: Recursive-descent parser for Mini-F# expressions
 //! - `compiler`: Bytecode compiler (AST → Bytecode)
 //! - `types`: Type system infrastructure for Hindley-Milner type inference
+//! - `inference`: Type inference engine (Hindley-Milner algorithm)
 //! - `typed_ast`: Optional typed AST with type annotations
 //! - `span`: Source location tracking for error reporting
 //! - `error`: Error types with beautiful formatting and suggestions
@@ -22,6 +23,7 @@
 //! use fsrs_frontend::lexer::Lexer;
 //! use fsrs_frontend::parser::Parser;
 //! use fsrs_frontend::compiler::{Compiler, CompileOptions};
+//! use fsrs_frontend::inference::TypeInference;
 //! use fsrs_frontend::types::TypeEnv;
 //!
 //! // Full pipeline: source -> tokens -> AST -> type check -> bytecode
@@ -30,6 +32,11 @@
 //! let tokens = lexer.tokenize().unwrap();
 //! let mut parser = Parser::new(tokens);
 //! let ast = parser.parse().unwrap();
+//!
+//! // Type check
+//! let mut infer = TypeInference::new();
+//! let env = TypeEnv::new();
+//! let ty = infer.infer_and_solve(&ast, &env).unwrap();
 //!
 //! // Compile without type checking (backward compatible)
 //! let chunk = Compiler::compile(&ast).unwrap();
@@ -48,6 +55,7 @@
 pub mod ast;
 pub mod compiler;
 pub mod error;
+pub mod inference;
 pub mod lexer;
 pub mod parser;
 pub mod span;
@@ -58,6 +66,7 @@ pub mod types;
 pub use ast::{BinOp, Expr, Literal, Pattern};
 pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use error::{TypeError, TypeErrorKind};
+pub use inference::TypeInference;
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
 pub use parser::{ParseError, Parser};
 pub use span::Span;
