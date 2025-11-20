@@ -1,0 +1,123 @@
+// FSRS Standard Library Demonstration
+// This file shows how to use the built-in List, String, and Option modules
+
+// ========== List Operations ==========
+
+// Create a simple list
+let numbers = [1; 2; 3; 4; 5]
+
+// Get the length of a list
+let count = List.length numbers  // 5
+
+// Access first element
+let first = List.head numbers    // 1
+
+// Get remaining elements
+let rest = List.tail numbers     // [2; 3; 4; 5]
+
+// Reverse a list
+let backwards = List.reverse numbers  // [5; 4; 3; 2; 1]
+
+// Check if list is empty
+let isEmpty = List.isEmpty []    // true
+let notEmpty = List.isEmpty numbers  // false
+
+// Append two lists
+let moreNumbers = [6; 7; 8]
+let combined = List.append numbers moreNumbers  // [1; 2; 3; 4; 5; 6; 7; 8]
+
+// Concatenate a list of lists
+let listOfLists = [[1; 2]; [3; 4]; [5]]
+let flattened = List.concat listOfLists  // [1; 2; 3; 4; 5]
+
+
+// ========== String Operations ==========
+
+// String length (character count, not bytes)
+let message = "Hello, World!"
+let msgLength = String.length message  // 13
+
+// Trim whitespace
+let messy = "  hello  "
+let clean = String.trim messy  // "hello"
+
+// Case conversion
+let upper = String.toUpper "hello"  // "HELLO"
+let lower = String.toLower "WORLD"  // "world"
+
+// Split strings into lists
+let sentence = "hello world foo bar"
+let words = String.split " " sentence  // ["hello"; "world"; "foo"; "bar"]
+
+// Concatenate string lists
+let wordList = ["hello"; " "; "world"]
+let joined = String.concat wordList  // "hello world"
+
+// String predicates
+let text = "hello world"
+let hasWorld = String.contains "world" text     // true
+let startsHello = String.startsWith "hello" text  // true
+let endsWorld = String.endsWith "world" text    // true
+
+
+// ========== Option Operations ==========
+
+// Define Option type
+type Option<'a> =
+    | Some of 'a
+    | None
+
+// Create option values
+let someValue = Some 42
+let noValue = None
+
+// Check option variants
+let isSome = Option.isSome someValue   // true
+let isNone = Option.isNone noValue     // true
+
+// Get value with default
+let value = Option.defaultValue 0 someValue  // 42
+let defaulted = Option.defaultValue 0 noValue  // 0
+
+
+// ========== Real-World Examples ==========
+
+// Example 1: Process a CSV-like string
+let csvData = "name,age,city"
+let fields = String.split "," csvData
+let fieldCount = List.length fields  // 3
+let upperFields = List.map String.toUpper fields  // Not implemented yet
+
+// Example 2: Safe string processing with options
+let maybeName = Some "Alice"
+let defaultName = Option.defaultValue "Unknown" maybeName
+let greeting = String.concat ["Hello, "; defaultName; "!"]
+
+// Example 3: List transformations
+let data = [1; 2; 3; 4; 5]
+let reversed = List.reverse data
+let doubled = List.map (fun x -> x * 2) data  // Not implemented yet
+
+// Example 4: String cleaning pipeline
+let rawInput = "  HELLO WORLD  "
+let cleaned = rawInput
+    |> String.trim
+    |> String.toLower  // "hello world"
+
+// Example 5: Combining list and string operations
+let paths = ["/home"; "/user"; "/docs"]
+let fullPath = String.concat (List.append paths ["/file.txt"])
+// Result: "/home/user/docs/file.txt"
+
+
+// ========== Notes ==========
+
+// The following higher-order functions are referenced but not yet implemented:
+// - List.map : ('a -> 'b) -> 'a list -> 'b list
+// - List.filter : ('a -> bool) -> 'a list -> 'a list
+// - List.fold : ('a -> 'b -> 'a) -> 'a -> 'b list -> 'a
+// - Option.map : ('a -> 'b) -> 'a option -> 'b option
+// - Option.bind : ('a -> 'b option) -> 'a option -> 'b option
+
+// These will be added in future iterations when closures and
+// first-class functions are fully integrated with the VM.

@@ -18,6 +18,7 @@
 //! - Discriminated Unions: `type Option = Some of int | None`, `Some(42)`, `None`
 //! - Cons operator: `1 :: [2; 3]`, `x :: xs`
 //! - Unary minus: `-42`, `-x`
+//! - Modules: `module Math = ...`, `open Math`
 //! - Proper operator precedence
 //! - Error recovery and reporting
 //!
@@ -32,6 +33,10 @@
 //! # Grammar (Simplified)
 //!
 //! ```text
+//! program    ::= import* module_def* expr?
+//! import     ::= "open" IDENT ("." IDENT)*
+//! module_def ::= "module" IDENT "=" module_item*
+//! module_item::= let_binding | type_def | module_def
 //! expr       ::= let_expr | if_expr | lambda_expr | or_expr
 //! let_expr   ::= "let" IDENT IDENT* "=" expr "in" expr
 //! if_expr    ::= "if" expr "then" expr "else" expr
@@ -69,7 +74,10 @@
 //! // AST represents: let x = 42 in (x + 1)
 //! assert!(ast.is_let());
 //! ```
-use crate::ast::{BinOp, DuTypeDef, Expr, Literal, MatchArm, Pattern, TypeExpr, VariantDef};
+use crate::ast::{
+    BinOp, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern, Program,
+    TypeDefinition, TypeExpr, VariantDef,
+};
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
 
@@ -135,7 +143,7 @@ impl Parser {
     /// Parse the token stream into an expression AST.
     ///
     /// This is the main entry point for parsing. It delegates to `parse_expr` for
-    /// expression parsing.
+    /// expression parsing. For backward compatibility with existing code.
     pub fn parse(&mut self) -> Result<Expr> {
         let expr = self.parse_expr()?;
 
@@ -150,6 +158,130 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    /// Parse a complete program with modules, imports, and main expression.
+    ///
+    /// This is the new entry point for parsing programs with module system support.
+    pub fn parse_program(&mut self) -> Result<Program> {
+        let mut imports = vec![];
+        let mut modules = vec![];
+
+        // Parse imports first
+        while self.peek() == Some(&Token::Open) {
+            imports.push(self.parse_import()?);
+        }
+
+        // Parse module definitions
+        while self.peek() == Some(&Token::Module) {
+            modules.push(self.parse_module()?);
+        }
+
+        // Parse main expression (if any)
+        let main_expr = if !self.is_at_end() {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        Ok(Program {
+            modules,
+            imports,
+            main_expr,
+        })
+    }
+
+    /// Parse a module definition: module Math = <items>
+    fn parse_module(&mut self) -> Result<ModuleDef> {
+        self.expect_token(Token::Module)?;
+        let name = self.expect_ident()?;
+        self.expect_token(Token::Eq)?;
+
+        let items = self.parse_module_items()?;
+
+        Ok(ModuleDef { name, items })
+    }
+
+    /// Parse module items (let bindings, types, nested modules)
+    fn parse_module_items(&mut self) -> Result<Vec<ModuleItem>> {
+        let mut items = vec![];
+
+        // Continue until we hit EOF or another module keyword
+        while !self.is_at_end()
+            && self.peek() != Some(&Token::Module)
+            && self.peek() != Some(&Token::Open)
+        {
+            let tok = &self.current_token().token;
+
+            match tok {
+                Token::Let => {
+                    let (name, expr) = self.parse_let_binding_parts()?;
+                    items.push(ModuleItem::Let(name, expr));
+                }
+                Token::Type => {
+                    let type_def = self.parse_type_def()?;
+                    items.push(ModuleItem::TypeDef(type_def));
+                }
+                _ => break,
+            }
+        }
+
+        Ok(items)
+    }
+
+    /// Helper: parse let binding and return (name, expr) without the 'in' part
+    fn parse_let_binding_parts(&mut self) -> Result<(String, Expr)> {
+        self.expect_token(Token::Let)?;
+
+        // Check for "rec" keyword - skip for now in modules
+        let _is_rec = self.match_token(&Token::Rec);
+
+        let name = self.expect_ident()?;
+
+        // Handle parameters: let f x y = ...
+        let mut params = vec![];
+        while self.peek_is_identifier() && !self.peek_is(&Token::Eq) {
+            params.push(self.expect_ident()?);
+        }
+
+        self.expect_token(Token::Eq)?;
+        let mut body = self.parse_expr()?;
+
+        // Wrap in nested lambdas for curried functions
+        for param in params.into_iter().rev() {
+            body = Expr::Lambda {
+                param,
+                body: Box::new(body),
+            };
+        }
+
+        Ok((name, body))
+    }
+
+    /// Parse an import statement: open Math or open Math.Geometry
+    fn parse_import(&mut self) -> Result<Import> {
+        self.expect_token(Token::Open)?;
+
+        let mut path = vec![self.expect_ident()?];
+
+        // Handle qualified names: open Math.Geometry
+        while self.check(&Token::Dot) {
+            self.advance();
+            path.push(self.expect_ident()?);
+        }
+
+        Ok(Import {
+            module_path: path,
+            is_qualified: false,
+        })
+    }
+
+    /// Parse a type definition (record or discriminated union)
+    fn parse_type_def(&mut self) -> Result<TypeDefinition> {
+        // For now, delegate to existing parse_du_type_def
+        // In the future, this should also handle records
+        let du_def = self.parse_du_type_def()?;
+        Ok(TypeDefinition::Du(du_def))
     }
 
     // ========================================================================
@@ -1228,6 +1360,24 @@ impl Parser {
         }
     }
 
+    /// Check if a token matches without consuming
+    fn check(&self, expected: &Token) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        &self.current_token().token == expected
+    }
+
+    /// Check if current token is an identifier
+    fn peek_is_identifier(&self) -> bool {
+        matches!(self.peek(), Some(Token::Ident(_)))
+    }
+
+    /// Check if current token matches a specific token
+    fn peek_is(&self, token: &Token) -> bool {
+        self.peek() == Some(token)
+    }
+
     /// Expect a specific token, returning error if not found
     fn expect_token(&mut self, expected: Token) -> Result<()> {
         if self.is_at_end() {
@@ -1319,6 +1469,149 @@ mod tests {
         let tokens = lexer.tokenize().unwrap();
         let mut parser = Parser::new(tokens);
         parser.parse()
+    }
+
+    // Helper function to parse a program
+    fn parse_program(input: &str) -> Result<Program> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        parser.parse_program()
+    }
+
+    // ========================================================================
+    // Module System Tests (Phase 3 Cycle 2)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_simple_module() {
+        let source = r#"
+            module Math =
+                let add x y = x + y
+                let multiply x y = x * y
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 1);
+        assert_eq!(program.modules[0].name, "Math");
+        assert_eq!(program.modules[0].items.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_module_with_single_binding() {
+        let source = "module Test = let x = 42";
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 1);
+        assert_eq!(program.modules[0].name, "Test");
+        assert_eq!(program.modules[0].items.len(), 1);
+
+        match &program.modules[0].items[0] {
+            ModuleItem::Let(name, _) => assert_eq!(name, "x"),
+            _ => panic!("Expected Let item"),
+        }
+    }
+
+    #[test]
+    fn test_parse_import_simple() {
+        let source = r#"
+            open Math
+
+            add 5 10
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.imports.len(), 1);
+        assert_eq!(program.imports[0].module_path, vec!["Math"]);
+        assert!(program.main_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_import_qualified() {
+        let source = "open Math.Geometry";
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.imports.len(), 1);
+        assert_eq!(program.imports[0].module_path, vec!["Math", "Geometry"]);
+    }
+
+    #[test]
+    fn test_parse_module_with_function() {
+        let source = r#"
+            module Utils =
+                let identity x = x
+                let const x y = x
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 1);
+        assert_eq!(program.modules[0].items.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_complete_program() {
+        let source = r#"
+            module Math =
+                let add x y = x + y
+                let multiply x y = x * y
+
+            module Utils =
+                let identity x = x
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 2);
+        assert_eq!(program.imports.len(), 0);
+        assert!(program.main_expr.is_none());
+    }
+
+    #[test]
+    fn test_parse_program_modules_only() {
+        let source = r#"
+            module A =
+                let x = 1
+
+            module B =
+                let y = 2
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 2);
+        assert_eq!(program.imports.len(), 0);
+        assert!(program.main_expr.is_none());
+    }
+
+    #[test]
+    fn test_parse_program_imports_and_expr() {
+        let source = r#"
+            open Math
+            open Utils
+
+            add 1 2
+        "#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.imports.len(), 2);
+        assert!(program.main_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_empty_module() {
+        let source = "module Empty =";
+
+        // This should parse successfully with an empty module
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.modules.len(), 1);
+        assert_eq!(program.modules[0].items.len(), 0);
     }
 
     // ========================================================================
