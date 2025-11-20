@@ -1,0 +1,50 @@
+// Main program
+// Demonstrates: imports, cross-module usage, stdlib integration
+
+// Import modules
+open Math
+open StringUtils
+open Config
+
+// Demonstrate math operations
+let demo_math =
+    let x = 10
+    let y = 5
+    let sum = add x y
+    let product = multiply x y
+    let squared = square x
+    sum + product + squared
+
+// Demonstrate string operations
+let demo_strings =
+    let words = ["Hello"; "World"; "from"; "FSRS"]
+    let joined = join space words
+    let wrapped = wrap_brackets joined
+    wrapped
+
+// Demonstrate configuration
+let demo_config =
+    let version_str = get_version_string
+    let width = Display.width
+    let height = Display.height
+    let valid_port = validate_port 8080
+
+    if valid_port then width + height
+    else 0
+
+// Demonstrate list operations
+let demo_lists =
+    let numbers = [1; 2; 3; 4; 5]
+    let length = List.length numbers
+    let doubled = List.map (fun x -> multiply 2 x) numbers
+    let sum = List.fold (fun acc x -> add acc x) 0 doubled
+    sum
+
+// Main entry point
+let main =
+    let math_result = demo_math
+    let config_result = demo_config
+    let list_result = demo_lists
+
+    // Return sum of all results
+    add (add math_result config_result) list_result

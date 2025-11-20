@@ -14,3 +14,4 @@ path = "src/lib.rs"
 [dependencies]
 fsrs-frontend = { path = "../fsrs-frontend" }
 fsrs-vm = { path = "../fsrs-vm" }
+ctrlc = "3.4"

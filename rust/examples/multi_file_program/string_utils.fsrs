@@ -1,0 +1,28 @@
+// String utilities module
+// Demonstrates: string operations, integration with stdlib
+
+module StringUtils =
+    // String constants
+    let empty = ""
+    let space = " "
+    let newline = "\n"
+
+    // String predicates
+    let is_empty s = String.length s == 0
+
+    // Formatting helpers
+    let wrap_parens s = String.concat ["("; s; ")"]
+    let wrap_brackets s = String.concat ["["; s; "]"]
+    let wrap_braces s = String.concat ["{"; s; "}"]
+
+    // Quote a string
+    let quote s = String.concat ["\""; s; "\""]
+
+    // Join strings with separator
+    let join separator strings = String.concat strings
+
+    // Repeat string n times
+    let repeat n s =
+        if n <= 0 then ""
+        else if n == 1 then s
+        else String.concat [s; repeat (n - 1) s]

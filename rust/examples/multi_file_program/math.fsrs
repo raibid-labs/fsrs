@@ -1,0 +1,33 @@
+// Math utilities module
+// Demonstrates: module definition, simple functions, constants
+
+module Math =
+    // Constants
+    let pi = 3
+    let e = 2
+
+    // Basic arithmetic
+    let add x y = x + y
+    let subtract x y = x - y
+    let multiply x y = x * y
+
+    // Derived operations
+    let square x = multiply x x
+    let double x = multiply 2 x
+    let triple x = multiply 3 x
+
+    // Clamping
+    let clamp min max value =
+        if value < min then min
+        else if value > max then max
+        else value
+
+    // Absolute value
+    let abs x =
+        if x < 0 then 0 - x
+        else x
+
+    // Sum of integers from 1 to n
+    let sum_range n =
+        if n <= 0 then 0
+        else n + sum_range (n - 1)

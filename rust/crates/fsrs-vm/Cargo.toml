@@ -7,6 +7,9 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
+notify = "6.1"
+crossbeam-channel = "0.5"
 
 [dev-dependencies]
 criterion = "0.5"
+tempfile = "3.8"

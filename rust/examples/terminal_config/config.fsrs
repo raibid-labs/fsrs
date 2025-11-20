@@ -1,0 +1,133 @@
+// Terminal Configuration Script for FSRS
+// Production example demonstrating advanced host interop patterns
+
+// ============================================================================
+// Module: TabManager
+// Handles tab formatting, styling, and lifecycle
+// ============================================================================
+
+module TabManager =
+
+    // Format tab title with icon based on activity status
+    let formatTitle tab =
+        let icon = if tab.isActive then "▶" else " "
+        let title = tab.title
+        Host.concat icon " " title
+
+    // Get color for tab based on index (cycling palette)
+    let getTabColor index =
+        let colors = ["#FF6B6B"; "#4ECDC4"; "#45B7D1"; "#FFA07A"]
+        let colorIndex = index % 4
+        // Return color at index (simplified - full version would use List.nth)
+        "#45B7D1"
+
+    // Create a new tab with formatted title
+    let createFormattedTab baseName index =
+        let formatted = Host.concat baseName " " (String.ofInt index)
+        Host.createTab formatted
+
+    // Tab lifecycle handler
+    let onTabClose tabId =
+        Host.log "Closing tab"
+        Host.closeTab tabId
+
+// ============================================================================
+// Module: KeyBindings
+// Keyboard shortcut definitions and handlers
+// ============================================================================
+
+module KeyBindings =
+
+    // Create new tab handler
+    let onCtrlT () =
+        Host.log "Ctrl+T pressed - creating new tab"
+        Host.createTab "New Tab"
+
+    // Close current tab handler
+    let onCtrlW () =
+        Host.log "Ctrl+W pressed - closing current tab"
+        Host.closeCurrentTab
+
+    // Navigate to next tab handler
+    let onCtrlTab () =
+        Host.log "Ctrl+Tab pressed - next tab"
+        Host.nextTab
+
+    // Navigate to previous tab handler
+    let onCtrlShiftTab () =
+        Host.log "Ctrl+Shift+Tab pressed - previous tab"
+        Host.prevTab
+
+    // Switch to specific tab by ID
+    let switchToTab tabId =
+        Host.log "Switching to specific tab"
+        Host.switchToTab tabId
+
+// ============================================================================
+// Module: ColorScheme
+// Terminal color palette configuration
+// ============================================================================
+
+module ColorScheme =
+
+    // Dark theme palette
+    let darkTheme = {
+        foreground = "#d4d4d4";
+        background = "#1e1e1e";
+        cursorBg = "#aeafad";
+        cursorBorder = "#aeafad";
+        selectionFg = "#1e1e1e";
+        selectionBg = "#d7ba7d"
+    }
+
+    // Get theme-appropriate tab color
+    let getThemeColor isDark =
+        if isDark then "#2d2d2d" else "#f0f0f0"
+
+// ============================================================================
+// Main Configuration Export
+// This is what the host application will read
+// ============================================================================
+
+// Create initial workspace tabs
+let editorTab = Host.createTab "Editor"
+let terminalTab = Host.createTab "Terminal"
+let logsTab = Host.createTab "Logs"
+
+// Demonstrate tab operations
+Host.log "Initial tabs created"
+Host.log editorTab
+Host.log terminalTab
+Host.log logsTab
+
+// Configure active tab
+Host.switchToTab editorTab
+
+// Export configuration record
+let config = {
+    // Tab formatting function
+    formatTabTitle = TabManager.formatTitle;
+
+    // Color scheme
+    colorScheme = ColorScheme.darkTheme;
+
+    // Key bindings map
+    keyBindings = [
+        ("Ctrl+T", KeyBindings.onCtrlT);
+        ("Ctrl+W", KeyBindings.onCtrlW);
+        ("Ctrl+Tab", KeyBindings.onCtrlTab);
+        ("Ctrl+Shift+Tab", KeyBindings.onCtrlShiftTab)
+    ];
+
+    // Initial tabs
+    tabs = [editorTab; terminalTab; logsTab];
+
+    // Settings
+    fontSize = 12;
+    fontFamily = "JetBrains Mono";
+    enableLigatures = true;
+    tabBarPosition = "top"
+}
+
+// Return config for host to read
+config

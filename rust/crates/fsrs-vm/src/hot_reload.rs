@@ -1,0 +1,950 @@
+// Hot-Reload System for FSRS
+// Enables script reloading without application restart with <100ms reload time target
+
+use crate::chunk::Chunk;
+use crossbeam_channel::{bounded, select, Receiver, Sender};
+use notify::{
+    Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher,
+};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// Errors that can occur during hot-reload operations
+#[derive(Debug, Clone, PartialEq)]
+pub enum HotReloadError {
+    /// File watcher initialization failed
+    WatcherInit(String),
+    /// File system error
+    FileSystemError(String),
+    /// Path does not exist
+    PathNotFound(PathBuf),
+    /// Invalid file extension (not .fsrs or .fs)
+    InvalidFileExtension(PathBuf),
+    /// Watcher already running
+    AlreadyWatching,
+    /// Watcher not running
+    NotWatching,
+    /// Recompilation failed
+    RecompilationFailed(String),
+    /// Failed to read source file
+    SourceReadError(String),
+}
+
+impl std::fmt::Display for HotReloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HotReloadError::WatcherInit(msg) => write!(f, "Watcher initialization failed: {}", msg),
+            HotReloadError::FileSystemError(msg) => write!(f, "File system error: {}", msg),
+            HotReloadError::PathNotFound(path) => write!(f, "Path not found: {}", path.display()),
+            HotReloadError::InvalidFileExtension(path) => {
+                write!(f, "Invalid file extension: {}", path.display())
+            }
+            HotReloadError::AlreadyWatching => write!(f, "Watcher already running"),
+            HotReloadError::NotWatching => write!(f, "Watcher not running"),
+            HotReloadError::RecompilationFailed(msg) => write!(f, "Recompilation failed: {}", msg),
+            HotReloadError::SourceReadError(msg) => write!(f, "Failed to read source: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for HotReloadError {}
+
+/// Statistics about a reload operation
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReloadStats {
+    /// Total reload time in milliseconds
+    pub reload_time_ms: u64,
+    /// Compilation time in milliseconds
+    pub compile_time_ms: u64,
+    /// Whether the reload was successful
+    pub success: bool,
+    /// Error message if reload failed
+    pub error_message: Option<String>,
+    /// Number of bytes in the source file
+    pub source_size_bytes: usize,
+}
+
+impl ReloadStats {
+    /// Create stats for a successful reload
+    pub fn success(reload_time_ms: u64, compile_time_ms: u64, source_size_bytes: usize) -> Self {
+        ReloadStats {
+            reload_time_ms,
+            compile_time_ms,
+            success: true,
+            error_message: None,
+            source_size_bytes,
+        }
+    }
+
+    /// Create stats for a failed reload
+    pub fn failure(reload_time_ms: u64, error: String) -> Self {
+        ReloadStats {
+            reload_time_ms,
+            compile_time_ms: 0,
+            success: false,
+            error_message: Some(error),
+            source_size_bytes: 0,
+        }
+    }
+
+    /// Check if reload met performance target (<100ms)
+    pub fn meets_target(&self) -> bool {
+        self.reload_time_ms < 100
+    }
+}
+
+/// Event emitted by the file watcher
+#[derive(Debug, Clone)]
+pub enum FileEvent {
+    /// File was modified
+    Modified(PathBuf),
+    /// File was created
+    Created(PathBuf),
+    /// File was deleted
+    Deleted(PathBuf),
+}
+
+/// File watcher with debouncing to handle rapid changes
+pub struct FileWatcher {
+    watcher: Option<RecommendedWatcher>,
+    event_rx: Receiver<FileEvent>,
+    event_tx: Sender<FileEvent>,
+    watching: Arc<Mutex<bool>>,
+    debounce_duration: Duration,
+}
+
+impl FileWatcher {
+    /// Create a new file watcher with default debounce duration (100ms)
+    pub fn new() -> Result<Self, HotReloadError> {
+        Self::with_debounce(Duration::from_millis(100))
+    }
+
+    /// Create a new file watcher with custom debounce duration
+    pub fn with_debounce(debounce_duration: Duration) -> Result<Self, HotReloadError> {
+        let (event_tx, event_rx) = bounded(100);
+
+        Ok(FileWatcher {
+            watcher: None,
+            event_rx,
+            event_tx,
+            watching: Arc::new(Mutex::new(false)),
+            debounce_duration,
+        })
+    }
+
+    /// Start watching a file or directory
+    pub fn watch<P: AsRef<Path>>(&mut self, path: P) -> Result<(), HotReloadError> {
+        let path = path.as_ref();
+
+        // Validate path exists
+        if !path.exists() {
+            return Err(HotReloadError::PathNotFound(path.to_path_buf()));
+        }
+
+        // Validate file extension if it's a file
+        if path.is_file() {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext != "fsrs" && ext != "fs" {
+                return Err(HotReloadError::InvalidFileExtension(path.to_path_buf()));
+            }
+        }
+
+        // Check if already watching
+        {
+            let watching = self.watching.lock().unwrap();
+            if *watching {
+                return Err(HotReloadError::AlreadyWatching);
+            }
+        }
+
+        // Create watcher
+        let event_tx = self.event_tx.clone();
+        let debounce_duration = self.debounce_duration;
+
+        let watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    Self::handle_notify_event(event, &event_tx, debounce_duration);
+                }
+            },
+            Config::default(),
+        )
+        .map_err(|e| HotReloadError::WatcherInit(e.to_string()))?;
+
+        self.watcher = Some(watcher);
+
+        // Start watching
+        self.watcher
+            .as_mut()
+            .unwrap()
+            .watch(path, RecursiveMode::NonRecursive)
+            .map_err(|e| HotReloadError::FileSystemError(e.to_string()))?;
+
+        *self.watching.lock().unwrap() = true;
+
+        Ok(())
+    }
+
+    /// Stop watching
+    pub fn unwatch(&mut self) -> Result<(), HotReloadError> {
+        {
+            let watching = self.watching.lock().unwrap();
+            if !*watching {
+                return Err(HotReloadError::NotWatching);
+            }
+        }
+
+        self.watcher = None;
+        *self.watching.lock().unwrap() = false;
+
+        Ok(())
+    }
+
+    /// Check if currently watching
+    pub fn is_watching(&self) -> bool {
+        *self.watching.lock().unwrap()
+    }
+
+    /// Wait for the next file event (blocking)
+    pub fn next_event(&self) -> Option<FileEvent> {
+        self.event_rx.recv().ok()
+    }
+
+    /// Try to receive the next file event (non-blocking)
+    pub fn try_next_event(&self) -> Option<FileEvent> {
+        self.event_rx.try_recv().ok()
+    }
+
+    /// Wait for the next file event with timeout
+    pub fn next_event_timeout(&self, timeout: Duration) -> Option<FileEvent> {
+        select! {
+            recv(self.event_rx) -> event => event.ok(),
+            default(timeout) => None,
+        }
+    }
+
+    /// Handle notify events and convert to FileEvent
+    fn handle_notify_event(event: Event, tx: &Sender<FileEvent>, debounce: Duration) {
+        let file_event = match event.kind {
+            EventKind::Modify(_) => {
+                if let Some(path) = event.paths.first() {
+                    Some(FileEvent::Modified(path.clone()))
+                } else {
+                    None
+                }
+            }
+            EventKind::Create(_) => {
+                if let Some(path) = event.paths.first() {
+                    Some(FileEvent::Created(path.clone()))
+                } else {
+                    None
+                }
+            }
+            EventKind::Remove(_) => {
+                if let Some(path) = event.paths.first() {
+                    Some(FileEvent::Deleted(path.clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(file_event) = file_event {
+            // Debounce: sleep briefly to collect rapid events
+            thread::sleep(debounce);
+            let _ = tx.try_send(file_event);
+        }
+    }
+
+    /// Drain all pending events (useful for debouncing)
+    pub fn drain_events(&self) -> Vec<FileEvent> {
+        let mut events = Vec::new();
+        while let Some(event) = self.try_next_event() {
+            events.push(event);
+        }
+        events
+    }
+}
+
+impl Default for FileWatcher {
+    fn default() -> Self {
+        Self::new().expect("Failed to create default FileWatcher")
+    }
+}
+
+impl Drop for FileWatcher {
+    fn drop(&mut self) {
+        let _ = self.unwatch();
+    }
+}
+
+/// Compilation callback type
+pub type CompileFn = Box<dyn Fn(&str) -> Result<Chunk, String> + Send + Sync>;
+
+/// Hot-reload engine that watches a file and triggers recompilation
+pub struct HotReloadEngine {
+    watcher: FileWatcher,
+    script_path: PathBuf,
+    last_reload: Option<Instant>,
+    reload_count: u64,
+    current_chunk: Option<Chunk>,
+    compile_fn: CompileFn,
+    on_reload_callbacks: Vec<Box<dyn Fn(&ReloadStats) + Send + Sync>>,
+}
+
+impl HotReloadEngine {
+    /// Create a new hot-reload engine with a custom compilation function
+    pub fn new_with_compiler<P, F>(script_path: P, compile_fn: F) -> Result<Self, HotReloadError>
+    where
+        P: AsRef<Path>,
+        F: Fn(&str) -> Result<Chunk, String> + Send + Sync + 'static,
+    {
+        let script_path = script_path.as_ref().to_path_buf();
+        let watcher = FileWatcher::new()?;
+
+        Ok(HotReloadEngine {
+            watcher,
+            script_path,
+            last_reload: None,
+            reload_count: 0,
+            current_chunk: None,
+            compile_fn: Box::new(compile_fn),
+            on_reload_callbacks: Vec::new(),
+        })
+    }
+
+    /// Create a new hot-reload engine with default FSRS compiler
+    pub fn new<P: AsRef<Path>>(script_path: P) -> Result<Self, HotReloadError> {
+        Self::new_with_compiler(script_path, |_source| {
+            // This will use fsrs-frontend when integrated
+            // For now, return a dummy error to indicate integration needed
+            Err("Default compiler not yet integrated. Use new_with_compiler.".to_string())
+        })
+    }
+
+    /// Start watching the script file
+    pub fn start(&mut self) -> Result<(), HotReloadError> {
+        self.watcher.watch(&self.script_path)
+    }
+
+    /// Stop watching the script file
+    pub fn stop(&mut self) -> Result<(), HotReloadError> {
+        self.watcher.unwatch()
+    }
+
+    /// Check if the engine is currently watching
+    pub fn is_watching(&self) -> bool {
+        self.watcher.is_watching()
+    }
+
+    /// Wait for the next file change event
+    pub fn wait_for_change(&self) -> Option<FileEvent> {
+        self.watcher.next_event()
+    }
+
+    /// Wait for the next file change event with timeout
+    /// Wait for the next file change event with timeout
+    pub fn wait_for_change_timeout(&self, timeout: Duration) -> Option<FileEvent> {
+        self.watcher.next_event_timeout(timeout)
+    }
+
+    /// Drain all pending file change events
+    pub fn drain_events(&mut self) -> Vec<FileEvent> {
+        self.watcher.drain_events()
+    }
+
+    /// Perform a reload of the script
+    pub fn reload(&mut self) -> Result<ReloadStats, HotReloadError> {
+        let reload_start = Instant::now();
+
+        // Read source file
+        let source = fs::read_to_string(&self.script_path)
+            .map_err(|e| HotReloadError::SourceReadError(e.to_string()))?;
+
+        let source_size = source.len();
+
+        // Compile
+        let compile_start = Instant::now();
+        let chunk_result = (self.compile_fn)(&source);
+        let compile_time_ms = compile_start.elapsed().as_millis() as u64;
+
+        let reload_time_ms = reload_start.elapsed().as_millis() as u64;
+
+        match chunk_result {
+            Ok(chunk) => {
+                // Success - update current chunk
+                self.current_chunk = Some(chunk);
+                self.record_reload();
+
+                let stats = ReloadStats::success(reload_time_ms, compile_time_ms, source_size);
+
+                // Trigger callbacks
+                self.trigger_callbacks(&stats);
+
+                Ok(stats)
+            }
+            Err(error) => {
+                // Failure - keep old chunk
+                let stats = ReloadStats::failure(reload_time_ms, error);
+
+                // Trigger callbacks even on failure
+                self.trigger_callbacks(&stats);
+
+                Ok(stats)
+            }
+        }
+    }
+
+    /// Reload and return the new chunk if successful
+    pub fn reload_and_get_chunk(&mut self) -> Result<Option<Chunk>, HotReloadError> {
+        let stats = self.reload()?;
+        if stats.success {
+            Ok(self.current_chunk.clone())
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get the current compiled chunk
+    pub fn current_chunk(&self) -> Option<&Chunk> {
+        self.current_chunk.as_ref()
+    }
+
+    /// Register a callback to be called on reload
+    pub fn on_reload<F>(&mut self, callback: F)
+    where
+        F: Fn(&ReloadStats) + Send + Sync + 'static,
+    {
+        self.on_reload_callbacks.push(Box::new(callback));
+    }
+
+    /// Trigger all registered reload callbacks
+    fn trigger_callbacks(&self, stats: &ReloadStats) {
+        for callback in &self.on_reload_callbacks {
+            callback(stats);
+        }
+    }
+
+    /// Get the script path
+    pub fn script_path(&self) -> &Path {
+        &self.script_path
+    }
+
+    /// Get the number of reloads performed
+    pub fn reload_count(&self) -> u64 {
+        self.reload_count
+    }
+
+    /// Get the time since last reload
+    pub fn time_since_last_reload(&self) -> Option<Duration> {
+        self.last_reload.map(|instant| instant.elapsed())
+    }
+
+    /// Record a reload
+    fn record_reload(&mut self) {
+        self.last_reload = Some(Instant::now());
+        self.reload_count += 1;
+    }
+
+    /// Watch and auto-reload on changes (blocking)
+    pub fn watch_and_reload(&mut self) -> Result<(), HotReloadError> {
+        self.start()?;
+
+        loop {
+            if let Some(event) = self.wait_for_change() {
+                match event {
+                    FileEvent::Modified(_) | FileEvent::Created(_) => {
+                        // Drain any additional events (debounce)
+                        thread::sleep(Duration::from_millis(50));
+                        self.watcher.drain_events();
+
+                        // Perform reload
+                        let _stats = self.reload()?;
+                    }
+                    FileEvent::Deleted(_) => {
+                        // File deleted - stop watching
+                        break;
+                    }
+                }
+            }
+        }
+
+        self.stop()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_file_watcher_creation() {
+        let watcher = FileWatcher::new();
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_with_custom_debounce() {
+        let watcher = FileWatcher::with_debounce(Duration::from_millis(50));
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_not_watching_initially() {
+        let watcher = FileWatcher::new().unwrap();
+        assert!(!watcher.is_watching());
+    }
+
+    #[test]
+    fn test_file_watcher_watch_nonexistent_path() {
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.watch("/nonexistent/path/to/file.fsrs");
+        assert!(matches!(result, Err(HotReloadError::PathNotFound(_))));
+    }
+
+    #[test]
+    fn test_file_watcher_watch_invalid_extension() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(b"test content").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.watch(temp_file.path());
+        assert!(matches!(
+            result,
+            Err(HotReloadError::InvalidFileExtension(_))
+        ));
+    }
+
+    #[test]
+    fn test_file_watcher_watch_valid_fsrs_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.watch(&script_path);
+        assert!(result.is_ok());
+        assert!(watcher.is_watching());
+    }
+
+    #[test]
+    fn test_file_watcher_watch_valid_fs_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.watch(&script_path);
+        assert!(result.is_ok());
+        assert!(watcher.is_watching());
+    }
+
+    #[test]
+    fn test_file_watcher_watch_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.watch(temp_dir.path());
+        assert!(result.is_ok());
+        assert!(watcher.is_watching());
+    }
+
+    #[test]
+    fn test_file_watcher_already_watching() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        watcher.watch(&script_path).unwrap();
+
+        let result = watcher.watch(&script_path);
+        assert!(matches!(result, Err(HotReloadError::AlreadyWatching)));
+    }
+
+    #[test]
+    fn test_file_watcher_unwatch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        watcher.watch(&script_path).unwrap();
+        assert!(watcher.is_watching());
+
+        let result = watcher.unwatch();
+        assert!(result.is_ok());
+        assert!(!watcher.is_watching());
+    }
+
+    #[test]
+    fn test_file_watcher_unwatch_not_watching() {
+        let mut watcher = FileWatcher::new().unwrap();
+        let result = watcher.unwatch();
+        assert!(matches!(result, Err(HotReloadError::NotWatching)));
+    }
+
+    #[test]
+    fn test_file_watcher_detect_modification() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        watcher.watch(&script_path).unwrap();
+
+        // Modify the file
+        thread::sleep(Duration::from_millis(200));
+        fs::write(&script_path, "let x = 100").unwrap();
+
+        // Wait for the event
+        let event = watcher.next_event_timeout(Duration::from_secs(2));
+        assert!(event.is_some());
+
+        if let Some(FileEvent::Modified(path)) = event {
+            assert_eq!(path, script_path);
+        } else {
+            panic!("Expected Modified event");
+        }
+    }
+
+    #[test]
+    fn test_file_watcher_try_next_event_non_blocking() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        watcher.watch(&script_path).unwrap();
+
+        // Should return None immediately (non-blocking)
+        let event = watcher.try_next_event();
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_file_watcher_drain_events() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut watcher = FileWatcher::new().unwrap();
+        watcher.watch(&script_path).unwrap();
+
+        // Should return empty vector
+        let events = watcher.drain_events();
+        assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn test_reload_stats_success() {
+        let stats = ReloadStats::success(50, 30, 100);
+        assert!(stats.success);
+        assert_eq!(stats.reload_time_ms, 50);
+        assert_eq!(stats.compile_time_ms, 30);
+        assert_eq!(stats.source_size_bytes, 100);
+        assert!(stats.error_message.is_none());
+    }
+
+    #[test]
+    fn test_reload_stats_failure() {
+        let stats = ReloadStats::failure(10, "Syntax error".to_string());
+        assert!(!stats.success);
+        assert_eq!(stats.reload_time_ms, 10);
+        assert_eq!(stats.error_message, Some("Syntax error".to_string()));
+    }
+
+    #[test]
+    fn test_reload_stats_meets_target() {
+        let fast = ReloadStats::success(50, 30, 100);
+        assert!(fast.meets_target());
+
+        let slow = ReloadStats::success(150, 100, 100);
+        assert!(!slow.meets_target());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_creation() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new()) // Dummy compiler
+        });
+        assert!(engine.is_ok());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_not_watching_initially() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+        assert!(!engine.is_watching());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_start_stop() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        assert!(engine.start().is_ok());
+        assert!(engine.is_watching());
+
+        assert!(engine.stop().is_ok());
+        assert!(!engine.is_watching());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_script_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+        assert_eq!(engine.script_path(), script_path.as_path());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_reload_count() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+        assert_eq!(engine.reload_count(), 0);
+
+        engine.reload().unwrap();
+        assert_eq!(engine.reload_count(), 1);
+
+        engine.reload().unwrap();
+        assert_eq!(engine.reload_count(), 2);
+    }
+
+    #[test]
+    fn test_hot_reload_engine_time_since_last_reload() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+        assert!(engine.time_since_last_reload().is_none());
+
+        engine.reload().unwrap();
+        thread::sleep(Duration::from_millis(10));
+        let duration = engine.time_since_last_reload();
+        assert!(duration.is_some());
+        assert!(duration.unwrap().as_millis() >= 10);
+    }
+
+    #[test]
+    fn test_hot_reload_engine_wait_for_change() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+        engine.start().unwrap();
+
+        // Modify file in a separate thread
+        let script_path_clone = script_path.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            fs::write(script_path_clone, "let x = 100").unwrap();
+        });
+
+        // Wait for change
+        let event = engine.wait_for_change_timeout(Duration::from_secs(2));
+        assert!(event.is_some());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_reload_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        let stats = engine.reload().unwrap();
+        assert!(stats.success);
+        assert!(stats.reload_time_ms < 100); // Should be very fast
+    }
+
+    #[test]
+    fn test_hot_reload_engine_reload_compilation_error() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Err("Syntax error".to_string())
+        })
+        .unwrap();
+
+        let stats = engine.reload().unwrap();
+        assert!(!stats.success);
+        assert_eq!(
+            stats.error_message,
+            Some("Syntax error".to_string())
+        );
+    }
+
+    #[test]
+    #[test]
+    fn test_hot_reload_engine_reload_keeps_old_chunk_on_error() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let should_fail = Arc::new(AtomicBool::new(false));
+        let should_fail_clone = should_fail.clone();
+        
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, move |_source| {
+            if should_fail_clone.load(Ordering::SeqCst) {
+                Err("Error".to_string())
+            } else {
+                Ok(Chunk::new())
+            }
+        })
+        .unwrap();
+
+        // First reload succeeds
+        let stats1 = engine.reload().unwrap();
+        assert!(stats1.success);
+        assert!(engine.current_chunk().is_some());
+
+        // Simulate compilation error
+        should_fail.store(true, Ordering::SeqCst);
+        let stats2 = engine.reload().unwrap();
+        assert!(!stats2.success);
+
+        // Old chunk should still be available
+        assert!(engine.current_chunk().is_some());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_on_reload_callback() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let callback_count = Arc::new(AtomicUsize::new(0));
+        let callback_count_clone = callback_count.clone();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        engine.on_reload(move |_stats| {
+            callback_count_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        assert_eq!(callback_count.load(Ordering::SeqCst), 0);
+
+        engine.reload().unwrap();
+        assert_eq!(callback_count.load(Ordering::SeqCst), 1);
+
+        engine.reload().unwrap();
+        assert_eq!(callback_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_hot_reload_engine_reload_and_get_chunk() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        let chunk = engine.reload_and_get_chunk().unwrap();
+        assert!(chunk.is_some());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_reload_and_get_chunk_on_error() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Err("Error".to_string())
+        })
+        .unwrap();
+
+        let chunk = engine.reload_and_get_chunk().unwrap();
+        assert!(chunk.is_none());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_tracks_source_size() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        let source = "let x = 42";
+        fs::write(&script_path, source).unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        let stats = engine.reload().unwrap();
+        assert_eq!(stats.source_size_bytes, source.len());
+    }
+
+    #[test]
+    fn test_hot_reload_engine_tracks_compile_time() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let script_path = temp_dir.path().join("test.fsrs");
+        fs::write(&script_path, "let x = 42").unwrap();
+
+        let mut engine = HotReloadEngine::new_with_compiler(&script_path, |_source| {
+            // Simulate slow compilation
+            thread::sleep(Duration::from_millis(10));
+            Ok(Chunk::new())
+        })
+        .unwrap();
+
+        let stats = engine.reload().unwrap();
+        assert!(stats.compile_time_ms >= 10);
+    }
+}

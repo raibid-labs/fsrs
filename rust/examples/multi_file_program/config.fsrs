@@ -1,0 +1,28 @@
+// Configuration module
+// Demonstrates: configuration values, nested modules, records (when available)
+
+module Config =
+    // Application settings
+    let app_name = "FSRS Demo"
+    let version = "1.0.0"
+    let max_items = 100
+
+    // Display settings
+    module Display =
+        let width = 80
+        let height = 24
+        let use_color = true
+
+    // Feature flags
+    module Features =
+        let enable_hot_reload = true
+        let enable_plugins = true
+        let enable_debug = false
+
+    // Validation
+    let validate_port port =
+        port >= 1024 && port <= 65535
+
+    // Get formatted version string
+    let get_version_string =
+        String.concat [app_name; " v"; version]
