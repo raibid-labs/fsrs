@@ -75,3 +75,54 @@ pub use parser::{ParseError, Parser};
 pub use span::Span;
 pub use typed_ast::{TypedExpr, TypedPattern};
 pub use types::{Substitution, Type, TypeEnv, TypeScheme, TypeVar};
+
+use fsrs_vm::chunk::Chunk;
+
+/// Convenience function to compile a program from source code
+///
+/// This is a high-level API that performs the full compilation pipeline:
+/// 1. Lexing (source -> tokens)
+/// 2. Parsing (tokens -> Program AST)
+/// 3. Compilation (Program AST -> Bytecode)
+///
+/// # Example
+///
+/// ```rust
+/// use fsrs_frontend::compile_program_from_source;
+///
+/// // Note: Module parsing is available but not all features are implemented yet
+/// let source = "42";
+///
+/// let chunk = compile_program_from_source(source).unwrap();
+/// assert!(chunk.instructions.len() > 0);
+/// ```
+pub fn compile_program_from_source(source: &str) -> Result<Chunk, CompilationError> {
+    let mut lexer = Lexer::new(source);
+    let tokens = lexer.tokenize().map_err(CompilationError::LexError)?;
+    let mut parser = Parser::new(tokens);
+    let program = parser
+        .parse_program()
+        .map_err(CompilationError::ParseError)?;
+    let chunk = Compiler::compile_program(&program).map_err(CompilationError::CompileError)?;
+    Ok(chunk)
+}
+
+/// Unified error type for the compilation pipeline
+#[derive(Debug)]
+pub enum CompilationError {
+    LexError(LexError),
+    ParseError(ParseError),
+    CompileError(CompileError),
+}
+
+impl std::fmt::Display for CompilationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompilationError::LexError(e) => write!(f, "Lexer error: {}", e),
+            CompilationError::ParseError(e) => write!(f, "Parse error: {}", e),
+            CompilationError::CompileError(e) => write!(f, "Compile error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for CompilationError {}

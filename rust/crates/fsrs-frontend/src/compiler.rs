@@ -11,6 +11,7 @@
 //! - **Local Variables**: Stack-allocated variables tracked by index
 //! - **Jump Patching**: Forward jump resolution for control flow
 //! - **Optional Type Checking**: Can run type inference before compilation
+//! - **Module System**: Supports module-aware compilation and qualified names
 //!
 //! # Example
 //!
@@ -36,11 +37,13 @@
 //! let chunk = Compiler::compile_with_options(&expr, options).unwrap();
 //! ```
 
-use crate::ast::{BinOp, Expr, Literal, MatchArm, Pattern};
+use crate::ast::{BinOp, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern, Program};
+use crate::modules::ModuleRegistry;
 use crate::types::{Type, TypeEnv};
 use fsrs_vm::chunk::Chunk;
 use fsrs_vm::instruction::Instruction;
 use fsrs_vm::value::Value;
+use std::collections::HashMap;
 use std::fmt;
 
 /// Compilation errors
@@ -62,6 +65,10 @@ pub enum CompileError {
     TypeError(String),
     /// Code generation error
     CodeGenError(String),
+    /// Module not found
+    ModuleNotFound(String),
+    /// No module context available
+    NoModuleContext,
 }
 
 impl fmt::Display for CompileError {
@@ -90,6 +97,12 @@ impl fmt::Display for CompileError {
             }
             CompileError::CodeGenError(msg) => {
                 write!(f, "Code generation error: {}", msg)
+            }
+            CompileError::ModuleNotFound(name) => {
+                write!(f, "Module not found: {}", name)
+            }
+            CompileError::NoModuleContext => {
+                write!(f, "No module context available for qualified name lookup")
             }
         }
     }
@@ -138,6 +151,10 @@ pub struct Compiler {
     scope_depth: usize,
     options: CompileOptions,
     type_env: Option<TypeEnv>,
+
+    // Module support
+    module_registry: Option<ModuleRegistry>,
+    imported_bindings: HashMap<String, Expr>,
 }
 
 impl Compiler {
@@ -149,6 +166,8 @@ impl Compiler {
             scope_depth: 0,
             options: CompileOptions::default(),
             type_env: None,
+            module_registry: None,
+            imported_bindings: HashMap::new(),
         }
     }
 
@@ -160,6 +179,8 @@ impl Compiler {
             scope_depth: 0,
             options,
             type_env: None,
+            module_registry: None,
+            imported_bindings: HashMap::new(),
         }
     }
 
@@ -190,6 +211,127 @@ impl Compiler {
         compiler.compile_expr(expr)?;
         compiler.emit(Instruction::Return);
         Ok(compiler.chunk)
+    }
+
+    /// Compile a complete program with modules
+    ///
+    /// This is the main entry point for compiling programs with module definitions.
+    /// It performs three phases:
+    /// 1. Register all modules and their bindings
+    /// 2. Apply imports to the current environment
+    /// 3. Compile the main expression (if present)
+    pub fn compile_program(program: &Program) -> CompileResult<Chunk> {
+        let mut compiler = Compiler::new();
+        let mut registry = ModuleRegistry::new();
+
+        // Phase 1: Register all modules
+        for module in &program.modules {
+            compiler.register_module(&mut registry, module)?;
+        }
+
+        // Store registry for qualified name lookups
+        compiler.module_registry = Some(registry);
+
+        // Phase 2: Apply imports to environment
+        for import in &program.imports {
+            compiler.apply_import(import)?;
+        }
+
+        // Phase 3: Compile main expression (if present)
+        if let Some(main_expr) = &program.main_expr {
+            compiler.compile_expr(main_expr)?;
+        } else {
+            // No main expression, just return Unit
+            let unit_idx = compiler.add_constant(Value::Unit)?;
+            compiler.emit(Instruction::LoadConst(unit_idx));
+        }
+
+        compiler.emit(Instruction::Return);
+        Ok(compiler.chunk)
+    }
+
+    /// Register a module and compile its bindings
+    ///
+    /// This processes all items in a module definition and registers them
+    /// in the module registry for later lookup.
+    fn register_module(
+        &mut self,
+        registry: &mut ModuleRegistry,
+        module: &ModuleDef,
+    ) -> CompileResult<()> {
+        let mut bindings = HashMap::new();
+        let mut types = HashMap::new();
+
+        for item in &module.items {
+            match item {
+                ModuleItem::Let(name, expr) => {
+                    // Store binding for later compilation
+                    bindings.insert(name.clone(), expr.clone());
+                }
+                ModuleItem::LetRec(rec_bindings) => {
+                    // Handle recursive bindings
+                    for (name, expr) in rec_bindings {
+                        bindings.insert(name.clone(), expr.clone());
+                    }
+                }
+                ModuleItem::TypeDef(type_def) => {
+                    // Convert AST TypeDefinition to modules TypeDefinition
+                    let module_type_def = match type_def {
+                        crate::ast::TypeDefinition::Record(r) => {
+                            crate::modules::TypeDefinition::Record(r.clone())
+                        }
+                        crate::ast::TypeDefinition::Du(du) => {
+                            crate::modules::TypeDefinition::Du(du.clone())
+                        }
+                    };
+
+                    // Extract type name based on definition
+                    let type_name = match type_def {
+                        crate::ast::TypeDefinition::Record(r) => r.name.clone(),
+                        crate::ast::TypeDefinition::Du(du) => du.name.clone(),
+                    };
+
+                    types.insert(type_name, module_type_def);
+                }
+                ModuleItem::Module(nested) => {
+                    // Recursively register nested module
+                    self.register_module(registry, nested)?;
+                }
+            }
+        }
+
+        // Register module in registry
+        registry.register_module(module.name.clone(), bindings, types);
+
+        Ok(())
+    }
+
+    /// Apply an import to the current environment
+    ///
+    /// This brings all bindings from the imported module into the current scope,
+    /// allowing them to be accessed without qualification.
+    fn apply_import(&mut self, import: &Import) -> CompileResult<()> {
+        // Get module name (for simple imports, it's the first component)
+        let module_name = import
+            .module_path
+            .first()
+            .ok_or_else(|| CompileError::ModuleNotFound("empty module path".to_string()))?;
+
+        let registry = self
+            .module_registry
+            .as_ref()
+            .ok_or(CompileError::NoModuleContext)?;
+
+        let module_bindings = registry
+            .get_module_bindings(module_name)
+            .ok_or_else(|| CompileError::ModuleNotFound(module_name.clone()))?;
+
+        // Add all bindings from imported module to current environment
+        for (name, expr) in module_bindings {
+            self.imported_bindings.insert(name.clone(), expr.clone());
+        }
+
+        Ok(())
     }
 
     /// Type check expression
@@ -271,9 +413,19 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a variable reference
+    /// Compile a variable reference with module support
+    ///
+    /// This handles:
+    /// - Qualified names (e.g., Math.add)
+    /// - Imported bindings (from open statements)
+    /// - Local variables
     fn compile_var(&mut self, name: &str) -> CompileResult<()> {
-        // Search for local variable from innermost to outermost scope
+        // Check if it's a qualified name (e.g., "Math.add")
+        if let Some((module_path, binding_name)) = parse_qualified_name(name) {
+            return self.compile_qualified_var(&module_path, &binding_name);
+        }
+
+        // Check local scope first
         for (i, local) in self.locals.iter().enumerate().rev() {
             if local.name == name {
                 let idx = i as u8;
@@ -282,8 +434,37 @@ impl Compiler {
             }
         }
 
+        // Check imported bindings
+        if let Some(expr) = self.imported_bindings.get(name) {
+            // Compile the imported expression directly
+            return self.compile_expr(&expr.clone());
+        }
+
         // Variable not found in any scope
         Err(CompileError::UndefinedVariable(name.to_string()))
+    }
+
+    /// Compile a qualified variable reference (e.g., Math.add)
+    fn compile_qualified_var(&mut self, module_path: &[String], name: &str) -> CompileResult<()> {
+        // For now, only support single-level qualification (Module.binding)
+        if module_path.len() != 1 {
+            return Err(CompileError::CodeGenError(
+                "Nested module paths not yet supported in compilation".to_string(),
+            ));
+        }
+
+        let module_name = &module_path[0];
+
+        // Look up the qualified name in module registry
+        let expr = self
+            .module_registry
+            .as_ref()
+            .ok_or(CompileError::NoModuleContext)?
+            .resolve_qualified(module_name, name)
+            .ok_or_else(|| CompileError::UndefinedVariable(format!("{}.{}", module_name, name)))?;
+
+        // Compile the looked-up expression
+        self.compile_expr(&expr.clone())
     }
 
     /// Compile a binary operation
@@ -977,6 +1158,26 @@ impl Compiler {
     }
 }
 
+/// Parse a qualified name into module path and binding name
+///
+/// Examples:
+/// - "Math.add" -> (["Math"], "add")
+/// - "Geometry.Point.x" -> (["Geometry", "Point"], "x")
+fn parse_qualified_name(name: &str) -> Option<(Vec<String>, String)> {
+    if name.contains('.') {
+        let parts: Vec<&str> = name.split('.').collect();
+        if parts.len() >= 2 {
+            let module_path: Vec<String> = parts[..parts.len() - 1]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let binding_name = parts[parts.len() - 1].to_string();
+            return Some((module_path, binding_name));
+        }
+    }
+    None
+}
+
 // Note: Tests remain unchanged from original file
 // They validate the compiler works with default options (no type checking)
 #[cfg(test)]
@@ -1005,5 +1206,29 @@ mod tests {
         let chunk = Compiler::compile(&expr).unwrap();
         assert_eq!(chunk.constants.len(), 1);
         assert_eq!(chunk.constants[0], Value::Int(42));
+    }
+
+    #[test]
+    fn test_parse_qualified_name_simple() {
+        let result = parse_qualified_name("Math.add");
+        assert!(result.is_some());
+        let (path, name) = result.unwrap();
+        assert_eq!(path, vec!["Math".to_string()]);
+        assert_eq!(name, "add");
+    }
+
+    #[test]
+    fn test_parse_qualified_name_nested() {
+        let result = parse_qualified_name("Geometry.Point.x");
+        assert!(result.is_some());
+        let (path, name) = result.unwrap();
+        assert_eq!(path, vec!["Geometry".to_string(), "Point".to_string()]);
+        assert_eq!(name, "x");
+    }
+
+    #[test]
+    fn test_parse_qualified_name_unqualified() {
+        let result = parse_qualified_name("add");
+        assert!(result.is_none());
     }
 }
