@@ -9,6 +9,9 @@ pub mod stdlib;
 pub mod value;
 pub mod vm;
 
+#[cfg(test)]
+mod test_hof;
+
 pub use chunk::{Chunk, ChunkBuilder};
 pub use closure::{Closure, Upvalue};
 pub use host::{HostFn, HostRegistry};
