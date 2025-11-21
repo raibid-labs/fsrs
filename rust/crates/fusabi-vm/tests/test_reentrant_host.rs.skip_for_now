@@ -1,0 +1,145 @@
+// Tests for re-entrant host functions (Issue #60)
+// Tests that host functions can call back into the VM via call_closure
+
+use fusabi_vm::{
+    chunk::ChunkBuilder,
+    closure::Closure,
+    host::HostRegistry,
+    instruction::Instruction,
+    value::Value,
+    vm::{Vm, VmError},
+};
+use std::rc::Rc;
+
+#[test]
+fn test_call_closure_basic() {
+    // Create a simple closure that doubles a number
+    let chunk = ChunkBuilder::new()
+        .instruction(Instruction::LoadLocal(0))  // Load argument
+        .constant(Value::Int(2))
+        .instruction(Instruction::LoadConst(0))   // Load 2
+        .instruction(Instruction::Mul)            // Multiply
+        .instruction(Instruction::Return)
+        .build();
+
+    let closure = Closure::with_arity(chunk, 1);
+    let closure_value = Value::Closure(Rc::new(closure));
+
+    let mut vm = Vm::new();
+    let result = vm.call_closure(&closure_value, &[Value::Int(21)]).unwrap();
+    assert_eq!(result, Value::Int(42));
+}
+
+#[test]
+fn test_list_map_with_closure() {
+    let mut registry = HostRegistry::new();
+    
+    // Register a simple map function
+    registry.register("test_map", |vm, args| {
+        if args.len() != 2 {
+            return Err(VmError::Runtime("map expects 2 args".into()));
+        }
+        
+        let list = &args[0];
+        let f = &args[1];
+        
+        // Simple map implementation
+        let mut result_vec = Vec::new();
+        let mut current = list.clone();
+        
+        loop {
+            match current {
+                Value::Nil => break,
+                Value::Cons { head, tail } => {
+                    let mapped = vm.call_closure(f, &[(*head).clone()])?;
+                    result_vec.push(mapped);
+                    current = (*tail).clone();
+                }
+                _ => return Err(VmError::Runtime("Expected list".into())),
+            }
+        }
+        
+        Ok(Value::vec_to_cons(result_vec))
+    });
+
+    // Create a closure that increments by 1
+    let chunk = ChunkBuilder::new()
+        .instruction(Instruction::LoadLocal(0))
+        .constant(Value::Int(1))
+        .instruction(Instruction::LoadConst(0))
+        .instruction(Instruction::Add)
+        .instruction(Instruction::Return)
+        .build();
+    
+    let closure = Closure::with_arity(chunk, 1);
+    let closure_value = Value::Closure(Rc::new(closure));
+    
+    // Create a list [1, 2, 3]
+    let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    
+    let mut vm = Vm::new();
+    let result = registry.call("test_map", &mut vm, &[list, closure_value]).unwrap();
+    
+    let result_vec = result.list_to_vec().unwrap();
+    assert_eq!(result_vec.len(), 3);
+    assert_eq!(result_vec[0], Value::Int(2));
+    assert_eq!(result_vec[1], Value::Int(3));
+    assert_eq!(result_vec[2], Value::Int(4));
+}
+
+#[test]
+fn test_nested_call_closure() {
+    // Test that we can nest call_closure calls
+    let mut registry = HostRegistry::new();
+    
+    registry.register("apply_twice", |vm, args| {
+        if args.len() != 2 {
+            return Err(VmError::Runtime("apply_twice expects 2 args".into()));
+        }
+        
+        let f = &args[0];
+        let x = &args[1];
+        
+        let once = vm.call_closure(f, &[x.clone()])?;
+        vm.call_closure(f, &[once])
+    });
+    
+    // Create a closure that adds 10
+    let chunk = ChunkBuilder::new()
+        .instruction(Instruction::LoadLocal(0))
+        .constant(Value::Int(10))
+        .instruction(Instruction::LoadConst(0))
+        .instruction(Instruction::Add)
+        .instruction(Instruction::Return)
+        .build();
+    
+    let closure = Closure::with_arity(chunk, 1);
+    let closure_value = Value::Closure(Rc::new(closure));
+    
+    let mut vm = Vm::new();
+    let result = registry.call("apply_twice", &mut vm, &[closure_value, Value::Int(5)]).unwrap();
+    assert_eq!(result, Value::Int(25)); // 5 + 10 + 10 = 25
+}
+
+#[test]
+fn test_call_closure_arity_mismatch() {
+    let chunk = ChunkBuilder::new()
+        .instruction(Instruction::LoadLocal(0))
+        .instruction(Instruction::Return)
+        .build();
+    
+    let closure = Closure::with_arity(chunk, 2); // Expects 2 args
+    let closure_value = Value::Closure(Rc::new(closure));
+    
+    let mut vm = Vm::new();
+    let result = vm.call_closure(&closure_value, &[Value::Int(1)]); // Pass only 1 arg
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_call_closure_not_a_closure() {
+    let mut vm = Vm::new();
+    let not_a_closure = Value::Int(42);
+    let result = vm.call_closure(&not_a_closure, &[]);
+    assert!(result.is_err());
+}
