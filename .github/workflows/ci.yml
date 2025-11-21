@@ -30,6 +30,9 @@ jobs:
         with:
           workspaces: rust
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Check formatting
         run: just fmt-check
 
@@ -75,6 +78,9 @@ jobs:
         with:
           version: '*'
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Build all crates
         run: just build
 
@@ -107,6 +113,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+
+      - name: Install just
+        uses: extractions/setup-just@v2
 
       - name: Build release binaries
         run: just build-release
@@ -183,6 +192,9 @@ jobs:
 
       - name: Install cargo-outdated
         run: cargo install cargo-outdated
+
+      - name: Install just
+        uses: extractions/setup-just@v2
 
       - name: Check for outdated dependencies
         run: just outdated

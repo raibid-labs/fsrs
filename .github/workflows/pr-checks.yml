@@ -2,40 +2,13 @@ name: PR Checks
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # Fast feedback on PR
-  pr-quick-check:
-    name: PR Quick Check
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout PR code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
-
-      - name: Check formatting
-        run: just fmt-check
-
-      - name: Run clippy
-        run: just lint
-
-      - name: Quick build
-        run: just build
-
-  # PR title check
+  # PR title check - enforce conventional commits
   pr-title-check:
     name: PR Title Check
     runs-on: ubuntu-latest
@@ -56,47 +29,98 @@ jobs:
             build
             ci
             chore
+            revert
           requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject should start with a lowercase letter.
 
-  # Check for added TODOs in PR
-  pr-todo-check:
-    name: Check for TODOs
+  # Quick checks that run fast
+  quick-check:
+    name: PR Quick Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Run clippy
+        run: just lint
+
+      - name: Build all crates
+        run: just build
+
+  # Check for TODOs in the PR diff
+  todo-check:
+    name: Check for TODOs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Check for new TODOs
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD -- '*.rs' | grep -i '^\+.*TODO' || true
-        continue-on-error: true
+          # Get the base branch
+          BASE=$(gh pr view ${{ github.event.pull_request.number }} --json baseRefName -q .baseRefName)
 
-  # File size check
+          # Get the diff and check for new TODOs
+          if git diff origin/$BASE...HEAD | grep -E '^\+.*TODO|^\+.*FIXME|^\+.*HACK'; then
+            echo "⚠️ New TODOs/FIXMEs/HACKs found in PR"
+            echo "Please address or document them before merging"
+            # Don't fail the check, just warn
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # PR size check
   pr-size-check:
     name: PR Size Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Check PR size
         run: |
-          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
-          LINES_CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+')
+          # Get the PR number
+          PR_NUM=${{ github.event.pull_request.number }}
 
-          echo "Files changed: $FILES_CHANGED"
-          echo "Lines changed: ${LINES_CHANGED:-0}"
+          # Get changed lines count
+          CHANGED_LINES=$(gh pr diff $PR_NUM --color=never | wc -l)
 
-          if [ "$FILES_CHANGED" -gt 50 ]; then
-            echo "::warning::PR is large with $FILES_CHANGED files. Consider splitting into smaller PRs."
+          echo "Changed lines: $CHANGED_LINES"
+
+          if [ $CHANGED_LINES -gt 1000 ]; then
+            echo "⚠️ Large PR detected ($CHANGED_LINES lines changed)"
+            echo "Consider breaking this into smaller PRs for easier review"
+            # Don't fail, just warn
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Comment on first-time contributor PRs
-  pr-first-time-contributor:
+  # Welcome first-time contributors
+  welcome-first-time:
     name: Welcome First-Time Contributors
     runs-on: ubuntu-latest
     if: github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
@@ -109,5 +133,13 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '👋 Welcome to FSRS! Thanks for your first contribution. Please make sure:\n\n- [ ] Tests are included\n- [ ] Documentation is updated\n- [ ] Code follows our style guide\n\nA maintainer will review your PR soon!'
+              body: `👋 Welcome to Fusabi! Thank you for your first contribution!
+
+              Please make sure you've:
+              - [ ] Read our [Contributing Guide](../CONTRIBUTING.md)
+              - [ ] Followed our code style guidelines
+              - [ ] Added tests for new functionality
+              - [ ] Updated documentation if needed
+
+              We'll review your PR as soon as possible. Feel free to ask questions!`
             })
