@@ -2,7 +2,7 @@
 //! Tests the complete pipeline: AST -> Compiler -> VM execution
 //! Verifies that DU bytecode instructions actually execute correctly
 
-use fusabi_frontend::ast::{BinOp, Expr, Literal, MatchArm, Pattern};
+use fusabi_frontend::ast::{Expr, Literal, MatchArm, Pattern};
 use fusabi_frontend::compiler::Compiler;
 use fusabi_vm::value::Value;
 use fusabi_vm::vm::Vm;

@@ -6,9 +6,6 @@ use fusabi_frontend::ast::{BinOp, Expr, Literal};
 use fusabi_frontend::compiler::Compiler;
 use fusabi_vm::value::Value;
 use fusabi_vm::vm::Vm;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 // ========================================================================
 // Record Creation Tests
