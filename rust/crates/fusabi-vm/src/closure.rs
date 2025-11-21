@@ -2,6 +2,7 @@
 // Implements closures with upvalue capturing for lexical scoping
 
 use crate::chunk::Chunk;
+use crate::gc::{Trace, Tracer};
 use crate::value::Value;
 use std::cell::RefCell;
 use std::fmt;
@@ -162,6 +163,29 @@ impl fmt::Display for Closure {
         } else {
             write!(f, "<closure>")
         }
+    }
+}
+
+// ========== Trace Implementation for Garbage Collection ==========
+
+impl Trace for Closure {
+    fn trace(&self, tracer: &mut Tracer) {
+        // Trace through closed upvalues
+        for upvalue in &self.upvalues {
+            if let Upvalue::Closed(ref value) = *upvalue.borrow() {
+                value.trace(tracer);
+            }
+            // Open upvalues point to stack slots which are traced separately
+        }
+    }
+}
+
+impl Trace for Upvalue {
+    fn trace(&self, tracer: &mut Tracer) {
+        if let Upvalue::Closed(ref value) = self {
+            value.trace(tracer);
+        }
+        // Open upvalues point to stack slots which are traced separately
     }
 }
 

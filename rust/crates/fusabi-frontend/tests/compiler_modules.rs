@@ -400,7 +400,9 @@ fn test_compile_module_with_bool() {
 
     let chunk = Compiler::compile_program(&program).unwrap();
     assert!(!chunk.instructions.is_empty());
-    assert!(chunk.constants.contains(&fusabi_vm::value::Value::Bool(true)));
+    assert!(chunk
+        .constants
+        .contains(&fusabi_vm::value::Value::Bool(true)));
 }
 
 #[test]

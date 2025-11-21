@@ -2,6 +2,7 @@
 // Defines runtime values for the bytecode VM
 
 use crate::closure::Closure;
+use crate::gc::{Trace, Tracer};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -99,6 +100,15 @@ impl Value {
     pub fn as_cons(&self) -> Option<(&Value, &Value)> {
         match self {
             Value::Cons { head, tail } => Some((head, tail)),
+            _ => None,
+        }
+    }
+
+    /// Attempts to extract a closure from the value
+    /// Returns Some(Rc<Closure>) if the value is Closure, None otherwise
+    pub fn as_closure(&self) -> Option<Rc<Closure>> {
+        match self {
+            Value::Closure(closure) => Some(closure.clone()),
             _ => None,
         }
     }
@@ -367,6 +377,66 @@ impl Value {
     }
 }
 
+// ========== Trace Implementation for Garbage Collection ==========
+
+impl Trace for Value {
+    fn trace(&self, tracer: &mut Tracer) {
+        match self {
+            // Primitive types don't need tracing
+            Value::Int(_) | Value::Bool(_) | Value::Str(_) | Value::Unit => {}
+
+            // Trace tuple elements
+            Value::Tuple(elements) => {
+                for element in elements {
+                    element.trace(tracer);
+                }
+            }
+
+            // Trace cons cell elements
+            Value::Cons { head, tail } => {
+                head.trace(tracer);
+                tail.trace(tracer);
+            }
+
+            // Nil doesn't reference anything
+            Value::Nil => {}
+
+            // Trace array elements
+            Value::Array(arr) => {
+                for element in arr.borrow().iter() {
+                    element.trace(tracer);
+                }
+            }
+
+            // Trace record fields
+            Value::Record(fields) => {
+                for value in fields.borrow().values() {
+                    value.trace(tracer);
+                }
+            }
+
+            // Trace variant fields
+            Value::Variant { fields, .. } => {
+                for field in fields {
+                    field.trace(tracer);
+                }
+            }
+
+            // Trace closure upvalues
+            Value::Closure(closure) => {
+                // Closures contain upvalues that may reference other values
+                // We need to trace through the closure's captured environment
+                for upvalue in &closure.upvalues {
+                    if let crate::closure::Upvalue::Closed(ref value) = *upvalue.borrow() {
+                        value.trace(tracer);
+                    }
+                    // Open upvalues point to stack slots which are traced separately
+                }
+            }
+        }
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -453,6 +523,10 @@ impl fmt::Display for Value {
                     write!(f, ")")?;
                 }
                 Ok(())
+            }
+            Value::Closure(closure) => {
+                // Display closure with name if available
+                write!(f, "{}", closure)
             }
         }
     }

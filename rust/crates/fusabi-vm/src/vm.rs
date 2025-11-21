@@ -2,6 +2,7 @@
 // Implements the bytecode interpreter loop with stack-based execution
 
 use crate::chunk::Chunk;
+use crate::gc::{GcHeap, GcStats, Trace};
 use crate::instruction::Instruction;
 use crate::value::Value;
 use std::fmt;
@@ -106,13 +107,22 @@ impl Frame {
 }
 
 /// Maximum call stack depth
+const MAX_CALL_DEPTH: usize = 1024;
+
 /// The virtual machine - bytecode interpreter
-#[derive(Debug)]
 pub struct Vm {
     /// Value stack for operands and intermediate results
     stack: Vec<Value>,
     /// Call frame stack
     frames: Vec<Frame>,
+    /// Garbage collection heap
+    gc_heap: GcHeap,
+    /// Global variables (GC roots)
+    globals: Vec<Value>,
+    /// Number of allocations since last GC
+    allocations_since_gc: usize,
+    /// Threshold for triggering GC (number of allocations)
+    pub(crate) gc_allocation_threshold: usize,
 }
 
 impl Vm {
@@ -121,6 +131,22 @@ impl Vm {
         Vm {
             stack: Vec::new(),
             frames: Vec::new(),
+            gc_heap: GcHeap::new(),
+            globals: Vec::new(),
+            allocations_since_gc: 0,
+            gc_allocation_threshold: 100, // Trigger GC every 100 allocations initially
+        }
+    }
+
+    /// Create a new VM with a custom GC threshold
+    pub fn with_gc_threshold(gc_memory_threshold: usize) -> Self {
+        Vm {
+            stack: Vec::new(),
+            frames: Vec::new(),
+            gc_heap: GcHeap::with_threshold(gc_memory_threshold),
+            globals: Vec::new(),
+            allocations_since_gc: 0,
+            gc_allocation_threshold: 100,
         }
     }
 
@@ -310,6 +336,9 @@ impl Vm {
                     // Reverse to maintain left-to-right order
                     elements.reverse();
                     self.push(Value::Tuple(elements));
+
+                    // Trigger GC check for allocations
+                    self.notify_allocation();
                 }
 
                 Instruction::GetTupleField(idx) => {
@@ -357,6 +386,9 @@ impl Vm {
                     // Build cons list from elements
                     let list = Value::vec_to_cons(elements);
                     self.push(list);
+
+                    // Trigger GC check for allocations
+                    self.notify_allocation();
                 }
 
                 Instruction::Cons => {
@@ -366,6 +398,9 @@ impl Vm {
                         head: Box::new(head),
                         tail: Box::new(tail),
                     });
+
+                    // Trigger GC check for allocations
+                    self.notify_allocation();
                 }
 
                 Instruction::ListHead => {
@@ -415,6 +450,9 @@ impl Vm {
                     use std::rc::Rc;
                     let array = Value::Array(Rc::new(RefCell::new(elements)));
                     self.push(array);
+
+                    // Trigger GC check for allocations
+                    self.notify_allocation();
                 }
 
                 Instruction::ArrayGet => {
@@ -752,12 +790,16 @@ impl Vm {
     /// Call a closure from native host functions
     /// This allows host functions to call back into the VM, enabling higher-order functions
     pub fn call_closure(&mut self, closure: Value, args: &[Value]) -> Result<Value, VmError> {
-        use crate::closure::Closure;
 
         // Extract the closure from the value
         let closure_rc = match closure.as_closure() {
             Some(c) => c,
-            None => return Err(VmError::Runtime(format!("Expected closure, got {}", closure.type_name()))),
+            None => {
+                return Err(VmError::Runtime(format!(
+                    "Expected closure, got {}",
+                    closure.type_name()
+                )))
+            }
         };
 
         // Check arity matches
@@ -862,9 +904,10 @@ impl Vm {
                 _ => {
                     // For now, other instructions are not supported in closures
                     // In a full implementation, all instructions would be handled
-                    return Err(VmError::Runtime(
-                        format!("Instruction {:?} not yet supported in closures", instruction)
-                    ));
+                    return Err(VmError::Runtime(format!(
+                        "Instruction {:?} not yet supported in closures",
+                        instruction
+                    )));
                 }
             }
         };
@@ -2159,5 +2202,155 @@ mod tests {
         );
         assert_eq!(result.variant_get_field(2), Ok(Value::Bool(true)));
         assert_eq!(format!("{}", result), "Data(42, hello, true)");
+    }
+}
+
+// ========== Garbage Collection Implementation ==========
+
+impl Vm {
+    /// Perform a garbage collection cycle.
+    /// This collects unreachable objects from the heap.
+    pub fn collect_garbage(&mut self) -> GcStats {
+        // Collect all roots
+        let roots = self.get_gc_roots();
+
+        // Perform the collection
+        let stats = self.gc_heap.collect(&roots);
+
+        // Reset allocation counter
+        self.allocations_since_gc = 0;
+
+        // Adjust thresholds based on collection statistics
+        self.adjust_gc_thresholds(&stats);
+
+        stats
+    }
+
+    /// Get all GC roots (values that should not be collected).
+    fn get_gc_roots(&self) -> Vec<Value> {
+        let mut roots = Vec::new();
+
+        // Add all values on the stack
+        roots.extend(self.stack.iter().cloned());
+
+        // Add all global variables
+        roots.extend(self.globals.iter().cloned());
+
+        // Add values from all active frames' constants
+        for frame in &self.frames {
+            for constant in &frame.chunk.constants {
+                roots.push(constant.clone());
+            }
+        }
+
+        roots
+    }
+
+    /// Mark all roots for garbage collection.
+    /// This is called at the beginning of a GC cycle.
+    pub fn mark_roots(&self, tracer: &mut crate::gc::Tracer) {
+        // Mark all values on the stack
+        for value in &self.stack {
+            value.trace(tracer);
+        }
+
+        // Mark all global variables
+        for value in &self.globals {
+            value.trace(tracer);
+        }
+
+        // Mark constants from active frames
+        for frame in &self.frames {
+            for constant in &frame.chunk.constants {
+                constant.trace(tracer);
+            }
+        }
+    }
+
+    /// Check if GC should be triggered and perform collection if needed.
+    pub fn maybe_gc(&mut self) {
+        self.allocations_since_gc += 1;
+
+        // Check allocation count threshold
+        let should_gc = self.allocations_since_gc >= self.gc_allocation_threshold;
+
+        // Check memory pressure threshold
+        let memory_pressure = self.gc_heap.should_collect();
+
+        if should_gc || memory_pressure {
+            self.collect_garbage();
+        }
+    }
+
+    /// Notify the VM that an allocation has occurred.
+    /// This should be called whenever a new heap object is created.
+    pub fn notify_allocation(&mut self) {
+        self.allocations_since_gc += 1;
+        self.maybe_gc();
+    }
+
+    /// Adjust GC thresholds based on collection statistics.
+    fn adjust_gc_thresholds(&mut self, stats: &GcStats) {
+        // If we collected a lot of objects, run GC more frequently
+        if stats.objects_collected > stats.objects_after {
+            self.gc_allocation_threshold =
+                (self.gc_allocation_threshold as f64 * 0.75) as usize;
+        }
+        // If we collected very few objects, run GC less frequently
+        else if stats.objects_collected < stats.objects_before / 10 {
+            self.gc_allocation_threshold =
+                (self.gc_allocation_threshold as f64 * 1.5) as usize;
+        }
+
+        // Keep threshold within reasonable bounds
+        const MIN_THRESHOLD: usize = 10;
+        const MAX_THRESHOLD: usize = 10000;
+        self.gc_allocation_threshold =
+            self.gc_allocation_threshold.clamp(MIN_THRESHOLD, MAX_THRESHOLD);
+
+        // Also adjust the heap's memory threshold
+        self.gc_heap.adjust_threshold();
+    }
+
+    /// Get GC statistics.
+    pub fn gc_stats(&self) -> &GcStats {
+        self.gc_heap.last_gc_stats()
+    }
+
+    /// Get the total memory allocated by the VM.
+    pub fn total_allocated(&self) -> usize {
+        self.gc_heap.total_allocated()
+    }
+
+    /// Get the number of live objects.
+    pub fn live_objects(&self) -> usize {
+        self.gc_heap.live_objects()
+    }
+
+    /// Add a global variable (GC root).
+    pub fn set_global(&mut self, index: usize, value: Value) {
+        // Ensure globals vector is large enough
+        while self.globals.len() <= index {
+            self.globals.push(Value::Unit);
+        }
+        self.globals[index] = value;
+    }
+
+    /// Get a global variable.
+    pub fn get_global(&self, index: usize) -> Option<Value> {
+        self.globals.get(index).cloned()
+    }
+}
+
+impl fmt::Debug for Vm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Vm")
+            .field("stack_depth", &self.stack.len())
+            .field("frame_count", &self.frames.len())
+            .field("globals_count", &self.globals.len())
+            .field("gc_heap", &self.gc_heap)
+            .field("allocations_since_gc", &self.allocations_since_gc)
+            .field("gc_allocation_threshold", &self.gc_allocation_threshold)
+            .finish()
     }
 }
