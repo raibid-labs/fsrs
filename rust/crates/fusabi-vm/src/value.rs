@@ -54,6 +54,7 @@ impl Value {
             Value::Array(_) => "array",
             Value::Record(_) => "record",
             Value::Variant { .. } => "variant",
+            Value::Closure(_) => "closure",
         }
     }
 
@@ -119,6 +120,7 @@ impl Value {
             Value::Array(arr) => !arr.borrow().is_empty(),
             Value::Record(fields) => !fields.borrow().is_empty(),
             Value::Variant { .. } => true,
+            Value::Closure(_) => true,
         }
     }
 

@@ -1,0 +1,30 @@
+[package]
+name = "fusabi-mcp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Fusabi Team"]
+description = "Model Context Protocol (MCP) server for Fusabi language"
+license = "MIT"
+
+[[bin]]
+name = "fusabi-mcp"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
+thiserror = "1.0"
+
+# For timeout functionality
+tokio-util = { version = "0.7", features = ["time"] }
+
+# Local dependencies
+fusabi-frontend = { path = "../fusabi-frontend" }
+fusabi-vm = { path = "../fusabi-vm" }
+
+[dev-dependencies]
+tempfile = "3.0"
