@@ -60,6 +60,7 @@ fus grind examples/hello.fsx
 - [docs/claude-config.md](docs/claude-config.md) - Development configuration (for AI agents)
 - [docs/toc.md](docs/toc.md) - Complete documentation index
 - [docs/rebranding-complete.md](docs/rebranding-complete.md) - Rebranding summary
+- [docs/bytecode-format.md](docs/bytecode-format.md) - .fzb Bytecode Format specification
 
 ## License
 

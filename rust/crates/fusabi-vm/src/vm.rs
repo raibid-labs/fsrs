@@ -2,9 +2,14 @@
 // Implements the bytecode interpreter loop with stack-based execution
 
 use crate::chunk::Chunk;
+use crate::closure::{Closure, Upvalue};
 use crate::instruction::Instruction;
 use crate::value::Value;
+use crate::host::HostRegistry;
+use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Runtime error that can occur during VM execution
 #[derive(Debug, Clone, PartialEq)]
@@ -72,33 +77,38 @@ impl std::error::Error for VmError {}
 /// Call frame - represents an active function call
 #[derive(Debug, Clone)]
 pub struct Frame {
-    /// The chunk being executed
-    pub chunk: Chunk,
-    /// Instruction pointer - index into chunk.instructions
+    /// The closure being executed
+    pub closure: Rc<Closure>,
+    /// Instruction pointer - index into closure.chunk.instructions
     pub ip: usize,
     /// Base pointer - index into VM stack where this frame's locals start
     pub base: usize,
 }
 
 impl Frame {
-    /// Create a new frame for executing a chunk
-    pub fn new(chunk: Chunk, base: usize) -> Self {
-        Frame { chunk, ip: 0, base }
+    /// Create a new frame for executing a closure
+    pub fn new(closure: Rc<Closure>, base: usize) -> Self {
+        Frame {
+            closure,
+            ip: 0,
+            base,
+        }
     }
 
     /// Fetch the next instruction and advance IP
     pub fn fetch_instruction(&mut self) -> Result<Instruction, VmError> {
-        if self.ip >= self.chunk.instructions.len() {
+        if self.ip >= self.closure.chunk.instructions.len() {
             return Err(VmError::InvalidInstructionPointer(self.ip));
         }
-        let instr = self.chunk.instructions[self.ip].clone();
+        let instr = self.closure.chunk.instructions[self.ip].clone();
         self.ip += 1;
         Ok(instr)
     }
 
     /// Get a constant from the chunk
     pub fn get_constant(&self, idx: u16) -> Result<Value, VmError> {
-        self.chunk
+        self.closure
+            .chunk
             .constant_at(idx)
             .cloned()
             .ok_or(VmError::InvalidConstantIndex(idx))
@@ -113,6 +123,10 @@ pub struct Vm {
     stack: Vec<Value>,
     /// Call frame stack
     frames: Vec<Frame>,
+    /// Global variables
+    pub globals: HashMap<String, Value>,
+    /// Host function registry
+    pub host_registry: Rc<RefCell<HostRegistry>>,
 }
 
 impl Vm {
@@ -121,27 +135,39 @@ impl Vm {
         Vm {
             stack: Vec::new(),
             frames: Vec::new(),
+            globals: HashMap::new(),
+            host_registry: Rc::new(RefCell::new(HostRegistry::new())),
         }
     }
 
     /// Execute a chunk of bytecode
     pub fn execute(&mut self, chunk: Chunk) -> Result<Value, VmError> {
+        // Wrap the top-level chunk in a closure
+        let closure = Rc::new(Closure::new(chunk));
+        
         // Push initial frame
-        let frame = Frame::new(chunk, 0);
+        let frame = Frame::new(closure, 0);
         self.frames.push(frame);
+        
+        self.run()
+    }
+
+    /// Run the interpreter loop
+    pub fn run(&mut self) -> Result<Value, VmError> {
+        let start_depth = self.frames.len();
 
         // Main interpreter loop
         loop {
-            // Get current frame
-            let frame = self.current_frame_mut()?;
-
-            // Fetch next instruction
-            let instruction = frame.fetch_instruction()?;
+            // Fetch next instruction in a separate scope to release mutable borrow on self
+            let instruction = {
+                let frame = self.current_frame_mut()?;
+                frame.fetch_instruction()?
+            };
 
             // Execute instruction
             match instruction {
                 Instruction::LoadConst(idx) => {
-                    let constant = frame.get_constant(idx)?;
+                    let constant = self.current_frame()?.get_constant(idx)?;
                     self.push(constant);
                 }
 
@@ -153,6 +179,40 @@ impl Vm {
                 Instruction::StoreLocal(idx) => {
                     let value = self.pop()?;
                     self.set_local(idx, value)?;
+                }
+
+                Instruction::LoadUpvalue(idx) => {
+                    let frame = self.current_frame()?;
+                    let upvalue = frame.closure.get_upvalue(idx as usize).ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
+                    let value = match &*upvalue.borrow() {
+                        Upvalue::Closed(v) => v.clone(),
+                        Upvalue::Open(stack_idx) => self.stack[*stack_idx].clone(),
+                    };
+                    self.push(value);
+                }
+
+                Instruction::StoreUpvalue(idx) => {
+                    let value = self.pop()?;
+                    let frame = self.current_frame()?;
+                    let upvalue = frame.closure.get_upvalue(idx as usize).ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
+                    
+                    {
+                        match &mut *upvalue.borrow_mut() {
+                            Upvalue::Closed(v) => *v = value,
+                            Upvalue::Open(stack_idx) => self.stack[*stack_idx] = value,
+                        }
+                    };
+                }
+
+                Instruction::LoadGlobal(idx) => {
+                    let name_val = self.current_frame()?.get_constant(idx)?;
+                    let name = match name_val {
+                        Value::Str(s) => s,
+                        _ => return Err(VmError::TypeMismatch { expected: "string (global name)", got: name_val.type_name() }),
+                    };
+                    
+                    let value = self.globals.get(&name).cloned().ok_or_else(|| VmError::Runtime(format!("Undefined global: {}", name)))?;
+                    self.push(value);
                 }
 
                 Instruction::Pop => {
@@ -334,12 +394,110 @@ impl Vm {
                     }
                 }
 
+                Instruction::MakeClosure(idx, upvalue_count) => {
+                    let constant = self.current_frame()?.get_constant(idx)?;
+                    let prototype = match constant.as_closure() {
+                        Some(c) => c,
+                        None => return Err(VmError::TypeMismatch {
+                            expected: "closure",
+                            got: constant.type_name(),
+                        }),
+                    };
+
+                    let mut closure = Closure::new(prototype.chunk.clone());
+                    closure.arity = prototype.arity;
+                    closure.name = prototype.name.clone();
+
+                    // Pop upvalues (placeholder logic for now)
+                    for _ in 0..upvalue_count {
+                        self.pop()?;
+                    }
+
+                    self.push(Value::Closure(Rc::new(closure)));
+                }
+
+                Instruction::Call(argc) => {
+                    let func_idx = self.stack.len().checked_sub(1 + argc as usize).ok_or(VmError::StackUnderflow)?;
+                    let func = self.stack[func_idx].clone();
+
+                    match func {
+                        Value::Closure(closure) => {
+                            if closure.arity != argc {
+                                return Err(VmError::Runtime(format!(
+                                    "Arity mismatch: expected {}, got {}",
+                                    closure.arity, argc
+                                )));
+                            }
+                            
+                            // Locals start at first argument
+                            let base = func_idx + 1;
+                            let frame = Frame::new(closure.clone(), base);
+                            self.frames.push(frame);
+                        }
+                        Value::NativeFn { name, arity, args: applied_args } => {
+                            // Pop new arguments from stack
+                            let mut new_args = Vec::with_capacity(argc as usize);
+                            for _ in 0..argc {
+                                new_args.push(self.pop()?);
+                            }
+                            new_args.reverse(); // Arguments are pushed left-to-right, so stack has last arg on top.
+                            
+                            // Combine with already applied arguments
+                            let mut all_args = applied_args.clone();
+                            all_args.extend(new_args);
+                            
+                            let total_args = all_args.len();
+                            let arity_usize = arity as usize;
+                            
+                            if total_args < arity_usize {
+                                // Partial application: return new NativeFn with accumulated args
+                                self.push(Value::NativeFn {
+                                    name: name.clone(),
+                                    arity: arity,
+                                    args: all_args,
+                                });
+                            } else if total_args == arity_usize {
+                                // Exact match: execute
+                                // Call via registry
+                                let host_fn = {
+                                    let registry = self.host_registry.borrow();
+                                    registry.get(&name)
+                                }; // Drop borrow
+
+                                if let Some(f) = host_fn {
+                                    let result = f(self, &all_args)?;
+                                    self.push(result);
+                                } else {
+                                    return Err(VmError::Runtime(format!("Undefined host function: {}", name)));
+                                }
+                            } else {
+                                // Over-application: execute with first 'arity' args, then call result with rest
+                                // For Phase 1/2/3, let's just error or handle simple case
+                                // To handle this properly, we'd need to recurse or push result and call again.
+                                // Simpler: Error for now.
+                                return Err(VmError::Runtime(format!(
+                                    "Native function '{}' expects {} arguments, got {}", 
+                                    name, arity, total_args
+                                )));
+                            }
+                        }
+                        _ => return Err(VmError::TypeMismatch {
+                            expected: "function",
+                            got: func.type_name(),
+                        }),
+                    }
+                }
+
+                Instruction::CloseUpvalue(_) => {
+                    // Placeholder
+                }
+
                 Instruction::Return => {
                     // Pop the frame
                     self.frames.pop();
 
-                    // If no more frames, we're done
-                    if self.frames.is_empty() {
+                    // If we've dropped below the starting depth, we're done with this run() call
+                    if self.frames.len() < start_depth {
                         // Return the top of stack or Unit if empty
                         return Ok(self.stack.pop().unwrap_or(Value::Unit));
                     }
@@ -703,6 +861,11 @@ impl Vm {
         self.frames.last_mut().ok_or(VmError::NoActiveFrame)
     }
 
+    /// Get the current frame (immutable)
+    fn current_frame(&self) -> Result<&Frame, VmError> {
+        self.frames.last().ok_or(VmError::NoActiveFrame)
+    }
+
     /// Get a local variable
     fn get_local(&self, idx: u8) -> Result<Value, VmError> {
         let frame = self.frames.last().ok_or(VmError::NoActiveFrame)?;
@@ -741,12 +904,78 @@ impl Vm {
         };
 
         // Validate the new IP
-        if new_ip > frame.chunk.instructions.len() {
+        if new_ip > frame.closure.chunk.instructions.len() {
             return Err(VmError::InvalidInstructionPointer(new_ip));
         }
 
         frame.ip = new_ip;
         Ok(())
+    }
+
+    /// Call a closure from Rust code (re-entrant)
+    pub fn call_closure(&mut self, closure: Rc<Closure>, args: &[Value]) -> Result<Value, VmError> {
+        if closure.arity as usize != args.len() {
+             return Err(VmError::Runtime(format!(
+                 "Arity mismatch: expected {}, got {}", 
+                 closure.arity, args.len()
+             )));
+        }
+        
+        // Push args to stack
+        for arg in args {
+            self.push(arg.clone());
+        }
+        
+        // Calculate base pointer (locals start at first argument)
+        let base = self.stack.len() - args.len();
+        
+        // Push frame
+        let frame = Frame::new(closure, base);
+        self.frames.push(frame);
+        
+        // Run the VM loop until this frame returns
+        self.run()
+    }
+
+    /// Call any callable value (Closure or NativeFn) from Rust code
+    pub fn call_value(&mut self, func: Value, args: &[Value]) -> Result<Value, VmError> {
+        match func {
+            Value::Closure(closure) => self.call_closure(closure, args),
+            Value::NativeFn { name, arity, args: applied_args } => {
+                let mut all_args = applied_args.clone();
+                all_args.extend_from_slice(args);
+                
+                let total_args = all_args.len();
+                let arity_usize = arity as usize;
+                
+                if total_args < arity_usize {
+                    Ok(Value::NativeFn {
+                        name,
+                        arity,
+                        args: all_args,
+                    })
+                } else if total_args == arity_usize {
+                    let host_fn = {
+                        let registry = self.host_registry.borrow();
+                        registry.get(&name)
+                    };
+                    if let Some(f) = host_fn {
+                        f(self, &all_args)
+                    } else {
+                        Err(VmError::Runtime(format!("Undefined host function: {}", name)))
+                    }
+                } else {
+                    Err(VmError::Runtime(format!(
+                        "Native function '{}' expects {} arguments, got {}", 
+                        name, arity, total_args
+                    )))
+                }
+            }
+            _ => Err(VmError::TypeMismatch { 
+                expected: "function", 
+                got: func.type_name() 
+            }),
+        }
     }
 
     /// Get the current stack size (for debugging)

@@ -7,12 +7,16 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
+#[cfg(feature = "serde")]
+use serde::{Serialize, Deserialize};
+
 /// Upvalue - represents a captured variable from an enclosing scope
 ///
 /// Upvalues can be in two states:
 /// - Open: Points to a stack slot (variable still on stack)
 /// - Closed: Contains the actual value (variable has been moved off stack)
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Upvalue {
     /// Open upvalue - points to a stack location
     Open(usize),
@@ -79,10 +83,12 @@ impl fmt::Display for Upvalue {
 /// A closure combines a function's bytecode chunk with the values
 /// it has captured from enclosing scopes.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Closure {
     /// The function's bytecode chunk
     pub chunk: Chunk,
     /// Captured upvalues from enclosing scopes
+    #[cfg_attr(feature = "serde", serde(skip))] // Runtime state, not serialized for now
     pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
     /// Number of parameters the function expects
     pub arity: u8,

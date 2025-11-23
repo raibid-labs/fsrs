@@ -1,13 +1,17 @@
 // Fusabi VM Value Representation
 // Defines runtime values for the bytecode VM
 
+use crate::closure::Closure;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+#[cfg(feature = "serde")]
+use serde::{Serialize, Deserialize};
 
 /// Runtime value representation for the Fusabi VM
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Value {
     /// 64-bit signed integer
     Int(i64),
@@ -35,6 +39,14 @@ pub enum Value {
         variant_name: String,
         fields: Vec<Value>,
     },
+    /// Closure (function with captured upvalues)
+    Closure(Rc<Closure>),
+    /// Native Function (name, arity, applied_args)
+    NativeFn {
+        name: String,
+        arity: u8,
+        args: Vec<Value>,
+    },
 }
 
 impl Value {
@@ -51,6 +63,8 @@ impl Value {
             Value::Array(_) => "array",
             Value::Record(_) => "record",
             Value::Variant { .. } => "variant",
+            Value::Closure(_) => "function",
+            Value::NativeFn { .. } => "function",
         }
     }
 
@@ -116,6 +130,8 @@ impl Value {
             Value::Array(arr) => !arr.borrow().is_empty(),
             Value::Record(fields) => !fields.borrow().is_empty(),
             Value::Variant { .. } => true,
+            Value::Closure(_) => true,
+            Value::NativeFn { .. } => true,
         }
     }
 
@@ -332,6 +348,21 @@ impl Value {
         }
     }
 
+    /// Checks if the value is a Closure
+    pub fn is_closure(&self) -> bool {
+        matches!(self, Value::Closure(_))
+    }
+
+    /// Attempts to extract a closure reference from the value
+    /// Returns Some(Rc<Closure>) if the value is Closure, None otherwise
+    pub fn as_closure(&self) -> Option<Rc<Closure>> {
+        if let Value::Closure(c) = self {
+            Some(c.clone())
+        } else {
+            None
+        }
+    }
+
     /// Convert a list to a vector of values
     /// Returns None if the list is malformed (tail is not Nil or Cons)
     pub fn list_to_vec(&self) -> Option<Vec<Value>> {
@@ -449,6 +480,8 @@ impl fmt::Display for Value {
                 }
                 Ok(())
             }
+            Value::Closure(c) => write!(f, "{}", c),
+            Value::NativeFn { name, .. } => write!(f, "<native fn {}>", name),
         }
     }
 }

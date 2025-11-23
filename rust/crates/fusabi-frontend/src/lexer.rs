@@ -103,6 +103,8 @@ pub enum Token {
     ColonColon,
     /// <- operator (array assignment)
     LArrow,
+    /// |> operator (pipeline)
+    PipeRight,
 
     // Punctuation
     /// ( left parenthesis
@@ -175,6 +177,7 @@ impl fmt::Display for Token {
             Token::Or => write!(f, "||"),
             Token::ColonColon => write!(f, "::"),
             Token::LArrow => write!(f, "<-"),
+            Token::PipeRight => write!(f, "|>"),
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
             Token::LBracket => write!(f, "["),
@@ -363,7 +366,21 @@ impl Lexer {
             '<' => self.lex_lt_or_lte_or_neq_or_larrow(),
             '>' => self.lex_gt_or_gte(),
             '&' => self.lex_and(),
-            '|' => self.lex_or_or_pipe_rbracket(),
+            '|' => {
+                self.advance();
+                if !self.is_at_end() && self.current_char() == '|' {
+                    self.advance();
+                    Ok(Token::Or)
+                } else if !self.is_at_end() && self.current_char() == '>' {
+                    self.advance();
+                    Ok(Token::PipeRight)
+                } else if !self.is_at_end() && self.current_char() == ']' {
+                    self.advance();
+                    Ok(Token::PipeRBracket)
+                } else {
+                    Ok(Token::Pipe)
+                }
+            }
             ':' => self.lex_colon_or_coloncolon(),
             '(' => {
                 self.advance();
@@ -575,25 +592,6 @@ impl Lexer {
         }
     }
 
-    /// Lex ||, |], or | (pipe).
-    fn lex_or_or_pipe_rbracket(&mut self) -> Result<Token, LexError> {
-        self.advance();
-        if !self.is_at_end() {
-            match self.current_char() {
-                '|' => {
-                    self.advance();
-                    Ok(Token::Or)
-                }
-                ']' => {
-                    self.advance();
-                    Ok(Token::PipeRBracket)
-                }
-                _ => Ok(Token::Pipe), // Single pipe for match expressions
-            }
-        } else {
-            Ok(Token::Pipe) // Single pipe at end of input
-        }
-    }
 
     /// Lex : or ::.
     fn lex_colon_or_coloncolon(&mut self) -> Result<Token, LexError> {

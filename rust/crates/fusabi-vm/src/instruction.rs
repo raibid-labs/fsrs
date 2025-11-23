@@ -2,12 +2,15 @@
 // Defines the instruction set for the stack-based VM
 
 use std::fmt;
+#[cfg(feature = "serde")]
+use serde::{Serialize, Deserialize};
 
 /// Bytecode instruction for the Fusabi VM
 ///
 /// The VM is stack-based, with instructions operating on a value stack
 /// and accessing locals, constants, and upvalues.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Instruction {
     // ===== Stack Operations =====
     /// Push constants[idx] onto stack
@@ -24,6 +27,9 @@ pub enum Instruction {
 
     /// Pop stack top into upvalues[idx]
     StoreUpvalue(u8),
+
+    /// Load global variable by name (name is at constants[idx])
+    LoadGlobal(u16),
 
     /// Pop top of stack and discard
     Pop,
@@ -176,6 +182,15 @@ pub enum Instruction {
     /// Get variant field by index
     /// Pop variant from stack, push field value at index
     GetVariantField(u8),
+
+    // ===== Closure Operations =====
+    /// Create closure from constant index (which points to a Chunk/Function)
+    /// Pops upvalues from stack based on the function's upvalue count
+    /// Args: (constant_index, upvalue_count)
+    MakeClosure(u16, u8),
+
+    /// Close upvalues on the stack up to a given stack slot
+    CloseUpvalue(u8),
 }
 
 impl fmt::Display for Instruction {
@@ -187,6 +202,7 @@ impl fmt::Display for Instruction {
             Instruction::StoreLocal(idx) => write!(f, "STORE_LOCAL {}", idx),
             Instruction::LoadUpvalue(idx) => write!(f, "LOAD_UPVALUE {}", idx),
             Instruction::StoreUpvalue(idx) => write!(f, "STORE_UPVALUE {}", idx),
+            Instruction::LoadGlobal(idx) => write!(f, "LOAD_GLOBAL {}", idx),
             Instruction::Pop => write!(f, "POP"),
             Instruction::Dup => write!(f, "DUP"),
 
@@ -250,6 +266,10 @@ impl fmt::Display for Instruction {
             Instruction::MakeVariant(n) => write!(f, "MAKE_VARIANT {}", n),
             Instruction::CheckVariantTag(tag) => write!(f, "CHECK_VARIANT_TAG \"{}\"", tag),
             Instruction::GetVariantField(idx) => write!(f, "GET_VARIANT_FIELD {}", idx),
+
+            // Closure operations
+            Instruction::MakeClosure(idx, count) => write!(f, "MAKE_CLOSURE {} {}", idx, count),
+            Instruction::CloseUpvalue(idx) => write!(f, "CLOSE_UPVALUE {}", idx),
         }
     }
 }

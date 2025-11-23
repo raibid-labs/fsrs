@@ -15,4 +15,4 @@ path = "src/lib.rs"
 
 [dependencies]
 fusabi-frontend = { path = "../fusabi-frontend" }
-fusabi-vm = { path = "../fusabi-vm" }
+fusabi-vm = { path = "../fusabi-vm", features = ["serde"] }

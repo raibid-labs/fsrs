@@ -1,23 +1,30 @@
 # Workstream 4: Serialization & Performance
 
 ## Status
-🟡 Ready to Start (parallel with WS1-WS3)
+🟡 Partially Complete (Serialization Done)
 
 ## Overview
 Implement bytecode serialization to `.fzb` files for faster startup times, and create a comprehensive benchmarking suite comparing Fusabi against Rhai, Rune, and Lua. This validates Fusabi's "Lua-class performance" claim.
 
 ## Objectives
 **Bytecode Serialization**:
-- [ ] Add serde serialization for `Chunk`, `Instruction`, `Value`
-- [ ] Define `.fzb` file format with magic bytes
-- [ ] Implement `fus grind` CLI command to compile to bytecode
-- [ ] Update `fus run` to auto-detect and load `.fzb` files
+- [x] Add serde serialization for `Chunk`, `Instruction`, `Value`
+- [x] Define `.fzb` file format with magic bytes
+- [x] Implement `fus grind` CLI command to compile to bytecode
+- [x] Update `fus run` to auto-detect and load `.fzb` files
 
 **Benchmarking**:
 - [ ] Set up Criterion micro-benchmarks for VM operations
 - [ ] Create macro-benchmarks (fib, sieve, binary_trees)
 - [ ] Implement comparison harness for Rhai, Rune, Lua
 - [ ] Integrate benchmarks into CI with regression detection
+
+## Summary of Changes (Serialization)
+- Added `serde` and `bincode` dependencies to `fusabi-vm`.
+- Implemented `serialize_chunk` and `deserialize_chunk` with magic bytes `FZB\x01`.
+- Implemented `fus grind` command.
+- Updated `fus run` to detect and execute `.fzb` files.
+- Verified with `hello.fsx` -> `hello.fzb` roundtrip.
 
 ## Agent Assignment
 **Suggested Agent Type**: `performance-engineer`, `rust-pro`, `coder`

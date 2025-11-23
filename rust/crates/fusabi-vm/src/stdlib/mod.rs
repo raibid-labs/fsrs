@@ -6,132 +6,110 @@ pub mod option;
 pub mod string;
 
 use crate::value::Value;
-use crate::vm::VmError;
+use crate::vm::{Vm, VmError};
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-/// Type alias for standard library functions
-/// Takes a slice of arguments and returns a Result with Value or VmError
-pub type StdlibFn = Box<dyn Fn(&[Value]) -> Result<Value, VmError>>;
+/// Register all standard library functions into the VM
+pub fn register_stdlib(vm: &mut Vm) {
+    // 1. Register functions in HostRegistry
+    {
+        let mut registry = vm.host_registry.borrow_mut();
 
-/// Registry of all standard library functions
-/// Provides lookup and registration of built-in functions
-pub struct StdlibRegistry {
-    functions: HashMap<String, StdlibFn>,
+        // List functions
+        registry.register("List.length", |_vm, args| wrap_unary(args, list::list_length));
+        registry.register("List.head", |_vm, args| wrap_unary(args, list::list_head));
+        registry.register("List.tail", |_vm, args| wrap_unary(args, list::list_tail));
+        registry.register("List.reverse", |_vm, args| wrap_unary(args, list::list_reverse));
+        registry.register("List.isEmpty", |_vm, args| wrap_unary(args, list::list_is_empty));
+        registry.register("List.append", |_vm, args| wrap_binary(args, list::list_append));
+        registry.register("List.concat", |_vm, args| wrap_unary(args, list::list_concat));
+        registry.register("List.map", list::list_map);
+
+        // String functions
+        registry.register("String.length", |_vm, args| wrap_unary(args, string::string_length));
+        registry.register("String.trim", |_vm, args| wrap_unary(args, string::string_trim));
+        registry.register("String.toLower", |_vm, args| wrap_unary(args, string::string_to_lower));
+        registry.register("String.toUpper", |_vm, args| wrap_unary(args, string::string_to_upper));
+        registry.register("String.split", |_vm, args| wrap_binary(args, string::string_split));
+        registry.register("String.concat", |_vm, args| wrap_unary(args, string::string_concat));
+        registry.register("String.contains", |_vm, args| wrap_binary(args, string::string_contains));
+        registry.register("String.startsWith", |_vm, args| wrap_binary(args, string::string_starts_with));
+        registry.register("String.endsWith", |_vm, args| wrap_binary(args, string::string_ends_with));
+
+        // Option functions
+        registry.register("Option.isSome", |_vm, args| wrap_unary(args, option::option_is_some));
+        registry.register("Option.isNone", |_vm, args| wrap_unary(args, option::option_is_none));
+        registry.register("Option.defaultValue", |_vm, args| wrap_binary(args, option::option_default_value));
+    }
+
+    // 2. Populate Globals with Module Records
+    
+    // Helper to create NativeFn value
+    let native = |name: &str, arity: u8| Value::NativeFn { 
+        name: name.to_string(), 
+        arity, 
+        args: vec![] 
+    };
+
+    // List Module
+    let mut list_fields = HashMap::new();
+    list_fields.insert("length".to_string(), native("List.length", 1));
+    list_fields.insert("head".to_string(), native("List.head", 1));
+    list_fields.insert("tail".to_string(), native("List.tail", 1));
+    list_fields.insert("reverse".to_string(), native("List.reverse", 1));
+    list_fields.insert("isEmpty".to_string(), native("List.isEmpty", 1));
+    list_fields.insert("append".to_string(), native("List.append", 2));
+    list_fields.insert("concat".to_string(), native("List.concat", 1));
+    list_fields.insert("map".to_string(), native("List.map", 2));
+    vm.globals.insert("List".to_string(), Value::Record(Rc::new(RefCell::new(list_fields))));
+
+    // String Module
+    let mut string_fields = HashMap::new();
+    string_fields.insert("length".to_string(), native("String.length", 1));
+    string_fields.insert("trim".to_string(), native("String.trim", 1));
+    string_fields.insert("toLower".to_string(), native("String.toLower", 1));
+    string_fields.insert("toUpper".to_string(), native("String.toUpper", 1));
+    string_fields.insert("split".to_string(), native("String.split", 2));
+    string_fields.insert("concat".to_string(), native("String.concat", 1));
+    string_fields.insert("contains".to_string(), native("String.contains", 2));
+    string_fields.insert("startsWith".to_string(), native("String.startsWith", 2));
+    string_fields.insert("endsWith".to_string(), native("String.endsWith", 2));
+    vm.globals.insert("String".to_string(), Value::Record(Rc::new(RefCell::new(string_fields))));
+
+    // Option Module
+    let mut option_fields = HashMap::new();
+    option_fields.insert("isSome".to_string(), native("Option.isSome", 1));
+    option_fields.insert("isNone".to_string(), native("Option.isNone", 1));
+    option_fields.insert("defaultValue".to_string(), native("Option.defaultValue", 2));
+    vm.globals.insert("Option".to_string(), Value::Record(Rc::new(RefCell::new(option_fields))));
 }
 
-impl StdlibRegistry {
-    /// Create a new stdlib registry with all built-in functions registered
-    pub fn new() -> Self {
-        let mut registry = StdlibRegistry {
-            functions: HashMap::new(),
-        };
-
-        registry.register_list_functions();
-        registry.register_string_functions();
-        registry.register_option_functions();
-
-        registry
-    }
-
-    /// Register all List module functions
-    fn register_list_functions(&mut self) {
-        self.register("List.length", wrap_unary(list::list_length));
-        self.register("List.head", wrap_unary(list::list_head));
-        self.register("List.tail", wrap_unary(list::list_tail));
-        self.register("List.reverse", wrap_unary(list::list_reverse));
-        self.register("List.isEmpty", wrap_unary(list::list_is_empty));
-        self.register("List.append", wrap_binary(list::list_append));
-        self.register("List.concat", wrap_unary(list::list_concat));
-    }
-
-    /// Register all String module functions
-    fn register_string_functions(&mut self) {
-        self.register("String.length", wrap_unary(string::string_length));
-        self.register("String.trim", wrap_unary(string::string_trim));
-        self.register("String.toLower", wrap_unary(string::string_to_lower));
-        self.register("String.toUpper", wrap_unary(string::string_to_upper));
-        self.register("String.split", wrap_binary(string::string_split));
-        self.register("String.concat", wrap_unary(string::string_concat));
-        self.register("String.contains", wrap_binary(string::string_contains));
-        self.register("String.startsWith", wrap_binary(string::string_starts_with));
-        self.register("String.endsWith", wrap_binary(string::string_ends_with));
-    }
-
-    /// Register all Option module functions
-    fn register_option_functions(&mut self) {
-        self.register("Option.isSome", wrap_unary(option::option_is_some));
-        self.register("Option.isNone", wrap_unary(option::option_is_none));
-        self.register(
-            "Option.defaultValue",
-            wrap_binary(option::option_default_value),
-        );
-    }
-
-    /// Register a function with the given name
-    fn register(&mut self, name: &str, f: StdlibFn) {
-        self.functions.insert(name.to_string(), f);
-    }
-
-    /// Look up a function by name
-    pub fn lookup(&self, name: &str) -> Option<&StdlibFn> {
-        self.functions.get(name)
-    }
-
-    /// Call a function by name with the given arguments
-    pub fn call(&self, name: &str, args: &[Value]) -> Result<Value, VmError> {
-        match self.lookup(name) {
-            Some(f) => f(args),
-            None => Err(VmError::Runtime(format!("Unknown function: {}", name))),
-        }
-    }
-
-    /// Get all registered function names
-    pub fn function_names(&self) -> Vec<String> {
-        self.functions.keys().cloned().collect()
-    }
-
-    /// Check if a function exists
-    pub fn has_function(&self, name: &str) -> bool {
-        self.functions.contains_key(name)
-    }
-}
-
-impl Default for StdlibRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Helper to wrap unary functions (1 argument)
-fn wrap_unary<F>(f: F) -> StdlibFn
+fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>
 where
-    F: Fn(&Value) -> Result<Value, VmError> + 'static,
+    F: Fn(&Value) -> Result<Value, VmError>,
 {
-    Box::new(move |args: &[Value]| {
-        if args.len() != 1 {
-            return Err(VmError::Runtime(format!(
-                "Expected 1 argument, got {}",
-                args.len()
-            )));
-        }
-        f(&args[0])
-    })
+    if args.len() != 1 {
+        return Err(VmError::Runtime(format!(
+            "Expected 1 argument, got {}",
+            args.len()
+        )));
+    }
+    f(&args[0])
 }
 
-/// Helper to wrap binary functions (2 arguments)
-fn wrap_binary<F>(f: F) -> StdlibFn
+fn wrap_binary<F>(args: &[Value], f: F) -> Result<Value, VmError>
 where
-    F: Fn(&Value, &Value) -> Result<Value, VmError> + 'static,
+    F: Fn(&Value, &Value) -> Result<Value, VmError>,
 {
-    Box::new(move |args: &[Value]| {
-        if args.len() != 2 {
-            return Err(VmError::Runtime(format!(
-                "Expected 2 arguments, got {}",
-                args.len()
-            )));
-        }
-        f(&args[0], &args[1])
-    })
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Expected 2 arguments, got {}",
+            args.len()
+        )));
+    }
+    f(&args[0], &args[1])
 }
 
 #[cfg(test)]
@@ -139,46 +117,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_creation() {
-        let registry = StdlibRegistry::new();
-        assert!(registry.has_function("List.length"));
-        assert!(registry.has_function("String.length"));
-        assert!(registry.has_function("Option.isSome"));
-    }
-
-    #[test]
-    fn test_registry_lookup() {
-        let registry = StdlibRegistry::new();
-        let list_length = registry.lookup("List.length");
-        assert!(list_length.is_some());
-    }
-
-    #[test]
-    fn test_registry_all_functions() {
-        let registry = StdlibRegistry::new();
-        let names = registry.function_names();
-        assert!(names.len() >= 15); // At least 15 functions registered
-    }
-
-    #[test]
-    fn test_registry_missing_function() {
-        let registry = StdlibRegistry::new();
-        assert!(!registry.has_function("NonExistent.function"));
-        assert!(registry.lookup("NonExistent.function").is_none());
-    }
-
-    #[test]
-    fn test_registry_call() {
-        let registry = StdlibRegistry::new();
-        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-        let result = registry.call("List.length", &[list]).unwrap();
-        assert_eq!(result, Value::Int(3));
-    }
-
-    #[test]
-    fn test_registry_call_missing() {
-        let registry = StdlibRegistry::new();
-        let result = registry.call("NonExistent.function", &[]);
-        assert!(result.is_err());
+    fn test_register_stdlib() {
+        let mut vm = Vm::new();
+        register_stdlib(&mut vm);
+        
+        // Check HostRegistry
+        assert!(vm.host_registry.borrow().has_function("List.length"));
+        
+        // Check Globals
+        assert!(vm.globals.contains_key("List"));
+        if let Some(Value::Record(r)) = vm.globals.get("List") {
+            assert!(r.borrow().contains_key("length"));
+        } else {
+            panic!("List global is not a record");
+        }
     }
 }

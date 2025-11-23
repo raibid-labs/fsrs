@@ -513,6 +513,17 @@ module Config =
 
 The front‑end maintains a symbol table keyed by `ModuleName.identifier`.
 
+### 4.1 Imports
+
+The `open` keyword allows importing module contents into the current scope:
+
+```fsharp
+open List
+
+let xs = [1; 2; 3]
+let len = length xs  // Instead of List.length xs
+```
+
 ## 5. Computation expressions (CEs)
 
 We support a minimal subset of F# CEs for domain‑specific DSLs. The CE support is implemented via **desugaring only**; the VM sees only function calls and lambdas.
@@ -550,3 +561,45 @@ The initial dialect intentionally omits:
 - Full `do`/`while` loops (these can be emulated with recursion and higher‑order functions).
 
 The idea is to converge quickly on a compact core that is easy to embed and optimize.
+
+## 7. Standard Library
+
+The following modules are available in the global scope:
+
+### 7.1 List
+
+- `List.length : 'a list -> int`
+- `List.head : 'a list -> 'a`
+- `List.tail : 'a list -> 'a list`
+- `List.reverse : 'a list -> 'a list`
+- `List.isEmpty : 'a list -> bool`
+- `List.append : 'a list -> 'a list -> 'a list`
+- `List.concat : 'a list list -> 'a list`
+- `List.map : ('a -> 'b) -> 'a list -> 'b list`
+
+### 7.2 String
+
+- `String.length : string -> int`
+- `String.trim : string -> string`
+- `String.toLower : string -> string`
+- `String.toUpper : string -> string`
+- `String.split : string -> string -> string list`
+- `String.concat : string list -> string`
+- `String.contains : string -> string -> bool`
+- `String.startsWith : string -> string -> bool`
+- `String.endsWith : string -> string -> bool`
+
+### 7.3 Option
+
+- `Option.isSome : 'a option -> bool`
+- `Option.isNone : 'a option -> bool`
+- `Option.defaultValue : 'a -> 'a option -> 'a`
+
+### 7.4 Core (Implicit)
+
+- `print : 'a -> unit`
+- `printfn : 'a -> unit`
+- `id : 'a -> 'a`
+- `ignore : 'a -> unit`
+- `fst : 'a * 'b -> 'a`
+- `snd : 'a * 'b -> 'b`

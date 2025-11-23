@@ -1,18 +1,25 @@
 # Workstream 1: VM Core - Re-entrant Host Functions
 
 ## Status
-🟡 Ready to Start
+🟢 Complete
 
 ## Overview
 Refactor `HostFn` (native Rust functions) to allow re-entrancy, enabling native functions to call back into the VM. This is **critical** for implementing higher-order functions like `List.map`, `List.filter`, and `List.fold` in the standard library.
 
 ## Objectives
-- [ ] Refactor `HostFn` type signature to accept `VmContext` or `&mut Vm`
-- [ ] Update VM loop to pass VM instance to host functions
-- [ ] Implement helper API: `Vm::call_closure(closure, args)`
-- [ ] Update all existing stdlib functions to new signature
-- [ ] Implement `List.map` as proof of concept
-- [ ] Ensure exception safety and borrow checker compatibility
+- [x] Refactor `HostFn` type signature to accept `VmContext` or `&mut Vm`
+- [x] Update VM loop to pass VM instance to host functions
+- [x] Implement helper API: `Vm::call_closure(closure, args)`
+- [x] Update all existing stdlib functions to new signature
+- [x] Implement `List.map` as proof of concept
+- [x] Ensure exception safety and borrow checker compatibility
+
+## Summary of Changes
+- Introduced `NativeFn` value variant to support partial application and native function handles.
+- Updated `HostRegistry` to store `Rc<HostFn>` where `HostFn` is `dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError>`.
+- Implemented re-entrancy in `vm.call_value` and `HostRegistry::call`, allowing host functions to invoke closures via the VM.
+- Implemented `List.map` in `stdlib/list.rs` using this new capability.
+- Added `repro_map.fsx` demonstrating successful `List.map` usage with a closure.
 
 ## Agent Assignment
 **Suggested Agent Type**: `backend-architect`, `rust-pro`, `coder`

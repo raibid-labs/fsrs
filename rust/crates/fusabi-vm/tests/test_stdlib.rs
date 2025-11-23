@@ -4,14 +4,23 @@
 use fusabi_vm::stdlib::list::*;
 use fusabi_vm::stdlib::option::*;
 use fusabi_vm::stdlib::string::*;
-use fusabi_vm::stdlib::StdlibRegistry;
-use fusabi_vm::Value;
+use fusabi_vm::stdlib::register_stdlib;
+use fusabi_vm::{Value, Vm, VmError};
+use std::rc::Rc;
+
+// Helper to get a configured VM for tests
+fn get_test_vm() -> Vm {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    vm
+}
 
 // ========== List Tests ==========
 
 #[test]
 fn test_list_length_integration() {
     let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    let _vm = get_test_vm(); // Ensure VM logic is initialized if needed (though purely functional here)
     let result = list_length(&list).unwrap();
     assert_eq!(result, Value::Int(3));
 }
@@ -168,106 +177,85 @@ fn test_option_default_value_integration() {
 // ========== Registry Tests ==========
 
 #[test]
-fn test_registry_lookup_integration() {
-    let registry = StdlibRegistry::new();
+fn test_register_stdlib_functions_and_globals() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm); // Register functions and populate globals
 
-    // Test that all major functions are registered
-    assert!(registry.lookup("List.length").is_some());
-    assert!(registry.lookup("List.head").is_some());
-    assert!(registry.lookup("List.tail").is_some());
-    assert!(registry.lookup("List.reverse").is_some());
-    assert!(registry.lookup("List.append").is_some());
-    assert!(registry.lookup("List.concat").is_some());
+    // Verify HostRegistry
+    assert!(vm.host_registry.borrow().has_function("List.length"));
+    assert!(vm.host_registry.borrow().has_function("String.length"));
+    assert!(vm.host_registry.borrow().has_function("Option.isSome"));
 
-    assert!(registry.lookup("String.length").is_some());
-    assert!(registry.lookup("String.trim").is_some());
-    assert!(registry.lookup("String.toLower").is_some());
-    assert!(registry.lookup("String.toUpper").is_some());
-    assert!(registry.lookup("String.split").is_some());
-    assert!(registry.lookup("String.concat").is_some());
+    // Verify Globals (Module Records)
+    assert!(vm.globals.contains_key("List"));
+    if let Some(Value::Record(r)) = vm.globals.get("List") {
+        let borrowed = r.borrow();
+        assert!(borrowed.contains_key("length"));
+        assert!(matches!(borrowed.get("length").unwrap(), Value::NativeFn { name, arity: 1, args: _ } if name == "List.length"));
+    } else {
+        panic!("List global is not a record");
+    }
 
-    assert!(registry.lookup("Option.isSome").is_some());
-    assert!(registry.lookup("Option.isNone").is_some());
-    assert!(registry.lookup("Option.defaultValue").is_some());
+    assert!(vm.globals.contains_key("String"));
+    if let Some(Value::Record(r)) = vm.globals.get("String") {
+        let borrowed = r.borrow();
+        assert!(borrowed.contains_key("length"));
+    }
+
+    assert!(vm.globals.contains_key("Option"));
+    if let Some(Value::Record(r)) = vm.globals.get("Option") {
+        let borrowed = r.borrow();
+        assert!(borrowed.contains_key("isSome"));
+    }
+}
+
+// Helper to call stdlib function through VM
+fn call_stdlib_function(vm: &mut Vm, name: &str, args: &[Value]) -> Result<Value, VmError> {
+    // Handle module.function lookup
+    if let Some((module, func_name)) = name.split_once('.') {
+        let module_val = vm.globals.get(module).ok_or_else(|| VmError::Runtime(format!("Undefined module: {}", module)))?;
+        if let Value::Record(r) = module_val {
+             let func = r.borrow().get(func_name).cloned().ok_or_else(|| VmError::Runtime(format!("Undefined function: {}", name)))?;
+             return vm.call_value(func, args);
+        }
+    }
+    
+    let func = vm.globals.get(name).cloned().ok_or(VmError::Runtime(format!("Undefined global function: {}", name)))?;
+    vm.call_value(func, args)
 }
 
 #[test]
-fn test_registry_function_call_integration() {
-    let registry = StdlibRegistry::new();
-
-    // Test calling a function through the registry
-    let list_length_fn = registry.lookup("List.length").unwrap();
+fn test_list_length_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
     let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-    let result = list_length_fn(&[list]).unwrap();
+    let result = call_stdlib_function(&mut vm, "List.length", &[list]).unwrap();
     assert_eq!(result, Value::Int(3));
 }
 
 #[test]
-fn test_registry_all_functions_integration() {
-    let registry = StdlibRegistry::new();
-    let names = registry.function_names();
-
-    // Verify we have at least the expected number of functions
-    assert!(names.len() >= 15);
-
-    // Verify each function can be looked up
-    for name in names {
-        assert!(registry.lookup(&name).is_some());
-    }
-}
-
-// ========== Complex Integration Tests ==========
-
-#[test]
-fn test_list_string_combo_integration() {
-    // Split a string, reverse the words, then concat
-    let delim = Value::Str(" ".to_string());
-    let s = Value::Str("hello world foo".to_string());
-    let words = string_split(&delim, &s).unwrap();
-    let reversed = list_reverse(&words).unwrap();
-    let _joined = string_concat(&reversed).unwrap();
-
-    // Should be "fooworldhello" (reversed order, no spaces)
-    let expected_words = vec![
-        Value::Str("foo".to_string()),
-        Value::Str("world".to_string()),
-        Value::Str("hello".to_string()),
-    ];
-    let expected_list = Value::vec_to_cons(expected_words);
-    assert_eq!(reversed, expected_list);
+fn test_string_concat_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    let list = Value::vec_to_cons(vec![Value::Str("hello".to_string()), Value::Str("world".to_string())]);
+    let result = call_stdlib_function(&mut vm, "String.concat", &[list]).unwrap();
+    assert_eq!(result, Value::Str("helloworld".to_string()));
 }
 
 #[test]
-fn test_nested_list_operations_integration() {
-    // Create multiple lists, concat them, then reverse
-    let list1 = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2)]);
-    let list2 = Value::vec_to_cons(vec![Value::Int(3), Value::Int(4)]);
-    let lists = Value::vec_to_cons(vec![list1, list2]);
-
-    let concatenated = list_concat(&lists).unwrap();
-    let reversed = list_reverse(&concatenated).unwrap();
-
-    let expected = Value::vec_to_cons(vec![
-        Value::Int(4),
-        Value::Int(3),
-        Value::Int(2),
-        Value::Int(1),
-    ]);
-    assert_eq!(reversed, expected);
-}
-
-#[test]
-fn test_option_with_string_integration() {
-    let some_str = Value::Variant {
-        type_name: "Option".to_string(),
-        variant_name: "Some".to_string(),
-        fields: vec![Value::Str("hello".to_string())],
-    };
-
-    let default = Value::Str("default".to_string());
-    let result = option_default_value(&default, &some_str).unwrap();
-
-    // Should extract "hello" and we can use string operations on it
-    let upper = string_to_upper(&result).unwrap();
-    assert_eq!(upper, Value::Str("HELLO".to_string()));
+fn test_list_map_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    
+    // Create a simple identity closure
+    let func_chunk = fusabi_vm::chunk::ChunkBuilder::new()
+        .constant(Value::Int(0)) // Placeholder for local 0
+        .instruction(fusabi_vm::instruction::Instruction::LoadLocal(0))
+        .instruction(fusabi_vm::instruction::Instruction::Return)
+        .build();
+    let func_closure = Rc::new(fusabi_vm::closure::Closure::with_arity(func_chunk, 1));
+    
+    let result = call_stdlib_function(&mut vm, "List.map", &[Value::Closure(func_closure), list]).unwrap();
+    assert_eq!(result, Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
 }

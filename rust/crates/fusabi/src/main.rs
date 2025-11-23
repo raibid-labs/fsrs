@@ -26,7 +26,9 @@
 
 use fusabi_demo::{run_file, run_file_with_disasm, run_source, run_source_with_disasm};
 use std::env;
+use std::fs;
 use std::process;
+use fusabi_frontend::{Lexer, Parser, Compiler};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const HELP_TEXT: &str = r#"
@@ -195,9 +197,7 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Mode::Grind(path) => {
-            println!("Compiling {} to bytecode...", path);
-            println!("Feature coming soon: .fzb bytecode compilation");
-            println!("For now, use 'fus run {}' for JIT execution", path);
+            grind_command(&path);
             Ok(())
         }
         Mode::Root(subcommands) => {
@@ -213,6 +213,38 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+fn grind_command(file_path: &str) {
+    let source = match fs::read_to_string(file_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", file_path, e);
+            process::exit(1);
+        }
+    };
+
+    let mut lexer = Lexer::new(&source);
+    let tokens = lexer.tokenize().expect("Lex error");
+    let mut parser = Parser::new(tokens);
+    let ast = parser.parse().expect("Parse error");
+    let chunk = Compiler::compile(&ast).expect("Compile error");
+    
+    let bytes = match fusabi_vm::serialize_chunk(&chunk) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Serialization error: {}", e);
+            process::exit(1);
+        }
+    };
+    
+    let output_path = file_path.replace(".fsx", ".fzb");
+    if let Err(e) = fs::write(&output_path, &bytes) {
+        eprintln!("Failed to write to '{}': {}", output_path, e);
+        process::exit(1);
+    }
+
+    println!("Compiled {} ({} bytes) -> {}", file_path, bytes.len(), output_path);
 }
 
 fn main() {

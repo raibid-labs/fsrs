@@ -15,29 +15,33 @@ A single `Value` enum represents all runtime values:
 ```rust
 pub enum Value {
     Int(i64),
-    Float(f64),
     Bool(bool),
-    Str(Gc<String>),
-    List(Gc<ListCell>),
-    Array(Gc<Vec<Value>>),
-    Record(Gc<RecordInstance>),
-    Variant(Gc<VariantInstance>),
-    Closure(Gc<Closure>),
-    BuiltinFn(BuiltinFnPtr),
+    Str(String),
     Unit,
+    Tuple(Vec<Value>),
+    Cons { head: Box<Value>, tail: Box<Value> },
+    Nil,
+    Array(Rc<RefCell<Vec<Value>>>),
+    Record(Rc<RefCell<HashMap<String, Value>>>),
+    Variant {
+        type_name: String,
+        variant_name: String,
+        fields: Vec<Value>,
+    },
+    Closure(Rc<Closure>),
+    NativeFn {
+        name: String,
+        arity: u8,
+        args: Vec<Value>, // Partially applied arguments
+    },
 }
 ```
 
 Where:
 
-- `Gc<T>` is a simple GC handle (e.g. arena index or `Rc<RefCell<T>>` for phase 1).
-- `RecordInstance` contains:
-  - `type_id: TypeId`,
-  - `fields: Vec<Value>` indexed by `FieldId`.
-- `VariantInstance` contains:
-  - `type_id: TypeId`,
-  - `variant_tag: VariantTag`,
-  - `payload: Vec<Value>` (0 or more fields).
+- `Rc<RefCell<T>>` is used for mutable/shared heap objects (Phase 1 GC).
+- `Closure` contains the `Chunk` and captured `Upvalue`s.
+- `NativeFn` supports partial application natively.
 
 ## 2. Bytecode
 
@@ -47,55 +51,50 @@ Bytecode is organised in **chunks**, one per function:
 pub struct Chunk {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Value>, // literals, function refs, etc.
+    pub name: Option<String>,
 }
 ```
 
-### 2.1 Instructions (first pass)
+### 2.1 Instructions (current set)
 
 ```rust
 pub enum Instruction {
     LoadConst(u16),        // push constants[idx]
-    LoadLocal(u8),         // push locals[idx]
-    StoreLocal(u8),        // pop -> locals[idx]
-    LoadUpvalue(u8),       // push captured upvalue
-    StoreUpvalue(u8),      // pop -> captured upvalue
+    LoadLocal(u16),        // push locals[idx]
+    StoreLocal(u16),       // pop -> locals[idx]
+    LoadGlobal(u16),       // push globals[name_idx] (name in constants)
+    LoadUpvalue(u16),      // push captured upvalue
+    StoreUpvalue(u16),     // pop -> captured upvalue
     Pop,                   // pop1
 
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Eq,
-    Neq,
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    And,
-    Or,
-    Not,
+    // Arithmetic & Logic
+    Add, Sub, Mul, Div,
+    Eq, Neq, Lt, Lte, Gt, Gte,
+    And, Or, Not,
 
-    MakeTuple(u8),         // pop N -> tuple
-    MakeList(u8),
-    MakeArray(u8),
+    // Construction
+    MakeTuple(u16),        // pop N -> tuple
+    MakeList(u16),         // pop N -> list (from stack elements)
+    Cons,                  // pop 2 -> Cons cell
+    MakeArray(u16),        // pop N -> array
+    MakeRecord(u16),       // pop 2*N -> record (key, value pairs)
+    MakeClosure(u16, u16), // const_idx (proto), upvalue_count
 
-    MakeRecord(TypeId, u8), // field_count
-    GetField(FieldId),
+    // Access
+    GetField(u16),         // pop record, push field (name in constants)
+    ArrayGet,              // pop array, index -> push value
+    ArraySet,              // pop array, index, value -> update
+    ListHead,
+    ListTail,
+    IsNil,
 
-    MakeVariant(TypeId, VariantTag, u8), // arg_count
-
-    MatchTag(TypeId, VariantTag, i16), // if top is not matching tag, jump offset
-
+    // Control Flow
     Jump(i16),
     JumpIfFalse(i16),
-
     Call(u8),              // arg_count
-    TailCall(u8),          // optional optimisation
     Return,
 }
 ```
-
-You can extend this later with specialised list ops, string ops, etc.
 
 ## 3. Call frames and VM loop
 
@@ -209,27 +208,25 @@ Tuning will depend on benchmarks (e.g., config size, callback frequency).
 
 ## 6. Host interop and built‑ins
 
-The VM exposes built‑ins as `Value::BuiltinFn`:
+The VM exposes built‑ins as `Value::NativeFn`:
 
 ```rust
-pub type BuiltinFnPtr = fn(&mut Vm, &[Value]) -> Result<Value, VmError>;
+pub type HostFn = dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError>;
 ```
 
-The host registers built‑ins by name:
+The host registers built‑ins via `HostRegistry` (shared via `Rc<RefCell<HostRegistry>>`):
 
 ```rust
-engine.register_builtin("print", builtin_print);
-engine.register_builtin("add", builtin_add);
+engine.register_fn1("print", |v| {
+    println!("{}", v);
+    Ok(Value::Unit)
+});
 ```
 
-Front‑end resolves identifiers like `print` to a global index that refers to the built‑in value.
-
-In a terminal use case, you might expose:
-
-- `term.log : string -> unit`
-- `term.action.split : Direction -> Action`
-- `term.action.sendKeys : string -> Action`
-- And others, all as built‑ins that construct records/DUs for the host.
+Features:
+- **Re-entrancy**: Host functions receive `&mut Vm`, allowing them to call back into the VM (e.g., `List.map` taking a closure).
+- **Partial Application**: `NativeFn` values store partially applied arguments, allowing standard F# currying.
+- **Type Safety**: Helper methods `as_int`, `as_str`, etc. on `Value` simplify argument extraction.
 
 ## 7. Performance notes
 

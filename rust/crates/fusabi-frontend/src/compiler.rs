@@ -41,10 +41,12 @@ use crate::ast::{BinOp, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, 
 use crate::modules::ModuleRegistry;
 use crate::types::{Type, TypeEnv};
 use fusabi_vm::chunk::Chunk;
+use fusabi_vm::closure::Closure;
 use fusabi_vm::instruction::Instruction;
 use fusabi_vm::value::Value;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 /// Compilation errors
 #[derive(Debug, Clone, PartialEq)]
@@ -440,8 +442,10 @@ impl Compiler {
             return self.compile_expr(&expr.clone());
         }
 
-        // Variable not found in any scope
-        Err(CompileError::UndefinedVariable(name.to_string()))
+        // If not found locally or imported, assume it's a global variable
+        let idx = self.add_constant(Value::Str(name.to_string()))?;
+        self.emit(Instruction::LoadGlobal(idx));
+        Ok(())
     }
 
     /// Compile a qualified variable reference (e.g., Math.add)
@@ -638,12 +642,9 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a lambda function (Phase 1: simplified, no closures yet)
+    /// Compile a lambda function
     fn compile_lambda(&mut self, param: &str, body: &Expr) -> CompileResult<()> {
-        // For Phase 1, we'll compile lambdas as inline code
-        // In Phase 2, we'll create proper closure objects
-
-        // For now, create a nested chunk for the lambda body
+        // Create a nested chunk for the lambda body
         let mut lambda_compiler = Compiler::new();
 
         // Lambda parameter becomes local 0
@@ -654,18 +655,21 @@ impl Compiler {
         lambda_compiler.compile_expr(body)?;
         lambda_compiler.emit(Instruction::Return);
 
-        // Clean up scope
-        let locals_to_remove = lambda_compiler.end_scope_count();
-        for _ in 0..locals_to_remove {
-            lambda_compiler.locals.pop();
-        }
+        // Clean up scope (not strictly needed as we discard compiler, but good practice)
+        let _locals_to_remove = lambda_compiler.end_scope_count();
         lambda_compiler.scope_depth -= 1;
 
-        // For Phase 1, we'll store the lambda chunk as a constant
-        // This is a simplified implementation - full closures come in Phase 2
+        // Create a closure prototype (chunk + arity)
+        // For now, we don't support upvalue capture in the compiler (Phase 2 extension)
+        // We assume no upvalues.
+        let closure = Closure::with_arity(lambda_compiler.chunk, 1);
+        let closure_val = Value::Closure(Rc::new(closure));
 
-        // For now, emit a placeholder (we'll improve this in Phase 2)
-        // In Phase 1, lambdas are limited to immediate application
+        // Store prototype in constants
+        let const_idx = self.add_constant(closure_val)?;
+
+        // Emit MakeClosure instruction (0 upvalues for now)
+        self.emit(Instruction::MakeClosure(const_idx, 0));
         Ok(())
     }
 

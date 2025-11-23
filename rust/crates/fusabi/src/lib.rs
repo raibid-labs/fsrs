@@ -10,10 +10,11 @@
 
 use fusabi_frontend::compiler::CompileOptions;
 use fusabi_frontend::{Compiler, Lexer, Parser};
-use fusabi_vm::{Value, Vm};
+use fusabi_vm::{Value, Vm, FZB_MAGIC, deserialize_chunk};
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::string::FromUtf8Error;
 
 pub mod host_api;
 pub use host_api::FusabiEngine;
@@ -31,6 +32,10 @@ pub enum FusabiError {
     Compile(fusabi_frontend::CompileError),
     /// VM runtime error during execution
     Runtime(fusabi_vm::VmError),
+    /// Error during bytecode serialization/deserialization
+    Serde(Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// UTF-8 error when reading source file
+    Utf8(FromUtf8Error),
 }
 
 impl fmt::Display for FusabiError {
@@ -41,6 +46,8 @@ impl fmt::Display for FusabiError {
             FusabiError::Parse(e) => write!(f, "Parser Error: {}", e),
             FusabiError::Compile(e) => write!(f, "Compiler Error: {}", e),
             FusabiError::Runtime(e) => write!(f, "Runtime Error: {}", e),
+            FusabiError::Serde(e) => write!(f, "Serialization Error: {}", e),
+            FusabiError::Utf8(e) => write!(f, "UTF-8 Error: {}", e),
         }
     }
 }
@@ -53,6 +60,8 @@ impl Error for FusabiError {
             FusabiError::Parse(e) => Some(e),
             FusabiError::Compile(e) => Some(e),
             FusabiError::Runtime(e) => Some(e),
+            FusabiError::Serde(e) => Some(e.as_ref()),
+            FusabiError::Utf8(e) => Some(e),
         }
     }
 }
@@ -84,6 +93,18 @@ impl From<fusabi_frontend::CompileError> for FusabiError {
 impl From<fusabi_vm::VmError> for FusabiError {
     fn from(err: fusabi_vm::VmError) -> Self {
         FusabiError::Runtime(err)
+    }
+}
+
+impl From<Box<dyn std::error::Error + Send + Sync>> for FusabiError {
+    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        FusabiError::Serde(err)
+    }
+}
+
+impl From<FromUtf8Error> for FusabiError {
+    fn from(err: FromUtf8Error) -> Self {
+        FusabiError::Utf8(err)
     }
 }
 
@@ -160,6 +181,9 @@ pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Valu
         println!("Stage 4: Execution");
     }
     let mut vm = Vm::new();
+    // Register standard library functions and globals
+    fusabi_vm::stdlib::register_stdlib(&mut vm);
+    
     let result = vm.execute(chunk)?;
     if options.verbose {
         println!("  Result: {:?}", result);
@@ -171,8 +195,21 @@ pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Valu
 
 /// Execute a Mini-F# script from a file (backward compatible)
 pub fn run_file(path: &str) -> Result<Value, FusabiError> {
-    let source = fs::read_to_string(path)?;
-    run_source(&source)
+    let bytes = fs::read(path)?;
+
+    if bytes.starts_with(FZB_MAGIC) {
+        // It's a pre-compiled bytecode file (.fzb)
+        let chunk = deserialize_chunk(&bytes)?;
+        
+        let mut vm = Vm::new();
+        fusabi_vm::stdlib::register_stdlib(&mut vm);
+        let result = vm.execute(chunk)?;
+        Ok(result)
+    } else {
+        // It's a source file (.fsx), compile it
+        let source = String::from_utf8(bytes)?;
+        run_source(&source)
+    }
 }
 
 /// Execute a Mini-F# script from a file with type checking enabled
@@ -207,6 +244,9 @@ pub fn run_source_with_disasm(source: &str, name: &str) -> Result<Value, FusabiE
 
     // Stage 4: Execution
     let mut vm = Vm::new();
+    // Register standard library functions and globals
+    fusabi_vm::stdlib::register_stdlib(&mut vm);
+    
     let result = vm.execute(chunk)?;
 
     Ok(result)
@@ -214,6 +254,36 @@ pub fn run_source_with_disasm(source: &str, name: &str) -> Result<Value, FusabiE
 
 /// Execute file with optional disassembly output
 pub fn run_file_with_disasm(path: &str) -> Result<Value, FusabiError> {
-    let source = fs::read_to_string(path)?;
-    run_source_with_disasm(&source, path)
+    let bytes = fs::read(path)?;
+
+    let chunk = if bytes.starts_with(FZB_MAGIC) {
+        // It's a pre-compiled bytecode file (.fzb)
+        println!("Loading pre-compiled bytecode: {}", path);
+        deserialize_chunk(&bytes)?
+    } else {
+        // It's a source file (.fsx), compile it
+        let source = String::from_utf8(bytes)?;
+        // Stage 1: Lexical Analysis
+        let mut lexer = Lexer::new(&source);
+        let tokens = lexer.tokenize()?;
+
+        // Stage 2: Parsing
+        let mut parser = Parser::new(tokens);
+        let ast = parser.parse()?;
+
+        // Stage 3: Compilation
+        Compiler::compile(&ast)?
+    };
+
+    // Disassemble the chunk
+    println!("\n=== Disassembly of '{}' ===", path);
+    chunk.disassemble();
+    println!("=== End Disassembly ===\n");
+
+    // Stage 4: Execution
+    let mut vm = Vm::new();
+    fusabi_vm::stdlib::register_stdlib(&mut vm);
+    let result = vm.execute(chunk)?;
+
+    Ok(result)
 }

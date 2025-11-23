@@ -287,10 +287,13 @@ fn test_integration_multiline_expression() {
 
 #[test]
 fn test_integration_error_undefined_variable() {
-    let result = compile_source("x + 1");
+    // With global support, undefined variables compile to LoadGlobal
+    let chunk = compile_source("x + 1").unwrap();
 
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Compile error"));
+    // Check for LoadGlobal instruction for "x"
+    // Note: We can't easily check the constant value here due to complexity of matching,
+    // but checking for LoadGlobal is sufficient to prove it didn't error.
+    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::LoadGlobal(_))));
 }
 
 #[test]

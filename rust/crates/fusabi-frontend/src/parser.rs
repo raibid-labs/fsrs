@@ -290,14 +290,14 @@ impl Parser {
 
     /// Parse an expression
     fn parse_expr(&mut self) -> Result<Expr> {
-        // Try let, if, lambda, match first, then fall through to or_expr
+        // Try let, if, lambda, match first, then fall through to parse_pipeline_expr
         let tok = &self.current_token().token;
         match tok {
             Token::Let => self.parse_let(),
             Token::If => self.parse_if(),
             Token::Fun => self.parse_lambda(),
             Token::Match => self.parse_match(),
-            _ => self.parse_or_expr(),
+            _ => self.parse_pipeline_expr(), // Start parsing from pipeline operator level
         }
     }
 
@@ -544,6 +544,24 @@ impl Parser {
 
         Ok(Expr::Match { scrutinee, arms })
     }
+
+    /// Parse pipeline expression: expr |> func
+    /// Desugars to func(expr)
+    fn parse_pipeline_expr(&mut self) -> Result<Expr> {
+        let mut expr = self.parse_or_expr()?;
+
+        while self.match_token(&Token::PipeRight) {
+            let func_expr = self.parse_app_expr()?; // The function to pipe into
+            
+            // Desugar: expr |> func_expr  =>  func_expr expr
+            expr = Expr::App {
+                func: Box::new(func_expr),
+                arg: Box::new(expr),
+            };
+        }
+        Ok(expr)
+    }
+
 
     /// Parse pattern in match expression
     fn parse_pattern(&mut self) -> Result<Pattern> {
@@ -1031,7 +1049,8 @@ impl Parser {
 
                 // Check if this could be a variant constructor
                 // Use uppercase heuristic: if identifier starts with uppercase, it's likely a variant
-                if Self::is_uppercase_ident(&val)
+                // Exception: if followed by '.', it's likely a module access (e.g. String.length)
+                if (Self::is_uppercase_ident(&val) && !self.check(&Token::Dot))
                     || matches!(self.current_token().token, Token::LParen)
                 {
                     // This looks like a variant constructor

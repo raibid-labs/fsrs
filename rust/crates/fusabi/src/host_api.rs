@@ -2,8 +2,11 @@
 // Provides ergonomic embedding API for Rust applications
 
 use fusabi_vm::{HostRegistry, Value, Vm, VmError};
+use fusabi_vm::stdlib::{list, option, string};
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// High-level API for embedding Fusabi in Rust applications
 ///
@@ -27,18 +30,53 @@ use std::convert::TryInto;
 pub struct FusabiEngine {
     #[allow(dead_code)]
     vm: Vm,
-    host_registry: HostRegistry,
+    host_registry: Rc<RefCell<HostRegistry>>,
     global_bindings: HashMap<String, Value>,
 }
 
 impl FusabiEngine {
     /// Create a new Fusabi engine
     pub fn new() -> Self {
-        FusabiEngine {
-            vm: Vm::new(),
-            host_registry: HostRegistry::new(),
+        let vm = Vm::new();
+        let host_registry = vm.host_registry.clone();
+        
+        let mut engine = FusabiEngine {
+            vm,
+            host_registry,
             global_bindings: HashMap::new(),
-        }
+        };
+        engine.register_stdlib_functions();
+        engine
+    }
+
+    /// Register all standard library functions into the engine's HostRegistry
+    fn register_stdlib_functions(&mut self) {
+        // List functions
+        self.register_fn1("List.length", |v| list::list_length(&v));
+        self.register_fn1("List.head", |v| list::list_head(&v));
+        self.register_fn1("List.tail", |v| list::list_tail(&v));
+        self.register_fn1("List.reverse", |v| list::list_reverse(&v));
+        self.register_fn1("List.isEmpty", |v| list::list_is_empty(&v));
+        self.register_fn2("List.append", |v1, v2| list::list_append(&v1, &v2));
+        self.register_fn1("List.concat", |v| list::list_concat(&v));
+        // List.map requires VM context, so use raw register
+        self.register_raw("List.map", |vm, args| list::list_map(vm, args));
+
+        // String functions
+        self.register_fn1("String.length", |v| string::string_length(&v));
+        self.register_fn1("String.trim", |v| string::string_trim(&v));
+        self.register_fn1("String.toLower", |v| string::string_to_lower(&v));
+        self.register_fn1("String.toUpper", |v| string::string_to_upper(&v));
+        self.register_fn2("String.split", |v1, v2| string::string_split(&v1, &v2));
+        self.register_fn1("String.concat", |v| string::string_concat(&v));
+        self.register_fn2("String.contains", |v1, v2| string::string_contains(&v1, &v2));
+        self.register_fn2("String.startsWith", |v1, v2| string::string_starts_with(&v1, &v2));
+        self.register_fn2("String.endsWith", |v1, v2| string::string_ends_with(&v1, &v2));
+
+        // Option functions
+        self.register_fn1("Option.isSome", |v| option::option_is_some(&v));
+        self.register_fn1("Option.isNone", |v| option::option_is_none(&v));
+        self.register_fn2("Option.defaultValue", |v1, v2| option::option_default_value(&v1, &v2));
     }
 
     /// Register a host function with dynamic arity
@@ -59,7 +97,16 @@ impl FusabiEngine {
     where
         F: Fn(&[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.register(name, f);
+        // Wrap the closure to ignore the VM argument, maintaining backward compatibility
+        self.host_registry.borrow_mut().register(name, move |_vm, args| f(args));
+    }
+
+    /// Register a raw host function that needs access to the VM context
+    pub fn register_raw<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.host_registry.borrow_mut().register(name, f);
     }
 
     /// Register a nullary host function (no arguments)
@@ -67,7 +114,7 @@ impl FusabiEngine {
     where
         F: Fn() -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.register_fn0(name, f);
+        self.host_registry.borrow_mut().register_fn0(name, move |_vm| f());
     }
 
     /// Register a unary host function (1 argument)
@@ -75,7 +122,7 @@ impl FusabiEngine {
     where
         F: Fn(Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.register_fn1(name, f);
+        self.host_registry.borrow_mut().register_fn1(name, move |_vm, arg| f(arg));
     }
 
     /// Register a binary host function (2 arguments)
@@ -83,7 +130,8 @@ impl FusabiEngine {
     where
         F: Fn(Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.register_fn2(name, f);
+        self.host_registry.borrow_mut()
+            .register_fn2(name, move |_vm, arg1, arg2| f(arg1, arg2));
     }
 
     /// Register a ternary host function (3 arguments)
@@ -91,22 +139,25 @@ impl FusabiEngine {
     where
         F: Fn(Value, Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.register_fn3(name, f);
+        self.host_registry.borrow_mut()
+            .register_fn3(name, move |_vm, arg1, arg2, arg3| f(arg1, arg2, arg3));
     }
 
     /// Call a registered host function
-    pub fn call_host(&self, name: &str, args: &[Value]) -> Result<Value, VmError> {
-        self.host_registry.call(name, args)
+    pub fn call_host(&mut self, name: &str, args: &[Value]) -> Result<Value, VmError> {
+        // Pass the VM instance to the host function
+        let registry = self.host_registry.borrow();
+        registry.call(name, &mut self.vm, args)
     }
 
     /// Check if a host function is registered
     pub fn has_host_function(&self, name: &str) -> bool {
-        self.host_registry.has_function(name)
+        self.host_registry.borrow().has_function(name)
     }
 
     /// Get all registered host function names
     pub fn host_function_names(&self) -> Vec<String> {
-        self.host_registry.function_names()
+        self.host_registry.borrow().function_names()
     }
 
     /// Set a global variable
@@ -121,9 +172,9 @@ impl FusabiEngine {
 
     /// Execute a host function call (for demonstration purposes)
     /// In a full implementation, this would be integrated with the VM execution
-    pub fn execute_host_call(&self, name: &str, args: &[Value]) -> Result<Value, String> {
-        self.host_registry
-            .call(name, args)
+    pub fn execute_host_call(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        let registry = self.host_registry.borrow();
+        registry.call(name, &mut self.vm, args)
             .map_err(|e| format!("Host function error: {:?}", e))
     }
 
@@ -179,7 +230,7 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let engine = FusabiEngine::new();
-        assert_eq!(engine.host_registry.count(), 0);
+        assert!(engine.host_registry.borrow().count() >= 20);
     }
 
     #[test]
@@ -238,9 +289,9 @@ mod tests {
         engine.register_fn1("fn1", |v: Value| -> Result<Value, VmError> { Ok(v) });
         engine.register_fn1("fn2", |v: Value| -> Result<Value, VmError> { Ok(v) });
 
-        let mut names = engine.host_function_names();
-        names.sort();
-        assert_eq!(names, vec!["fn1".to_string(), "fn2".to_string()]);
+        let names = engine.host_function_names();
+        assert!(names.contains(&"fn1".to_string()));
+        assert!(names.contains(&"fn2".to_string()));
     }
 
     #[test]
