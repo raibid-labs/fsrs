@@ -267,6 +267,25 @@ pre-commit: fmt lint test
 release:
     nu scripts/build.nu --mode release
 
+# Publish all crates to crates.io (dry run)
+publish-dry-run:
+    cd rust && cargo publish -p fusabi-vm --dry-run
+    cd rust && cargo publish -p fusabi-frontend --dry-run
+    cd rust && cargo publish -p fusabi --dry-run
+
+# Publish all crates to crates.io
+publish:
+    @echo "Publishing fusabi-vm..."
+    cd rust && cargo publish -p fusabi-vm
+    @echo "Waiting for crates.io propagation..."
+    @sleep 20
+    @echo "Publishing fusabi-frontend..."
+    cd rust && cargo publish -p fusabi-frontend
+    @echo "Waiting for crates.io propagation..."
+    @sleep 20
+    @echo "Publishing fusabi..."
+    cd rust && cargo publish -p fusabi
+
 # Package release artifacts
 package:
     @echo "Packaging not yet implemented"

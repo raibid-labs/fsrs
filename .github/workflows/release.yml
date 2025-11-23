@@ -41,7 +41,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          release_name: FSRS ${{ steps.get_version.outputs.version }}
+          release_name: Fusabi ${{ steps.get_version.outputs.version }}
           draft: true
           prerelease: false
 
@@ -54,24 +54,24 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: fsrs-demo
-            asset_name: fsrs-demo-linux-x86_64
+            artifact_name: fus
+            asset_name: fusabi-linux-x86_64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: fsrs-demo
-            asset_name: fsrs-demo-linux-aarch64
+            artifact_name: fus
+            asset_name: fusabi-linux-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: fsrs-demo
-            asset_name: fsrs-demo-macos-x86_64
+            artifact_name: fus
+            asset_name: fusabi-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: fsrs-demo
-            asset_name: fsrs-demo-macos-aarch64
+            artifact_name: fus
+            asset_name: fusabi-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: fsrs-demo.exe
-            asset_name: fsrs-demo-windows-x86_64.exe
+            artifact_name: fus.exe
+            asset_name: fusabi-windows-x86_64.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -92,7 +92,7 @@ jobs:
       - name: Build release binary
         run: |
           cd rust
-          cargo build --release --target ${{ matrix.target }} -p fsrs-demo
+          cargo build --release --target ${{ matrix.target }} -p fusabi
 
       - name: Strip binary (Unix)
         if: runner.os != 'Windows'
@@ -121,17 +121,29 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish fsrs-vm
+      - name: Publish fusabi-vm
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
         run: |
-          cd rust/crates/fsrs-vm
-          cargo publish --token ${{ secrets.CARGO_TOKEN }}
-        continue-on-error: true
+          cd rust
+          cargo publish -p fusabi-vm
 
-      - name: Wait for crates.io
+      - name: Wait for crates.io propagation
         run: sleep 30
 
-      - name: Publish fsrs-frontend
+      - name: Publish fusabi-frontend
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
         run: |
-          cd rust/crates/fsrs-frontend
-          cargo publish --token ${{ secrets.CARGO_TOKEN }}
-        continue-on-error: true
+          cd rust
+          cargo publish -p fusabi-frontend
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
+      - name: Publish fusabi (CLI)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: |
+          cd rust
+          cargo publish -p fusabi
