@@ -302,8 +302,8 @@ To fully integrate the module system:
 ## Related Documentation
 
 - [F# Module Documentation](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/modules)
-- [FSRS AST Documentation](../crates/fusabi-frontend/src/ast.rs)
-- [FSRS Parser Documentation](../crates/fusabi-frontend/src/parser.rs)
+- [Fusabi AST Documentation](../crates/fusabi-frontend/src/ast.rs)
+- [Fusabi Parser Documentation](../crates/fusabi-frontend/src/parser.rs)
 
 ## Conclusion
 

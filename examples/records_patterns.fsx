@@ -1,4 +1,4 @@
-// Record Pattern Matching Examples for FSRS
+// Record Pattern Matching Examples for Fusabi
 // Demonstrates pattern matching over record types
 
 // Example 1: Simple pattern matching

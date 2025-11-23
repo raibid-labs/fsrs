@@ -13,8 +13,8 @@ After comprehensive analysis of the codebase, **no bytecode magic bytes are curr
 **Location:** `/home/beengud/fusabi-lang/fusabi/docs/research-notes.md` (lines 1070-1097)
 
 ```rust
-pub struct FsrsModule {
-    /// Magic number: b"FSRS" (validation)  // ← NEEDS UPDATE
+pub struct FusabiModule {
+    /// Magic number: b"FZB\x01" (validation)
     magic: [u8; 4],
 
     /// Bytecode version (for compatibility)
@@ -51,7 +51,7 @@ The `Chunk` struct currently has:
 
 Found `.fsx` references in:
 - `docs/01-overview.md:57` - Example file loading
-- `docs/research-notes.md:1315` - Fusabi Module (.fsrsc)
+- `docs/research-notes.md:1315` - Fusabi Module (.fzb)
 - `docs/host-interop.md` - Multiple examples (lines 32, 57, 64, 96, 442-498, 858-859)
 
 All need updating to `.fzb` or `.fsx` as appropriate.

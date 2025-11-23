@@ -1,19 +1,19 @@
-// Host Interop Demo - Examples of using FSRS from Rust
+// Host Interop Demo - Examples of using Fusabi from Rust
 //
 // This example demonstrates:
 // - Registering host functions
-// - Calling host functions from FSRS
-// - Type conversions between Rust and FSRS
+// - Calling host functions from Fusabi
+// - Type conversions between Rust and Fusabi
 // - Working with lists, strings, and other types
 
-use fusabi_demo::FsrsEngine;
+use fusabi_demo::FusabiEngine;
 use fusabi_vm::Value;
 
 fn main() {
-    println!("=== FSRS Host Interop Demo ===\n");
+    println!("=== Fusabi Host Interop Demo ===\n");
 
     // Create engine
-    let mut engine = FsrsEngine::new();
+    let mut engine = FusabiEngine::new();
 
     // ========== Example 1: Simple Arithmetic ==========
     println!("Example 1: Simple Arithmetic");
@@ -166,10 +166,10 @@ fn main() {
     let string_list = Value::vec_to_cons(vec![
         Value::Str("Hello".to_string()),
         Value::Str("from".to_string()),
-        Value::Str("FSRS".to_string()),
+        Value::Str("Fusabi".to_string()),
     ]);
     let result = engine.call_host("concat_strings", &[string_list]).unwrap();
-    println!("  concat_strings(['Hello'; 'from'; 'FSRS']) = {}", result);
+    println!("  concat_strings(['Hello'; 'from'; 'Fusabi']) = {}", result);
     println!();
 
     // ========== Example 10: Global Bindings ==========

@@ -1,4 +1,4 @@
-// FSRS Standard Library Demonstration
+// Fusabi Standard Library Demonstration
 // This file shows how to use the built-in List, String, and Option modules
 
 // ========== List Operations ==========
@@ -62,9 +62,9 @@ let endsWorld = String.endsWith "world" text    // true
 
 // ========== Option Operations ==========
 
-// Define Option type
-type Option<'a> =
-    | Some of 'a
+// Define Option type (simplified for now)
+type Option =
+    | Some of any
     | None
 
 // Create option values

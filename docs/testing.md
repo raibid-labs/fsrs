@@ -17,7 +17,7 @@ This document describes the testing infrastructure, strategy, and best practices
 
 ## Overview
 
-FSRS uses a comprehensive testing strategy to ensure code quality:
+Fusabi uses a comprehensive testing strategy to ensure code quality:
 
 - **Unit Tests**: Test individual modules and functions
 - **Integration Tests**: Test interactions between components

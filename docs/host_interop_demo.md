@@ -5,19 +5,19 @@ This document demonstrates the host interop functionality for Fusabi.
 ## Overview
 
 The Fusabi host interop API allows Rust applications to:
-- Register native functions callable from FSRS scripts
-- Automatically marshal types between Rust and FSRS
+- Register native functions callable from Fusabi scripts
+- Automatically marshal types between Rust and Fusabi
 - Call host functions with type safety
 - Work with various data types (integers, strings, lists, etc.)
 
 ## Example Usage
 
 ```rust
-use fusabi_demo::FsrsEngine;
+use fusabi_demo::FusabiEngine;
 use fusabi_vm::Value;
 
 fn main() {
-    let mut engine = FsrsEngine::new();
+    let mut engine = FusabiEngine::new();
 
     // Example 1: Simple arithmetic
     engine.register_fn1("double", |v| {
@@ -83,7 +83,7 @@ All integration tests pass:
 
 ## API Reference
 
-### FsrsEngine Methods
+### FusabiEngine Methods
 
 - `new()` - Create new engine
 - `register(name, fn)` - Register dynamic arity function
@@ -96,16 +96,16 @@ All integration tests pass:
 
 ### Type Conversions
 
-Automatic conversions between Rust and FSRS types:
+Automatic conversions between Rust and Fusabi types:
 
-**Rust → FSRS:**
+**Rust → Fusabi:**
 - `i64`, `i32`, `usize` → `Value::Int`
 - `bool` → `Value::Bool`
 - `String`, `&str` → `Value::Str`
 - `()` → `Value::Unit`
 - `Vec<T>` → `Value::Cons` (list)
 
-**FSRS → Rust:**
+**Fusabi → Rust:**
 - `Value::Int` → `i64`, `i32`, `usize`
 - `Value::Bool` → `bool`
 - `Value::Str` → `String`
@@ -115,7 +115,7 @@ Automatic conversions between Rust and FSRS types:
 ## Next Steps
 
 The host interop system is now fully functional and tested. Future enhancements could include:
-- Integration with FSRS script execution
+- Integration with Fusabi script execution
 - More complex type conversions
 - Async host functions
 - FFI bindings
