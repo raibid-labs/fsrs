@@ -1,4 +1,7 @@
-# Fusabi 🟢
+<div align="center">
+  <img src="assets/logo.png" alt="Fusabi Logo" width="200">
+  <h1>Fusabi 🟢</h1>
+</div>
 
 [![CI](https://github.com/fusabi-lang/fusabi/actions/workflows/ci.yml/badge.svg)](https://github.com/fusabi-lang/fusabi/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/fusabi.svg)](https://crates.io/crates/fusabi)
