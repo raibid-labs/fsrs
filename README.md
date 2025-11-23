@@ -7,31 +7,36 @@ Fusabi is a high-performance embedded scripting engine for Rust. It allows you t
 ## Usage
 
 ```bash
-# 1. Add a dependency (The Root)
-fus root add http-client
-
-# 2. Write Logic (Standard F#)
+# 1. Write Logic (Standard F#)
 # script.fsx
-let handle_request req =
-    printfn "Handling request with %s spice" "high"
+let handle_request name =
+    printfn "Handling request from %s" name
 
-# 3. Grind (Compile)
+handle_request "Fusabi User"
+
+# 2. Run Directly
+fus run script.fsx
+
+# 3. Compile to Bytecode (for faster startup)
 fus grind script.fsx
 # Output: script.fzb
+
+# 4. Run Bytecode
+fus run script.fzb
 ```
 
 ## Project Status
 
-**Version**: 0.2.0-alpha (Fusabi Rebranding)
-**Status**: Phase 3 - Advanced Features (In Progress)
+**Version**: 0.1.0 (First Public Release)
+**Status**: Phase 3 - Complete (Advanced Features)
 
 ### Key Features
 
 - **F#-Style Scripting**: Full F# dialect with records, discriminated unions, pattern matching
-- **High-Performance VM**: Stack-based bytecode interpreter with GC
-- **Type Safety**: Hindley-Milner type inference
-- **Host Interop**: Lua-class embedding API for Rust applications
-- **Hot-Reload**: Development-friendly script reloading
+- **High-Performance VM**: Stack-based bytecode interpreter with `.fzb` binary format
+- **Standard Library**: Built-in `List`, `String`, `Option` modules and pipeline operator `|>`
+- **Host Interop**: Safe, re-entrant API for embedding in Rust applications
+- **Bytecode Compilation**: `fus grind` for ahead-of-time compilation
 
 ## Quick Start
 
