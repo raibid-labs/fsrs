@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "A potent, functional scripting layer for Rust infrastructure."
 repository = "https://github.com/fusabi-lang/fusabi"
+license = "MIT"
 
 [[bin]]
 name = "fus"
@@ -14,5 +15,5 @@ name = "fusabi_demo"
 path = "src/lib.rs"
 
 [dependencies]
-fusabi-frontend = { path = "../fusabi-frontend" }
-fusabi-vm = { path = "../fusabi-vm", features = ["serde"] }
+fusabi-frontend = { path = "../fusabi-frontend", version = "0.1.0" }
+fusabi-vm = { path = "../fusabi-vm", version = "0.1.0", features = ["serde"] }
