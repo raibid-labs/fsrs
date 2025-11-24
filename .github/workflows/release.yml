@@ -51,6 +51,8 @@ jobs:
   build-release:
     name: Build Release (${{ matrix.os }})
     needs: create-release
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
