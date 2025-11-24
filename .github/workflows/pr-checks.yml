@@ -16,6 +16,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
