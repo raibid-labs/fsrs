@@ -97,6 +97,8 @@ jobs:
         run: |
           cd rust
           cargo build --release --target ${{ matrix.target }} -p fusabi
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Strip binary (Unix)
         if: runner.os != 'Windows'
