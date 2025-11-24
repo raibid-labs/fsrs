@@ -102,7 +102,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Integration Complete ===");
     println!("\nTo use Fusabi in your Phage project:");
-    println!("1. Add to Cargo.toml: fusabi = {{ git = \"https://github.com/fusabi-lang/fusabi\" }}");
+    println!(
+        "1. Add to Cargo.toml: fusabi = {{ git = \"https://github.com/fusabi-lang/fusabi\" }}"
+    );
     println!("2. Import: use fusabi::{{Engine, Value}};");
     println!("3. Create engine: let mut engine = Engine::new();");
     println!("4. Evaluate scripts: let result = engine.eval(script_content)?;");

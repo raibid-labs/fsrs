@@ -3,8 +3,8 @@
 
 use fusabi_vm::stdlib::list::*;
 use fusabi_vm::stdlib::option::*;
-use fusabi_vm::stdlib::string::*;
 use fusabi_vm::stdlib::register_stdlib;
+use fusabi_vm::stdlib::string::*;
 use fusabi_vm::{Value, Vm, VmError};
 use std::rc::Rc;
 
@@ -191,7 +191,9 @@ fn test_register_stdlib_functions_and_globals() {
     if let Some(Value::Record(r)) = vm.globals.get("List") {
         let borrowed = r.borrow();
         assert!(borrowed.contains_key("length"));
-        assert!(matches!(borrowed.get("length").unwrap(), Value::NativeFn { name, arity: 1, args: _ } if name == "List.length"));
+        assert!(
+            matches!(borrowed.get("length").unwrap(), Value::NativeFn { name, arity: 1, args: _ } if name == "List.length")
+        );
     } else {
         panic!("List global is not a record");
     }
@@ -213,14 +215,28 @@ fn test_register_stdlib_functions_and_globals() {
 fn call_stdlib_function(vm: &mut Vm, name: &str, args: &[Value]) -> Result<Value, VmError> {
     // Handle module.function lookup
     if let Some((module, func_name)) = name.split_once('.') {
-        let module_val = vm.globals.get(module).ok_or_else(|| VmError::Runtime(format!("Undefined module: {}", module)))?;
+        let module_val = vm
+            .globals
+            .get(module)
+            .ok_or_else(|| VmError::Runtime(format!("Undefined module: {}", module)))?;
         if let Value::Record(r) = module_val {
-             let func = r.borrow().get(func_name).cloned().ok_or_else(|| VmError::Runtime(format!("Undefined function: {}", name)))?;
-             return vm.call_value(func, args);
+            let func = r
+                .borrow()
+                .get(func_name)
+                .cloned()
+                .ok_or_else(|| VmError::Runtime(format!("Undefined function: {}", name)))?;
+            return vm.call_value(func, args);
         }
     }
-    
-    let func = vm.globals.get(name).cloned().ok_or(VmError::Runtime(format!("Undefined global function: {}", name)))?;
+
+    let func = vm
+        .globals
+        .get(name)
+        .cloned()
+        .ok_or(VmError::Runtime(format!(
+            "Undefined global function: {}",
+            name
+        )))?;
     vm.call_value(func, args)
 }
 
@@ -237,7 +253,10 @@ fn test_list_length_through_vm() {
 fn test_string_concat_through_vm() {
     let mut vm = Vm::new();
     register_stdlib(&mut vm);
-    let list = Value::vec_to_cons(vec![Value::Str("hello".to_string()), Value::Str("world".to_string())]);
+    let list = Value::vec_to_cons(vec![
+        Value::Str("hello".to_string()),
+        Value::Str("world".to_string()),
+    ]);
     let result = call_stdlib_function(&mut vm, "String.concat", &[list]).unwrap();
     assert_eq!(result, Value::Str("helloworld".to_string()));
 }
@@ -247,7 +266,7 @@ fn test_list_map_through_vm() {
     let mut vm = Vm::new();
     register_stdlib(&mut vm);
     let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-    
+
     // Create a simple identity closure
     let func_chunk = fusabi_vm::chunk::ChunkBuilder::new()
         .constant(Value::Int(0)) // Placeholder for local 0
@@ -255,7 +274,11 @@ fn test_list_map_through_vm() {
         .instruction(fusabi_vm::instruction::Instruction::Return)
         .build();
     let func_closure = Rc::new(fusabi_vm::closure::Closure::with_arity(func_chunk, 1));
-    
-    let result = call_stdlib_function(&mut vm, "List.map", &[Value::Closure(func_closure), list]).unwrap();
-    assert_eq!(result, Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+
+    let result =
+        call_stdlib_function(&mut vm, "List.map", &[Value::Closure(func_closure), list]).unwrap();
+    assert_eq!(
+        result,
+        Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
 }

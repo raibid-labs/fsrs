@@ -7,9 +7,9 @@ pub mod string;
 
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Register all standard library functions into the VM
 pub fn register_stdlib(vm: &mut Vm) {
@@ -18,39 +18,73 @@ pub fn register_stdlib(vm: &mut Vm) {
         let mut registry = vm.host_registry.borrow_mut();
 
         // List functions
-        registry.register("List.length", |_vm, args| wrap_unary(args, list::list_length));
+        registry.register("List.length", |_vm, args| {
+            wrap_unary(args, list::list_length)
+        });
         registry.register("List.head", |_vm, args| wrap_unary(args, list::list_head));
         registry.register("List.tail", |_vm, args| wrap_unary(args, list::list_tail));
-        registry.register("List.reverse", |_vm, args| wrap_unary(args, list::list_reverse));
-        registry.register("List.isEmpty", |_vm, args| wrap_unary(args, list::list_is_empty));
-        registry.register("List.append", |_vm, args| wrap_binary(args, list::list_append));
-        registry.register("List.concat", |_vm, args| wrap_unary(args, list::list_concat));
+        registry.register("List.reverse", |_vm, args| {
+            wrap_unary(args, list::list_reverse)
+        });
+        registry.register("List.isEmpty", |_vm, args| {
+            wrap_unary(args, list::list_is_empty)
+        });
+        registry.register("List.append", |_vm, args| {
+            wrap_binary(args, list::list_append)
+        });
+        registry.register("List.concat", |_vm, args| {
+            wrap_unary(args, list::list_concat)
+        });
         registry.register("List.map", list::list_map);
 
         // String functions
-        registry.register("String.length", |_vm, args| wrap_unary(args, string::string_length));
-        registry.register("String.trim", |_vm, args| wrap_unary(args, string::string_trim));
-        registry.register("String.toLower", |_vm, args| wrap_unary(args, string::string_to_lower));
-        registry.register("String.toUpper", |_vm, args| wrap_unary(args, string::string_to_upper));
-        registry.register("String.split", |_vm, args| wrap_binary(args, string::string_split));
-        registry.register("String.concat", |_vm, args| wrap_unary(args, string::string_concat));
-        registry.register("String.contains", |_vm, args| wrap_binary(args, string::string_contains));
-        registry.register("String.startsWith", |_vm, args| wrap_binary(args, string::string_starts_with));
-        registry.register("String.endsWith", |_vm, args| wrap_binary(args, string::string_ends_with));
+        registry.register("String.length", |_vm, args| {
+            wrap_unary(args, string::string_length)
+        });
+        registry.register("String.trim", |_vm, args| {
+            wrap_unary(args, string::string_trim)
+        });
+        registry.register("String.toLower", |_vm, args| {
+            wrap_unary(args, string::string_to_lower)
+        });
+        registry.register("String.toUpper", |_vm, args| {
+            wrap_unary(args, string::string_to_upper)
+        });
+        registry.register("String.split", |_vm, args| {
+            wrap_binary(args, string::string_split)
+        });
+        registry.register("String.concat", |_vm, args| {
+            wrap_unary(args, string::string_concat)
+        });
+        registry.register("String.contains", |_vm, args| {
+            wrap_binary(args, string::string_contains)
+        });
+        registry.register("String.startsWith", |_vm, args| {
+            wrap_binary(args, string::string_starts_with)
+        });
+        registry.register("String.endsWith", |_vm, args| {
+            wrap_binary(args, string::string_ends_with)
+        });
 
         // Option functions
-        registry.register("Option.isSome", |_vm, args| wrap_unary(args, option::option_is_some));
-        registry.register("Option.isNone", |_vm, args| wrap_unary(args, option::option_is_none));
-        registry.register("Option.defaultValue", |_vm, args| wrap_binary(args, option::option_default_value));
+        registry.register("Option.isSome", |_vm, args| {
+            wrap_unary(args, option::option_is_some)
+        });
+        registry.register("Option.isNone", |_vm, args| {
+            wrap_unary(args, option::option_is_none)
+        });
+        registry.register("Option.defaultValue", |_vm, args| {
+            wrap_binary(args, option::option_default_value)
+        });
     }
 
     // 2. Populate Globals with Module Records
-    
+
     // Helper to create NativeFn value
-    let native = |name: &str, arity: u8| Value::NativeFn { 
-        name: name.to_string(), 
-        arity, 
-        args: vec![] 
+    let native = |name: &str, arity: u8| Value::NativeFn {
+        name: name.to_string(),
+        arity,
+        args: vec![],
     };
 
     // List Module
@@ -63,7 +97,10 @@ pub fn register_stdlib(vm: &mut Vm) {
     list_fields.insert("append".to_string(), native("List.append", 2));
     list_fields.insert("concat".to_string(), native("List.concat", 1));
     list_fields.insert("map".to_string(), native("List.map", 2));
-    vm.globals.insert("List".to_string(), Value::Record(Rc::new(RefCell::new(list_fields))));
+    vm.globals.insert(
+        "List".to_string(),
+        Value::Record(Rc::new(RefCell::new(list_fields))),
+    );
 
     // String Module
     let mut string_fields = HashMap::new();
@@ -76,14 +113,20 @@ pub fn register_stdlib(vm: &mut Vm) {
     string_fields.insert("contains".to_string(), native("String.contains", 2));
     string_fields.insert("startsWith".to_string(), native("String.startsWith", 2));
     string_fields.insert("endsWith".to_string(), native("String.endsWith", 2));
-    vm.globals.insert("String".to_string(), Value::Record(Rc::new(RefCell::new(string_fields))));
+    vm.globals.insert(
+        "String".to_string(),
+        Value::Record(Rc::new(RefCell::new(string_fields))),
+    );
 
     // Option Module
     let mut option_fields = HashMap::new();
     option_fields.insert("isSome".to_string(), native("Option.isSome", 1));
     option_fields.insert("isNone".to_string(), native("Option.isNone", 1));
     option_fields.insert("defaultValue".to_string(), native("Option.defaultValue", 2));
-    vm.globals.insert("Option".to_string(), Value::Record(Rc::new(RefCell::new(option_fields))));
+    vm.globals.insert(
+        "Option".to_string(),
+        Value::Record(Rc::new(RefCell::new(option_fields))),
+    );
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>
@@ -120,10 +163,10 @@ mod tests {
     fn test_register_stdlib() {
         let mut vm = Vm::new();
         register_stdlib(&mut vm);
-        
+
         // Check HostRegistry
         assert!(vm.host_registry.borrow().has_function("List.length"));
-        
+
         // Check Globals
         assert!(vm.globals.contains_key("List"));
         if let Some(Value::Record(r)) = vm.globals.get("List") {

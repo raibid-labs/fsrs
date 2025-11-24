@@ -1,16 +1,13 @@
 // Test for bytecode serialization and deserialization
 
+use fusabi_vm::closure::{Closure, Upvalue};
 use fusabi_vm::{
-    chunk::Chunk,
-    instruction::Instruction,
-    value::Value,
+    chunk::Chunk, deserialize_chunk, instruction::Instruction, serialize_chunk, value::Value,
     FZB_MAGIC, FZB_VERSION,
-    serialize_chunk, deserialize_chunk,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
-use fusabi_vm::closure::{Closure, Upvalue};
 
 #[test]
 fn test_serialize_deserialize_chunk_simple() {
@@ -38,7 +35,7 @@ fn test_serialize_deserialize_chunk_with_closure_prototype() {
     inner_chunk.name = Some("inner_func".to_string());
 
     let closure_prototype = Closure::with_arity(inner_chunk, 1);
-    
+
     let mut chunk = Chunk::new();
     let const_closure_idx = chunk.add_constant(Value::Closure(Rc::new(closure_prototype)));
     chunk.emit(Instruction::MakeClosure(const_closure_idx, 0)); // 0 upvalues
@@ -117,7 +114,10 @@ fn test_deserialize_invalid_magic_bytes() {
     bytes[4] = FZB_VERSION;
     let result = deserialize_chunk(&bytes);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid magic bytes"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Invalid magic bytes"));
 }
 
 #[test]
@@ -127,7 +127,10 @@ fn test_deserialize_unsupported_version() {
     bytes[4] = 99; // Unsupported version
     let result = deserialize_chunk(&bytes);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Unsupported version"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Unsupported version"));
 }
 
 #[test]

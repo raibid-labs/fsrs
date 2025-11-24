@@ -93,7 +93,7 @@ pub fn string_concat(list: &Value) -> Result<Value, VmError> {
             Value::Nil => {
                 println!("DEBUG: string_concat returning Str({:?})", result);
                 return Ok(Value::Str(result));
-            },
+            }
             Value::Cons { head, tail } => {
                 if let Value::Str(s) = &*head {
                     result.push_str(s);

@@ -25,10 +25,10 @@
 //! ```
 
 use fusabi::{run_file, run_file_with_disasm, run_source, run_source_with_disasm};
+use fusabi_frontend::{Compiler, Lexer, Parser};
 use std::env;
 use std::fs;
 use std::process;
-use fusabi_frontend::{Lexer, Parser, Compiler};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const HELP_TEXT: &str = r#"
@@ -229,7 +229,7 @@ fn grind_command(file_path: &str) {
     let mut parser = Parser::new(tokens);
     let ast = parser.parse().expect("Parse error");
     let chunk = Compiler::compile(&ast).expect("Compile error");
-    
+
     let bytes = match fusabi_vm::serialize_chunk(&chunk) {
         Ok(b) => b,
         Err(e) => {
@@ -237,14 +237,19 @@ fn grind_command(file_path: &str) {
             process::exit(1);
         }
     };
-    
+
     let output_path = file_path.replace(".fsx", ".fzb");
     if let Err(e) = fs::write(&output_path, &bytes) {
         eprintln!("Failed to write to '{}': {}", output_path, e);
         process::exit(1);
     }
 
-    println!("Compiled {} ({} bytes) -> {}", file_path, bytes.len(), output_path);
+    println!(
+        "Compiled {} ({} bytes) -> {}",
+        file_path,
+        bytes.len(),
+        output_path
+    );
 }
 
 fn main() {

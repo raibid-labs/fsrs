@@ -552,7 +552,7 @@ impl Parser {
 
         while self.match_token(&Token::PipeRight) {
             let func_expr = self.parse_app_expr()?; // The function to pipe into
-            
+
             // Desugar: expr |> func_expr  =>  func_expr expr
             expr = Expr::App {
                 func: Box::new(func_expr),
@@ -561,7 +561,6 @@ impl Parser {
         }
         Ok(expr)
     }
-
 
     /// Parse pattern in match expression
     fn parse_pattern(&mut self) -> Result<Pattern> {

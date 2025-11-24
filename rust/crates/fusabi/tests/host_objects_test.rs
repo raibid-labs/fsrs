@@ -83,18 +83,18 @@ fn test_module_registration() {
 
     let fs_module = Module::new("fs")
         .register_fn1("read", |path: Value| {
-            let path_str = path.as_str().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected string path".into())
-            })?;
+            let path_str = path
+                .as_str()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected string path".into()))?;
             Ok(Value::Str(format!("contents of {}", path_str)))
         })
         .register_fn2("write", |path: Value, contents: Value| {
-            let _path_str = path.as_str().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected string path".into())
-            })?;
-            let _contents_str = contents.as_str().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected string contents".into())
-            })?;
+            let _path_str = path
+                .as_str()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected string path".into()))?;
+            let _contents_str = contents
+                .as_str()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected string contents".into()))?;
             Ok(Value::Unit)
         });
 
@@ -111,18 +111,18 @@ fn test_module_function_call() {
 
     let math_module = Module::new("math")
         .register_fn1("square", |x: Value| {
-            let n = x.as_int().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected int".into())
-            })?;
+            let n = x
+                .as_int()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected int".into()))?;
             Ok(Value::Int(n * n))
         })
         .register_fn2("add", |a: Value, b: Value| {
-            let x = a.as_int().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected int".into())
-            })?;
-            let y = b.as_int().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected int".into())
-            })?;
+            let x = a
+                .as_int()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected int".into()))?;
+            let y = b
+                .as_int()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected int".into()))?;
             Ok(Value::Int(x + y))
         });
 
@@ -152,34 +152,31 @@ fn test_host_object_with_module_pattern() {
     // Register methods as a module that work on the EventStore
     let event_store_module = Module::new("EventStore")
         .register_fn2("add_event", |store_val: Value, event: Value| {
-            let event_str = event.as_str().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected string event".into())
-            })?;
+            let event_str = event
+                .as_str()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected string event".into()))?;
 
-            let mut store = store_val.as_host_data_of_mut::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let mut store = store_val
+                .as_host_data_of_mut::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
 
             store.add_event(event_str.to_string());
             Ok(Value::Unit)
         })
         .register_fn1("count", |store_val: Value| {
-            let store = store_val.as_host_data_of::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let store = store_val
+                .as_host_data_of::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
 
             Ok(Value::Int(store.count() as i64))
         })
         .register_fn1("get_events", |store_val: Value| {
-            let store = store_val.as_host_data_of::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let store = store_val
+                .as_host_data_of::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
 
             let events = store.get_events();
-            let event_values: Vec<Value> = events
-                .into_iter()
-                .map(Value::Str)
-                .collect();
+            let event_values: Vec<Value> = events.into_iter().map(Value::Str).collect();
             Ok(Value::vec_to_cons(event_values))
         });
 
@@ -223,11 +220,9 @@ fn test_host_object_with_module_pattern() {
 fn test_multiple_modules() {
     let mut engine = Engine::new();
 
-    let fs_module = Module::new("fs")
-        .register_fn1("exists", |_path: Value| Ok(Value::Bool(true)));
+    let fs_module = Module::new("fs").register_fn1("exists", |_path: Value| Ok(Value::Bool(true)));
 
-    let db_module = Module::new("db")
-        .register_fn1("connect", |_conn_str: Value| Ok(Value::Unit));
+    let db_module = Module::new("db").register_fn1("connect", |_conn_str: Value| Ok(Value::Unit));
 
     let http_module = Module::new("http")
         .register_fn1("get", |_url: Value| Ok(Value::Str("response".to_string())));
@@ -296,25 +291,25 @@ fn test_complex_host_object_scenario() {
     // Register the event store module with all methods
     let event_module = Module::new("EventStore")
         .register_fn2("add", |store: Value, event: Value| {
-            let event_str = event.as_str().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected string".into())
-            })?;
-            let mut s = store.as_host_data_of_mut::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let event_str = event
+                .as_str()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected string".into()))?;
+            let mut s = store
+                .as_host_data_of_mut::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
             s.add_event(event_str.to_string());
             Ok(Value::Unit)
         })
         .register_fn1("count", |store: Value| {
-            let s = store.as_host_data_of::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let s = store
+                .as_host_data_of::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
             Ok(Value::Int(s.count() as i64))
         })
         .register_fn1("clear", |store: Value| {
-            let mut s = store.as_host_data_of_mut::<EventStore>().ok_or_else(|| {
-                fusabi_vm::VmError::Runtime("Expected EventStore".into())
-            })?;
+            let mut s = store
+                .as_host_data_of_mut::<EventStore>()
+                .ok_or_else(|| fusabi_vm::VmError::Runtime("Expected EventStore".into()))?;
             s.clear();
             Ok(Value::Unit)
         });

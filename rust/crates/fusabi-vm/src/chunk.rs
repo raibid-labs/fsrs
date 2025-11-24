@@ -3,9 +3,9 @@
 
 use crate::instruction::Instruction;
 use crate::value::Value;
-use std::fmt;
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A chunk of bytecode representing a compiled function
 #[derive(Debug, Clone, PartialEq)]

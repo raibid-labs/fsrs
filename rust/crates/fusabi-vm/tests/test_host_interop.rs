@@ -14,7 +14,9 @@ fn test_register_simple_function() {
         Ok(Value::Int(n + 1))
     });
 
-    let result = registry.call("increment", &mut vm, &[Value::Int(41)]).unwrap();
+    let result = registry
+        .call("increment", &mut vm, &[Value::Int(41)])
+        .unwrap();
     assert_eq!(result, Value::Int(42));
 }
 
@@ -115,17 +117,29 @@ fn test_ternary_function() {
     });
 
     let result = registry
-        .call("clamp", &mut vm, &[Value::Int(0), Value::Int(-5), Value::Int(10)])
+        .call(
+            "clamp",
+            &mut vm,
+            &[Value::Int(0), Value::Int(-5), Value::Int(10)],
+        )
         .unwrap();
     assert_eq!(result, Value::Int(0));
 
     let result = registry
-        .call("clamp", &mut vm, &[Value::Int(0), Value::Int(15), Value::Int(10)])
+        .call(
+            "clamp",
+            &mut vm,
+            &[Value::Int(0), Value::Int(15), Value::Int(10)],
+        )
         .unwrap();
     assert_eq!(result, Value::Int(10));
 
     let result = registry
-        .call("clamp", &mut vm, &[Value::Int(0), Value::Int(5), Value::Int(10)])
+        .call(
+            "clamp",
+            &mut vm,
+            &[Value::Int(0), Value::Int(5), Value::Int(10)],
+        )
         .unwrap();
     assert_eq!(result, Value::Int(5));
 }
@@ -212,7 +226,11 @@ fn test_arity_mismatch() {
     let result = registry.call("add", &mut vm, &[Value::Int(1)]);
     assert!(result.is_err());
 
-    let result = registry.call("add", &mut vm, &[Value::Int(1), Value::Int(2), Value::Int(3)]);
+    let result = registry.call(
+        "add",
+        &mut vm,
+        &[Value::Int(1), Value::Int(2), Value::Int(3)],
+    );
     assert!(result.is_err());
 }
 
@@ -259,10 +277,14 @@ fn test_function_with_bool() {
         Ok(Value::Bool(n % 2 == 0))
     });
 
-    let result = registry.call("is_even", &mut vm, &[Value::Int(42)]).unwrap();
+    let result = registry
+        .call("is_even", &mut vm, &[Value::Int(42)])
+        .unwrap();
     assert_eq!(result, Value::Bool(true));
 
-    let result = registry.call("is_even", &mut vm, &[Value::Int(43)]).unwrap();
+    let result = registry
+        .call("is_even", &mut vm, &[Value::Int(43)])
+        .unwrap();
     assert_eq!(result, Value::Bool(false));
 }
 
@@ -286,7 +308,9 @@ fn test_chained_host_calls() {
     });
 
     // double(increment(5)) = double(6) = 12
-    let step1 = registry.call("increment", &mut vm, &[Value::Int(5)]).unwrap();
+    let step1 = registry
+        .call("increment", &mut vm, &[Value::Int(5)])
+        .unwrap();
     let step2 = registry.call("double", &mut vm, &[step1]).unwrap();
     assert_eq!(step2, Value::Int(12));
 }

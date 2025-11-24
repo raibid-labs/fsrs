@@ -293,7 +293,10 @@ fn test_integration_error_undefined_variable() {
     // Check for LoadGlobal instruction for "x"
     // Note: We can't easily check the constant value here due to complexity of matching,
     // but checking for LoadGlobal is sufficient to prove it didn't error.
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::LoadGlobal(_))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::LoadGlobal(_))));
 }
 
 #[test]

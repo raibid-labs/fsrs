@@ -1,9 +1,9 @@
 // Fusabi VM Bytecode Instructions
 // Defines the instruction set for the stack-based VM
 
-use std::fmt;
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Bytecode instruction for the Fusabi VM
 ///

@@ -8,7 +8,7 @@ use std::fmt;
 use std::rc::Rc;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Upvalue - represents a captured variable from an enclosing scope
 ///

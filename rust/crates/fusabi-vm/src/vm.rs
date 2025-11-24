@@ -3,13 +3,13 @@
 
 use crate::chunk::Chunk;
 use crate::closure::{Closure, Upvalue};
+use crate::host::HostRegistry;
 use crate::instruction::Instruction;
 use crate::value::Value;
-use crate::host::HostRegistry;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Runtime error that can occur during VM execution
 #[derive(Debug, Clone, PartialEq)]
@@ -144,11 +144,11 @@ impl Vm {
     pub fn execute(&mut self, chunk: Chunk) -> Result<Value, VmError> {
         // Wrap the top-level chunk in a closure
         let closure = Rc::new(Closure::new(chunk));
-        
+
         // Push initial frame
         let frame = Frame::new(closure, 0);
         self.frames.push(frame);
-        
+
         self.run()
     }
 
@@ -183,7 +183,10 @@ impl Vm {
 
                 Instruction::LoadUpvalue(idx) => {
                     let frame = self.current_frame()?;
-                    let upvalue = frame.closure.get_upvalue(idx as usize).ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
+                    let upvalue = frame
+                        .closure
+                        .get_upvalue(idx as usize)
+                        .ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
                     let value = match &*upvalue.borrow() {
                         Upvalue::Closed(v) => v.clone(),
                         Upvalue::Open(stack_idx) => self.stack[*stack_idx].clone(),
@@ -194,8 +197,11 @@ impl Vm {
                 Instruction::StoreUpvalue(idx) => {
                     let value = self.pop()?;
                     let frame = self.current_frame()?;
-                    let upvalue = frame.closure.get_upvalue(idx as usize).ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
-                    
+                    let upvalue = frame
+                        .closure
+                        .get_upvalue(idx as usize)
+                        .ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
+
                     {
                         match &mut *upvalue.borrow_mut() {
                             Upvalue::Closed(v) => *v = value,
@@ -208,10 +214,18 @@ impl Vm {
                     let name_val = self.current_frame()?.get_constant(idx)?;
                     let name = match name_val {
                         Value::Str(s) => s,
-                        _ => return Err(VmError::TypeMismatch { expected: "string (global name)", got: name_val.type_name() }),
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "string (global name)",
+                                got: name_val.type_name(),
+                            })
+                        }
                     };
-                    
-                    let value = self.globals.get(&name).cloned().ok_or_else(|| VmError::Runtime(format!("Undefined global: {}", name)))?;
+
+                    let value =
+                        self.globals.get(&name).cloned().ok_or_else(|| {
+                            VmError::Runtime(format!("Undefined global: {}", name))
+                        })?;
                     self.push(value);
                 }
 
@@ -398,10 +412,12 @@ impl Vm {
                     let constant = self.current_frame()?.get_constant(idx)?;
                     let prototype = match constant.as_closure() {
                         Some(c) => c,
-                        None => return Err(VmError::TypeMismatch {
-                            expected: "closure",
-                            got: constant.type_name(),
-                        }),
+                        None => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "closure",
+                                got: constant.type_name(),
+                            })
+                        }
                     };
 
                     let mut closure = Closure::new(prototype.chunk.clone());
@@ -417,7 +433,11 @@ impl Vm {
                 }
 
                 Instruction::Call(argc) => {
-                    let func_idx = self.stack.len().checked_sub(1 + argc as usize).ok_or(VmError::StackUnderflow)?;
+                    let func_idx = self
+                        .stack
+                        .len()
+                        .checked_sub(1 + argc as usize)
+                        .ok_or(VmError::StackUnderflow)?;
                     let func = self.stack[func_idx].clone();
 
                     match func {
@@ -428,27 +448,31 @@ impl Vm {
                                     closure.arity, argc
                                 )));
                             }
-                            
+
                             // Locals start at first argument
                             let base = func_idx + 1;
                             let frame = Frame::new(closure.clone(), base);
                             self.frames.push(frame);
                         }
-                        Value::NativeFn { name, arity, args: applied_args } => {
+                        Value::NativeFn {
+                            name,
+                            arity,
+                            args: applied_args,
+                        } => {
                             // Pop new arguments from stack
                             let mut new_args = Vec::with_capacity(argc as usize);
                             for _ in 0..argc {
                                 new_args.push(self.pop()?);
                             }
                             new_args.reverse(); // Arguments are pushed left-to-right, so stack has last arg on top.
-                            
+
                             // Combine with already applied arguments
                             let mut all_args = applied_args.clone();
                             all_args.extend(new_args);
-                            
+
                             let total_args = all_args.len();
                             let arity_usize = arity as usize;
-                            
+
                             if total_args < arity_usize {
                                 // Partial application: return new NativeFn with accumulated args
                                 self.push(Value::NativeFn {
@@ -468,7 +492,10 @@ impl Vm {
                                     let result = f(self, &all_args)?;
                                     self.push(result);
                                 } else {
-                                    return Err(VmError::Runtime(format!("Undefined host function: {}", name)));
+                                    return Err(VmError::Runtime(format!(
+                                        "Undefined host function: {}",
+                                        name
+                                    )));
                                 }
                             } else {
                                 // Over-application: execute with first 'arity' args, then call result with rest
@@ -476,15 +503,17 @@ impl Vm {
                                 // To handle this properly, we'd need to recurse or push result and call again.
                                 // Simpler: Error for now.
                                 return Err(VmError::Runtime(format!(
-                                    "Native function '{}' expects {} arguments, got {}", 
+                                    "Native function '{}' expects {} arguments, got {}",
                                     name, arity, total_args
                                 )));
                             }
                         }
-                        _ => return Err(VmError::TypeMismatch {
-                            expected: "function",
-                            got: func.type_name(),
-                        }),
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "function",
+                                got: func.type_name(),
+                            })
+                        }
                     }
                 }
 
@@ -915,24 +944,25 @@ impl Vm {
     /// Call a closure from Rust code (re-entrant)
     pub fn call_closure(&mut self, closure: Rc<Closure>, args: &[Value]) -> Result<Value, VmError> {
         if closure.arity as usize != args.len() {
-             return Err(VmError::Runtime(format!(
-                 "Arity mismatch: expected {}, got {}", 
-                 closure.arity, args.len()
-             )));
+            return Err(VmError::Runtime(format!(
+                "Arity mismatch: expected {}, got {}",
+                closure.arity,
+                args.len()
+            )));
         }
-        
+
         // Push args to stack
         for arg in args {
             self.push(arg.clone());
         }
-        
+
         // Calculate base pointer (locals start at first argument)
         let base = self.stack.len() - args.len();
-        
+
         // Push frame
         let frame = Frame::new(closure, base);
         self.frames.push(frame);
-        
+
         // Run the VM loop until this frame returns
         self.run()
     }
@@ -941,13 +971,17 @@ impl Vm {
     pub fn call_value(&mut self, func: Value, args: &[Value]) -> Result<Value, VmError> {
         match func {
             Value::Closure(closure) => self.call_closure(closure, args),
-            Value::NativeFn { name, arity, args: applied_args } => {
+            Value::NativeFn {
+                name,
+                arity,
+                args: applied_args,
+            } => {
                 let mut all_args = applied_args.clone();
                 all_args.extend_from_slice(args);
-                
+
                 let total_args = all_args.len();
                 let arity_usize = arity as usize;
-                
+
                 if total_args < arity_usize {
                     Ok(Value::NativeFn {
                         name,
@@ -962,18 +996,21 @@ impl Vm {
                     if let Some(f) = host_fn {
                         f(self, &all_args)
                     } else {
-                        Err(VmError::Runtime(format!("Undefined host function: {}", name)))
+                        Err(VmError::Runtime(format!(
+                            "Undefined host function: {}",
+                            name
+                        )))
                     }
                 } else {
                     Err(VmError::Runtime(format!(
-                        "Native function '{}' expects {} arguments, got {}", 
+                        "Native function '{}' expects {} arguments, got {}",
                         name, arity, total_args
                     )))
                 }
             }
-            _ => Err(VmError::TypeMismatch { 
-                expected: "function", 
-                got: func.type_name() 
+            _ => Err(VmError::TypeMismatch {
+                expected: "function",
+                got: func.type_name(),
             }),
         }
     }

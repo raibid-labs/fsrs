@@ -193,7 +193,9 @@ mod tests {
             Ok(Value::Int(n + 1))
         });
 
-        let result = registry.call("increment", &mut vm, &[Value::Int(41)]).unwrap();
+        let result = registry
+            .call("increment", &mut vm, &[Value::Int(41)])
+            .unwrap();
         assert_eq!(result, Value::Int(42));
     }
 

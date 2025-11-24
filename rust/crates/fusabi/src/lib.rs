@@ -54,7 +54,7 @@
 
 use fusabi_frontend::compiler::CompileOptions;
 use fusabi_frontend::{Compiler, Lexer, Parser};
-use fusabi_vm::{Vm, FZB_MAGIC, deserialize_chunk};
+use fusabi_vm::{deserialize_chunk, Vm, FZB_MAGIC};
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -63,8 +63,8 @@ use std::string::FromUtf8Error;
 pub mod host_api;
 
 // Re-export the primary API at the crate root for easy access
-pub use host_api::{FusabiEngine as Engine, Module};
 pub use fusabi_vm::{HostData, Value};
+pub use host_api::{FusabiEngine as Engine, Module};
 
 /// Unified error type for the Fusabi pipeline
 #[derive(Debug)]
@@ -230,7 +230,7 @@ pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Valu
     let mut vm = Vm::new();
     // Register standard library functions and globals
     fusabi_vm::stdlib::register_stdlib(&mut vm);
-    
+
     let result = vm.execute(chunk)?;
     if options.verbose {
         println!("  Result: {:?}", result);
@@ -247,7 +247,7 @@ pub fn run_file(path: &str) -> Result<Value, FusabiError> {
     if bytes.starts_with(FZB_MAGIC) {
         // It's a pre-compiled bytecode file (.fzb)
         let chunk = deserialize_chunk(&bytes)?;
-        
+
         let mut vm = Vm::new();
         fusabi_vm::stdlib::register_stdlib(&mut vm);
         let result = vm.execute(chunk)?;
@@ -293,7 +293,7 @@ pub fn run_source_with_disasm(source: &str, name: &str) -> Result<Value, FusabiE
     let mut vm = Vm::new();
     // Register standard library functions and globals
     fusabi_vm::stdlib::register_stdlib(&mut vm);
-    
+
     let result = vm.execute(chunk)?;
 
     Ok(result)

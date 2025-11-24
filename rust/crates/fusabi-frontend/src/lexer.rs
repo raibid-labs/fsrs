@@ -592,7 +592,6 @@ impl Lexer {
         }
     }
 
-
     /// Lex : or ::.
     fn lex_colon_or_coloncolon(&mut self) -> Result<Token, LexError> {
         let _pos = self.current_position();

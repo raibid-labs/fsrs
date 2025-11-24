@@ -1,19 +1,22 @@
 // High-level Host Interop API for Fusabi
 // Provides ergonomic embedding API for Rust applications
 
-use fusabi_vm::{HostData, HostRegistry, Value, Vm, VmError};
-use fusabi_frontend::{Compiler, Lexer, Parser};
 use fusabi_frontend::compiler::CompileOptions;
+use fusabi_frontend::{Compiler, Lexer, Parser};
+use fusabi_vm::{HostData, HostRegistry, Value, Vm, VmError};
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Module builder for grouping related host functions
 pub struct Module {
     name: String,
-    functions: Vec<(String, Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>)>,
+    functions: Vec<(
+        String,
+        Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>,
+    )>,
 }
 
 impl Module {
@@ -35,10 +38,8 @@ impl Module {
     where
         F: Fn(&[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.functions.push((
-            name.to_string(),
-            Box::new(move |_vm, args| f(args)),
-        ));
+        self.functions
+            .push((name.to_string(), Box::new(move |_vm, args| f(args))));
         self
     }
 
@@ -134,7 +135,10 @@ impl Module {
     /// Get the list of functions in this module
     pub(crate) fn functions(
         self,
-    ) -> Vec<(String, Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>)> {
+    ) -> Vec<(
+        String,
+        Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>,
+    )> {
         self.functions
     }
 }
@@ -228,7 +232,11 @@ impl FusabiEngine {
     /// let result = engine.eval_with_options("let x = 42 in x * 2", options).unwrap();
     /// assert_eq!(result.as_int(), Some(84));
     /// ```
-    pub fn eval_with_options(&mut self, source: &str, options: crate::RunOptions) -> Result<Value, crate::FusabiError> {
+    pub fn eval_with_options(
+        &mut self,
+        source: &str,
+        options: crate::RunOptions,
+    ) -> Result<Value, crate::FusabiError> {
         // Stage 1: Lexical Analysis
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize()?;
@@ -271,7 +279,9 @@ impl FusabiEngine {
         F: Fn(&[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
     {
         // Wrap the closure to ignore the VM argument, maintaining backward compatibility
-        self.host_registry.borrow_mut().register(name, move |_vm, args| f(args));
+        self.host_registry
+            .borrow_mut()
+            .register(name, move |_vm, args| f(args));
     }
 
     /// Register a raw host function that needs access to the VM context
@@ -287,7 +297,9 @@ impl FusabiEngine {
     where
         F: Fn() -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.borrow_mut().register_fn0(name, move |_vm| f());
+        self.host_registry
+            .borrow_mut()
+            .register_fn0(name, move |_vm| f());
     }
 
     /// Register a unary host function (1 argument)
@@ -295,7 +307,9 @@ impl FusabiEngine {
     where
         F: Fn(Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.borrow_mut().register_fn1(name, move |_vm, arg| f(arg));
+        self.host_registry
+            .borrow_mut()
+            .register_fn1(name, move |_vm, arg| f(arg));
     }
 
     /// Register a binary host function (2 arguments)
@@ -303,7 +317,8 @@ impl FusabiEngine {
     where
         F: Fn(Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.borrow_mut()
+        self.host_registry
+            .borrow_mut()
             .register_fn2(name, move |_vm, arg1, arg2| f(arg1, arg2));
     }
 
@@ -312,7 +327,8 @@ impl FusabiEngine {
     where
         F: Fn(Value, Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
-        self.host_registry.borrow_mut()
+        self.host_registry
+            .borrow_mut()
             .register_fn3(name, move |_vm, arg1, arg2, arg3| f(arg1, arg2, arg3));
     }
 
@@ -395,7 +411,8 @@ impl FusabiEngine {
     /// In a full implementation, this would be integrated with the VM execution
     pub fn execute_host_call(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
         let registry = self.host_registry.borrow();
-        registry.call(name, &mut self.vm, args)
+        registry
+            .call(name, &mut self.vm, args)
             .map_err(|e| format!("Host function error: {:?}", e))
     }
 

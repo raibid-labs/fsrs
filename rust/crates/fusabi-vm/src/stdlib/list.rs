@@ -146,28 +146,33 @@ pub fn list_concat(lists: &Value) -> Result<Value, VmError> {
 /// Applies a function to each element of the list
 pub fn list_map(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
-        return Err(VmError::Runtime(format!("List.map expects 2 arguments, got {}", args.len())));
+        return Err(VmError::Runtime(format!(
+            "List.map expects 2 arguments, got {}",
+            args.len()
+        )));
     }
 
     let func = &args[0];
     let list = &args[1];
-    
+
     // Verify list type
     if !matches!(list, Value::Nil | Value::Cons { .. }) {
-         return Err(VmError::TypeMismatch {
+        return Err(VmError::TypeMismatch {
             expected: "list",
             got: list.type_name(),
         });
     }
 
-    let elements = list.list_to_vec().ok_or(VmError::Runtime("Malformed list".into()))?;
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
     let mut mapped_elements = Vec::new();
-    
+
     for elem in elements {
         let result = vm.call_value(func.clone(), &[elem])?;
         mapped_elements.push(result);
     }
-    
+
     Ok(Value::vec_to_cons(mapped_elements))
 }
 
