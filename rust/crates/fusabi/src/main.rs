@@ -225,8 +225,8 @@ fn grind_command(file_path: &str) {
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize().expect("Lex error");
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse().expect("Parse error");
-    let chunk = Compiler::compile(&ast).expect("Compile error");
+    let program = parser.parse_program().expect("Parse error");
+    let chunk = Compiler::compile_program(&program).expect("Compile error");
 
     let bytes = match fusabi_vm::serialize_chunk(&chunk) {
         Ok(b) => b,

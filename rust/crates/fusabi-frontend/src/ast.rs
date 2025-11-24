@@ -975,8 +975,8 @@ impl fmt::Display for ModuleDef {
 /// Items that can appear inside a module
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleItem {
-    /// Let binding: let x = expr
-    Let(String, Expr),
+    /// Let binding: let x = expr (or let _ = expr for discard)
+    Let(Option<String>, Expr),
     /// Recursive let binding: let rec f = expr
     LetRec(Vec<(String, Expr)>),
     /// Type definition (record or DU)
@@ -988,7 +988,9 @@ pub enum ModuleItem {
 impl fmt::Display for ModuleItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ModuleItem::Let(name, expr) => write!(f, "let {} = {}", name, expr),
+            ModuleItem::Let(name, expr) => {
+                write!(f, "let {} = {}", name.as_deref().unwrap_or("_"), expr)
+            }
             ModuleItem::LetRec(bindings) => {
                 write!(f, "let rec ")?;
                 for (i, (name, expr)) in bindings.iter().enumerate() {

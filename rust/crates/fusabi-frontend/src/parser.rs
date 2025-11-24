@@ -207,6 +207,12 @@ impl Parser {
                         }
                     }
                 }
+                Token::Do => {
+                    // do expr is syntax sugar for let _ = expr
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    items.push(ModuleItem::Let(None, expr));
+                }
                 Token::Type => {
                     let type_def = self.parse_type_def()?;
                     items.push(ModuleItem::TypeDef(type_def));
@@ -269,6 +275,12 @@ impl Parser {
                             });
                         }
                     }
+                }
+                Token::Do => {
+                    // do expr is syntax sugar for let _ = expr
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    items.push(ModuleItem::Let(None, expr));
                 }
                 Token::Type => {
                     let type_def = self.parse_type_def()?;
@@ -373,7 +385,19 @@ impl Parser {
             }
         } else {
             // Simple Let
-            let name = self.expect_ident()?;
+            // Check for discard pattern '_'
+            let name = match &self.current_token().token {
+                Token::Underscore => {
+                    self.advance();
+                    None
+                }
+                Token::Ident(id) if id == "_" => {
+                    self.advance();
+                    None
+                }
+                _ => Some(self.expect_ident()?),
+            };
+
             let mut params = vec![];
             while let Token::Ident(_) = &self.current_token().token {
                 params.push(self.expect_ident()?);
@@ -394,8 +418,16 @@ impl Parser {
 
             if self.match_token(&Token::In) {
                 let body = self.parse_expr()?;
+                // Discard variables not allowed in let...in expressions
+                if name.is_none() {
+                    return Err(ParseError::UnexpectedToken {
+                        expected: "identifier".to_string(),
+                        found: Token::Ident("_".to_string()),
+                        pos: self.current_token().pos,
+                    });
+                }
                 Ok(LetResult::Expr(Expr::Let {
-                    name,
+                    name: name.unwrap(),
                     value: Box::new(value),
                     body: Box::new(body),
                 }))
@@ -1670,7 +1702,7 @@ mod tests {
         assert_eq!(program.modules[0].items.len(), 1);
 
         match &program.modules[0].items[0] {
-            ModuleItem::Let(name, _) => assert_eq!(name, "x"),
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), Some("x")),
             _ => panic!("Expected Let item"),
         }
     }
@@ -1773,6 +1805,91 @@ mod tests {
 
         assert_eq!(program.modules.len(), 1);
         assert_eq!(program.modules[0].items.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_program_multiple_top_level_bindings() {
+        let source = r#"
+let x = 1
+let y = 2
+x + y
+"#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.items.len(), 2);
+        assert!(program.main_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_discard_variable() {
+        let source = r#"
+let _ = 42
+10
+"#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.items.len(), 1);
+        match &program.items[0] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), None),
+            _ => panic!("Expected Let item"),
+        }
+        assert!(program.main_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_do_block() {
+        let source = r#"
+do ()
+let x = 5
+x
+"#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.items.len(), 2);
+        // First item should be a do block (Let with None name)
+        match &program.items[0] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), None),
+            _ => panic!("Expected Let item"),
+        }
+        // Second item should be a normal let binding
+        match &program.items[1] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), Some("x")),
+            _ => panic!("Expected Let item"),
+        }
+        assert!(program.main_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_mixed_discard_and_do() {
+        let source = r#"
+let _ = 10 + 20
+do ()
+let x = 5
+x * 2
+"#;
+
+        let program = parse_program(source).unwrap();
+
+        assert_eq!(program.items.len(), 3);
+        // First item: let _ = 10 + 20
+        match &program.items[0] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), None),
+            _ => panic!("Expected Let item"),
+        }
+        // Second item: do ()
+        match &program.items[1] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), None),
+            _ => panic!("Expected Let item"),
+        }
+        // Third item: let x = 5
+        match &program.items[2] {
+            ModuleItem::Let(name, _) => assert_eq!(name.as_deref(), Some("x")),
+            _ => panic!("Expected Let item"),
+        }
+        assert!(program.main_expr.is_some());
     }
 
     // ========================================================================

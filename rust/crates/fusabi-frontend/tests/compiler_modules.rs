@@ -13,7 +13,7 @@ use fusabi_frontend::compiler::Compiler;
 fn make_simple_module(name: &str, binding_name: &str, expr: Expr) -> ModuleDef {
     ModuleDef {
         name: name.to_string(),
-        items: vec![ModuleItem::Let(binding_name.to_string(), expr)],
+        items: vec![ModuleItem::Let(Some(binding_name.to_string()), expr)],
     }
 }
 
@@ -180,8 +180,8 @@ fn test_compile_module_with_multiple_bindings() {
     let math_module = ModuleDef {
         name: "Math".to_string(),
         items: vec![
-            ModuleItem::Let("pi".to_string(), Expr::Lit(Literal::Int(3))),
-            ModuleItem::Let("e".to_string(), Expr::Lit(Literal::Int(2))),
+            ModuleItem::Let(Some("pi".to_string()), Expr::Lit(Literal::Int(3))),
+            ModuleItem::Let(Some("e".to_string()), Expr::Lit(Literal::Int(2))),
         ],
     };
 
@@ -231,8 +231,8 @@ fn test_compile_module_with_constant() {
     let constants_module = ModuleDef {
         name: "Constants".to_string(),
         items: vec![
-            ModuleItem::Let("pi".to_string(), Expr::Lit(Literal::Int(3))),
-            ModuleItem::Let("e".to_string(), Expr::Lit(Literal::Int(2))),
+            ModuleItem::Let(Some("pi".to_string()), Expr::Lit(Literal::Int(3))),
+            ModuleItem::Let(Some("e".to_string()), Expr::Lit(Literal::Int(2))),
         ],
     };
 
