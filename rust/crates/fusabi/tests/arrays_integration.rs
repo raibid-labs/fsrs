@@ -1,7 +1,7 @@
 // Integration tests for array features in Fusabi
 // Tests comprehensive array functionality including literals, indexing, updates, and operations
 
-use fusabi_demo::run_source;
+use fusabi::run_source;
 use fusabi_vm::Value;
 
 // ============================================================================

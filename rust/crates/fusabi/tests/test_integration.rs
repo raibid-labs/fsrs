@@ -2,7 +2,7 @@
 // These tests verify the end-to-end functionality of the Fusabi pipeline
 // Only testing Phase 1 MVP features
 
-use fusabi_demo::run_source;
+use fusabi::run_source;
 use fusabi_vm::Value;
 
 #[cfg(test)]

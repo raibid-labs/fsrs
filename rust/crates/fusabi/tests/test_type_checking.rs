@@ -3,7 +3,7 @@
 //! These tests validate that the compiler integration with type checking works correctly
 //! and maintains backward compatibility with existing code.
 
-use fusabi_demo::{run_source, run_source_checked, run_source_with_options, RunOptions};
+use fusabi::{run_source, run_source_checked, run_source_with_options, RunOptions};
 use fusabi_vm::Value;
 
 // ============================================================================

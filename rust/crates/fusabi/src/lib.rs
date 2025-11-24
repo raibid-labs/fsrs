@@ -1,23 +1,70 @@
-//! Fusabi Demo Host Library
+//! Fusabi - A potent, functional scripting layer for Rust infrastructure
 //!
-//! This library provides the core functionality for executing Mini-F# scripts
-//! through the complete Fusabi pipeline: Lexer -> Parser -> Compiler -> VM.
+//! This library provides the core functionality for executing Fusabi (Mini-F#) scripts
+//! through the complete pipeline: Lexer -> Parser -> Compiler -> VM.
+//!
+//! # Quick Start
+//!
+//! ```no_run
+//! use fusabi::Engine;
+//!
+//! let mut engine = Engine::new();
+//! let result = engine.eval("let x = 42 in x * 2").unwrap();
+//! assert_eq!(result.as_int(), Some(84));
+//! ```
+//!
+//! # Loading from Files
+//!
+//! ```no_run
+//! use fusabi::run_file;
+//!
+//! let result = run_file("script.fsx").unwrap();
+//! println!("Result: {:?}", result);
+//! ```
 //!
 //! # Type Checking Support
 //!
-//! The library now supports optional type checking through compilation options.
-//! You can run programs with or without type checking enabled.
+//! The library supports optional type checking through compilation options:
+//!
+//! ```no_run
+//! use fusabi::Engine;
+//!
+//! let mut engine = Engine::new();
+//! let result = engine.eval_checked("let x: int = 42 in x * 2").unwrap();
+//! assert_eq!(result.as_int(), Some(84));
+//! ```
+//!
+//! # Working with Values
+//!
+//! ```no_run
+//! use fusabi::{Engine, Value};
+//!
+//! let mut engine = Engine::new();
+//!
+//! // Register a custom host function
+//! engine.register_fn1("double", |x: Value| {
+//!     let n = x.as_int().unwrap_or(0);
+//!     Ok(Value::Int(n * 2))
+//! });
+//!
+//! // Call it from Fusabi code
+//! let result = engine.eval("double 21").unwrap();
+//! assert_eq!(result.as_int(), Some(42));
+//! ```
 
 use fusabi_frontend::compiler::CompileOptions;
 use fusabi_frontend::{Compiler, Lexer, Parser};
-use fusabi_vm::{Value, Vm, FZB_MAGIC, deserialize_chunk};
+use fusabi_vm::{Vm, FZB_MAGIC, deserialize_chunk};
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::string::FromUtf8Error;
 
 pub mod host_api;
-pub use host_api::FusabiEngine;
+
+// Re-export the primary API at the crate root for easy access
+pub use host_api::FusabiEngine as Engine;
+pub use fusabi_vm::Value;
 
 /// Unified error type for the Fusabi pipeline
 #[derive(Debug)]

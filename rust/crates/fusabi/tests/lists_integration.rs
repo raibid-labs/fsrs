@@ -1,7 +1,7 @@
 // Integration tests for list functionality in fusabi
 // These tests verify end-to-end list operations through the full pipeline
 
-use fusabi_demo::run_source;
+use fusabi::run_source;
 use fusabi_vm::Value;
 
 #[cfg(test)]

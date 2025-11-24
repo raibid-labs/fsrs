@@ -4,7 +4,7 @@
 //! Discriminated Unions (L4), demonstrating realistic usage patterns where
 //! both features interact in complex ways.
 
-use fusabi_demo::run_source;
+use fusabi::run_source;
 use fusabi_vm::Value;
 
 // ============================================================================

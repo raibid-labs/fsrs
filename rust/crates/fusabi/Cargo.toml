@@ -11,7 +11,7 @@ name = "fus"
 path = "src/main.rs"
 
 [lib]
-name = "fusabi_demo"
+name = "fusabi"
 path = "src/lib.rs"
 
 [dependencies]

@@ -1,7 +1,7 @@
 // Integration tests for Records Layer 4: Compiler Integration
 // Tests compilation and execution of record operations
 
-use fusabi_demo::run_source;
+use fusabi::run_source;
 use fusabi_vm::Value;
 
 // ============================================================================

@@ -24,7 +24,7 @@
 //! fus --help
 //! ```
 
-use fusabi_demo::{run_file, run_file_with_disasm, run_source, run_source_with_disasm};
+use fusabi::{run_file, run_file_with_disasm, run_source, run_source_with_disasm};
 use std::env;
 use std::fs;
 use std::process;

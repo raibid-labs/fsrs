@@ -2,7 +2,8 @@
 // Provides ergonomic embedding API for Rust applications
 
 use fusabi_vm::{HostRegistry, Value, Vm, VmError};
-use fusabi_vm::stdlib::{list, option, string};
+use fusabi_frontend::{Compiler, Lexer, Parser};
+use fusabi_frontend::compiler::CompileOptions;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::rc::Rc;
@@ -12,10 +13,10 @@ use std::cell::RefCell;
 ///
 /// # Example
 /// ```no_run
-/// use fusabi_demo::host_api::FusabiEngine;
-/// use fusabi_vm::Value;
+/// use fusabi::Engine;
+/// use fusabi::Value;
 ///
-/// let mut engine = FusabiEngine::new();
+/// let mut engine = Engine::new();
 ///
 /// // Register a host function
 /// engine.register_fn1("double", |x: Value| {
@@ -28,7 +29,6 @@ use std::cell::RefCell;
 /// assert_eq!(result.as_int(), Some(42));
 /// ```
 pub struct FusabiEngine {
-    #[allow(dead_code)]
     vm: Vm,
     host_registry: Rc<RefCell<HostRegistry>>,
     global_bindings: HashMap<String, Value>,
@@ -37,58 +37,101 @@ pub struct FusabiEngine {
 impl FusabiEngine {
     /// Create a new Fusabi engine
     pub fn new() -> Self {
-        let vm = Vm::new();
+        let mut vm = Vm::new();
+
+        // Register standard library functions and modules
+        fusabi_vm::stdlib::register_stdlib(&mut vm);
+
         let host_registry = vm.host_registry.clone();
-        
-        let mut engine = FusabiEngine {
+
+        FusabiEngine {
             vm,
             host_registry,
             global_bindings: HashMap::new(),
-        };
-        engine.register_stdlib_functions();
-        engine
+        }
     }
 
-    /// Register all standard library functions into the engine's HostRegistry
-    fn register_stdlib_functions(&mut self) {
-        // List functions
-        self.register_fn1("List.length", |v| list::list_length(&v));
-        self.register_fn1("List.head", |v| list::list_head(&v));
-        self.register_fn1("List.tail", |v| list::list_tail(&v));
-        self.register_fn1("List.reverse", |v| list::list_reverse(&v));
-        self.register_fn1("List.isEmpty", |v| list::list_is_empty(&v));
-        self.register_fn2("List.append", |v1, v2| list::list_append(&v1, &v2));
-        self.register_fn1("List.concat", |v| list::list_concat(&v));
-        // List.map requires VM context, so use raw register
-        self.register_raw("List.map", |vm, args| list::list_map(vm, args));
+    /// Evaluate a Fusabi script and return the result
+    ///
+    /// # Example
+    /// ```no_run
+    /// use fusabi::Engine;
+    ///
+    /// let mut engine = Engine::new();
+    /// let result = engine.eval("let x = 42 in x * 2").unwrap();
+    /// assert_eq!(result.as_int(), Some(84));
+    /// ```
+    pub fn eval(&mut self, source: &str) -> Result<Value, crate::FusabiError> {
+        self.eval_with_options(source, crate::RunOptions::default())
+    }
 
-        // String functions
-        self.register_fn1("String.length", |v| string::string_length(&v));
-        self.register_fn1("String.trim", |v| string::string_trim(&v));
-        self.register_fn1("String.toLower", |v| string::string_to_lower(&v));
-        self.register_fn1("String.toUpper", |v| string::string_to_upper(&v));
-        self.register_fn2("String.split", |v1, v2| string::string_split(&v1, &v2));
-        self.register_fn1("String.concat", |v| string::string_concat(&v));
-        self.register_fn2("String.contains", |v1, v2| string::string_contains(&v1, &v2));
-        self.register_fn2("String.startsWith", |v1, v2| string::string_starts_with(&v1, &v2));
-        self.register_fn2("String.endsWith", |v1, v2| string::string_ends_with(&v1, &v2));
+    /// Evaluate a Fusabi script with type checking enabled
+    ///
+    /// # Example
+    /// ```no_run
+    /// use fusabi::Engine;
+    ///
+    /// let mut engine = Engine::new();
+    /// let result = engine.eval_checked("let x: int = 42 in x * 2").unwrap();
+    /// assert_eq!(result.as_int(), Some(84));
+    /// ```
+    pub fn eval_checked(&mut self, source: &str) -> Result<Value, crate::FusabiError> {
+        let options = crate::RunOptions {
+            enable_type_checking: true,
+            ..Default::default()
+        };
+        self.eval_with_options(source, options)
+    }
 
-        // Option functions
-        self.register_fn1("Option.isSome", |v| option::option_is_some(&v));
-        self.register_fn1("Option.isNone", |v| option::option_is_none(&v));
-        self.register_fn2("Option.defaultValue", |v1, v2| option::option_default_value(&v1, &v2));
+    /// Evaluate a Fusabi script with custom run options
+    ///
+    /// # Example
+    /// ```no_run
+    /// use fusabi::{Engine, RunOptions};
+    ///
+    /// let mut engine = Engine::new();
+    /// let options = RunOptions {
+    ///     enable_type_checking: true,
+    ///     verbose: false,
+    ///     strict_mode: true,
+    /// };
+    /// let result = engine.eval_with_options("let x = 42 in x * 2", options).unwrap();
+    /// assert_eq!(result.as_int(), Some(84));
+    /// ```
+    pub fn eval_with_options(&mut self, source: &str, options: crate::RunOptions) -> Result<Value, crate::FusabiError> {
+        // Stage 1: Lexical Analysis
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize()?;
+
+        // Stage 2: Parsing
+        let mut parser = Parser::new(tokens);
+        let ast = parser.parse()?;
+
+        // Stage 3: Compilation (with optional type checking)
+        let compile_options = CompileOptions {
+            enable_type_checking: options.enable_type_checking,
+            strict_mode: options.strict_mode,
+            allow_warnings: !options.strict_mode,
+        };
+        let chunk = Compiler::compile_with_options(&ast, compile_options)?;
+
+        // Stage 4: Execution
+        let result = self.vm.execute(chunk)?;
+
+        Ok(result)
     }
 
     /// Register a host function with dynamic arity
     ///
     /// # Example
     /// ```no_run
-    /// # use fusabi_demo::host_api::FusabiEngine;
-    /// # use fusabi_vm::Value;
-    /// let mut engine = FusabiEngine::new();
-    /// engine.register("sum", |args| {
+    /// # use fusabi::Engine;
+    /// # use fusabi::Value;
+    /// # use fusabi_vm::VmError;
+    /// let mut engine = Engine::new();
+    /// engine.register("sum", |args: &[Value]| -> Result<Value, VmError> {
     ///     let sum: i64 = args.iter()
-    ///         .filter_map(|v| v.as_int())
+    ///         .filter_map(|v: &Value| v.as_int())
     ///         .sum();
     ///     Ok(Value::Int(sum))
     /// });
