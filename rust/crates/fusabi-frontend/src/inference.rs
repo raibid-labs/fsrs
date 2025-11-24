@@ -698,6 +698,7 @@ impl TypeInference {
     /// Unify two types using Robinson's unification algorithm.
     ///
     /// Returns a substitution that makes the types equal, or an error if unification fails.
+    #[allow(clippy::only_used_in_recursion)]
     pub fn unify(&self, t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         match (t1, t2) {
             // Identical types unify trivially

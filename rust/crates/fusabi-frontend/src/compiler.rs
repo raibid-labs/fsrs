@@ -250,6 +250,7 @@ impl Compiler {
     ///
     /// This processes all items in a module definition and registers them
     /// in the module registry for later lookup.
+    #[allow(clippy::only_used_in_recursion)]
     fn register_module(
         &mut self,
         registry: &mut ModuleRegistry,
