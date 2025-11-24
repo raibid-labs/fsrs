@@ -1,12 +1,10 @@
 // Test for bytecode serialization and deserialization
 
-use fusabi_vm::closure::{Closure, Upvalue};
+use fusabi_vm::closure::Closure;
 use fusabi_vm::{
     chunk::Chunk, deserialize_chunk, instruction::Instruction, serialize_chunk, value::Value,
     FZB_MAGIC, FZB_VERSION,
 };
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[test]

@@ -13,6 +13,7 @@ use std::fs;
 
 /// Example context configuration struct
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Context {
     name: String,
     max_tokens: i64,
@@ -22,6 +23,7 @@ struct Context {
 
 impl Context {
     /// Convert a Fusabi record value to a Context struct
+    #[allow(dead_code)]
     fn from_fusabi_value(value: &Value) -> Result<Self, String> {
         // For this example, we expect a record with specific fields
         // In a real implementation, you'd use proper record field access

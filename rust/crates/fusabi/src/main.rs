@@ -93,17 +93,15 @@ fn parse_args() -> Result<Config, String> {
     let mut i = 1;
 
     // Check for global flags first
-    while i < args.len() {
+    if i < args.len() {
         match args[i].as_str() {
             "-h" | "--help" => {
                 mode = Some(Mode::Help);
-                break;
             }
             "-v" | "--version" => {
                 mode = Some(Mode::Version);
-                break;
             }
-            _ => break,
+            _ => {}
         }
     }
 

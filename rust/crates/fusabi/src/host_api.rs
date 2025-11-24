@@ -10,13 +10,13 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::rc::Rc;
 
+/// Type alias for a raw host function
+pub type HostFunction = Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>;
+
 /// Module builder for grouping related host functions
 pub struct Module {
     name: String,
-    functions: Vec<(
-        String,
-        Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>,
-    )>,
+    functions: Vec<(String, HostFunction)>,
 }
 
 impl Module {
@@ -133,12 +133,7 @@ impl Module {
     }
 
     /// Get the list of functions in this module
-    pub(crate) fn functions(
-        self,
-    ) -> Vec<(
-        String,
-        Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>,
-    )> {
+    pub(crate) fn functions(self) -> Vec<(String, HostFunction)> {
         self.functions
     }
 }

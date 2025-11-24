@@ -202,11 +202,9 @@ impl Vm {
                         .get_upvalue(idx as usize)
                         .ok_or(VmError::Runtime(format!("Invalid upvalue index: {}", idx)))?;
 
-                    {
-                        match &mut *upvalue.borrow_mut() {
-                            Upvalue::Closed(v) => *v = value,
-                            Upvalue::Open(stack_idx) => self.stack[*stack_idx] = value,
-                        }
+                    match &mut *upvalue.borrow_mut() {
+                        Upvalue::Closed(v) => *v = value,
+                        Upvalue::Open(stack_idx) => self.stack[*stack_idx] = value,
                     };
                 }
 
@@ -477,7 +475,7 @@ impl Vm {
                                 // Partial application: return new NativeFn with accumulated args
                                 self.push(Value::NativeFn {
                                     name: name.clone(),
-                                    arity: arity,
+                                    arity,
                                     args: all_args,
                                 });
                             } else if total_args == arity_usize {

@@ -29,12 +29,12 @@ impl HostData {
     }
 
     /// Try to borrow the data as a specific type
-    pub fn try_borrow<T: Any + 'static>(&self) -> Option<std::cell::Ref<T>> {
+    pub fn try_borrow<T: Any + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
         std::cell::Ref::filter_map(self.data.borrow(), |any| any.downcast_ref::<T>()).ok()
     }
 
     /// Try to borrow the data mutably as a specific type
-    pub fn try_borrow_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<T>> {
+    pub fn try_borrow_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
         std::cell::RefMut::filter_map(self.data.borrow_mut(), |any| any.downcast_mut::<T>()).ok()
     }
 
@@ -467,13 +467,13 @@ impl Value {
 
     /// Attempts to extract and downcast HostData to a specific type
     /// Returns Some(Ref<T>) if the value is HostData of type T, None otherwise
-    pub fn as_host_data_of<T: Any + 'static>(&self) -> Option<std::cell::Ref<T>> {
+    pub fn as_host_data_of<T: Any + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
         self.as_host_data()?.try_borrow::<T>()
     }
 
     /// Attempts to extract and downcast HostData mutably to a specific type
     /// Returns Some(RefMut<T>) if the value is HostData of type T, None otherwise
-    pub fn as_host_data_of_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<T>> {
+    pub fn as_host_data_of_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
         self.as_host_data()?.try_borrow_mut::<T>()
     }
 

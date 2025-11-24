@@ -202,7 +202,7 @@ fn test_host_object_with_module_pattern() {
 
     // Check the count
     let count = engine
-        .call_host("EventStore.count", &[store_val.clone()])
+        .call_host("EventStore.count", std::slice::from_ref(&store_val))
         .unwrap();
     assert_eq!(count, Value::Int(2));
 
@@ -263,6 +263,7 @@ fn test_host_data_type_safety() {
     let engine = Engine::new();
 
     struct DifferentType {
+        #[allow(dead_code)]
         value: i64,
     }
 
@@ -331,13 +332,13 @@ fn test_complex_host_object_scenario() {
 
     // Verify count
     let count = engine
-        .call_host("EventStore.count", &[store_global.clone()])
+        .call_host("EventStore.count", std::slice::from_ref(&store_global))
         .unwrap();
     assert_eq!(count, Value::Int(5));
 
     // Clear
     engine
-        .call_host("EventStore.clear", &[store_global.clone()])
+        .call_host("EventStore.clear", std::slice::from_ref(&store_global))
         .unwrap();
 
     // Verify count after clear
