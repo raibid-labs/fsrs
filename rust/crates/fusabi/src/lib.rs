@@ -63,8 +63,8 @@ use std::string::FromUtf8Error;
 pub mod host_api;
 
 // Re-export the primary API at the crate root for easy access
-pub use host_api::FusabiEngine as Engine;
-pub use fusabi_vm::Value;
+pub use host_api::{FusabiEngine as Engine, Module};
+pub use fusabi_vm::{HostData, Value};
 
 /// Unified error type for the Fusabi pipeline
 #[derive(Debug)]

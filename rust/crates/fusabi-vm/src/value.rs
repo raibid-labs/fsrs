@@ -2,16 +2,86 @@
 // Defines runtime values for the bytecode VM
 
 use crate::closure::Closure;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-#[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+
+/// Wrapper for host data that provides type safety
+pub struct HostData {
+    data: Rc<RefCell<dyn Any>>,
+    type_name: String,
+}
+
+impl HostData {
+    /// Create a new HostData wrapper
+    pub fn new<T: Any + 'static>(data: T, type_name: &str) -> Self {
+        Self {
+            data: Rc::new(RefCell::new(data)),
+            type_name: type_name.to_string(),
+        }
+    }
+
+    /// Get the type name of the wrapped data
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    /// Try to borrow the data as a specific type
+    pub fn try_borrow<T: Any + 'static>(&self) -> Option<std::cell::Ref<T>> {
+        std::cell::Ref::filter_map(self.data.borrow(), |any| any.downcast_ref::<T>()).ok()
+    }
+
+    /// Try to borrow the data mutably as a specific type
+    pub fn try_borrow_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<T>> {
+        std::cell::RefMut::filter_map(self.data.borrow_mut(), |any| any.downcast_mut::<T>()).ok()
+    }
+
+    /// Clone the underlying Rc
+    pub fn clone_rc(&self) -> Rc<RefCell<dyn Any>> {
+        self.data.clone()
+    }
+}
+
+impl Clone for HostData {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            type_name: self.type_name.clone(),
+        }
+    }
+}
+
+impl fmt::Debug for HostData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "HostData<{}>", self.type_name)
+    }
+}
+
+impl PartialEq for HostData {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.data, &other.data)
+    }
+}
+
+impl Default for HostData {
+    fn default() -> Self {
+        // This is only used by serde when skipping
+        // It should never actually be used
+        Self {
+            data: Rc::new(RefCell::new(())),
+            type_name: "<invalid>".to_string(),
+        }
+    }
+}
 
 /// Runtime value representation for the Fusabi VM
+///
+/// Note: HostData variant cannot be serialized/deserialized with serde.
+/// Values containing HostData should not be persisted to bytecode files.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Value {
     /// 64-bit signed integer
     Int(i64),
@@ -47,10 +117,16 @@ pub enum Value {
         arity: u8,
         args: Vec<Value>,
     },
+    /// Host-managed opaque data (for exposing Rust objects to scripts)
+    /// WARNING: This variant is NOT serializable and should not appear in bytecode.
+    /// It exists only for runtime host-guest interop.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    HostData(HostData),
 }
 
 impl Value {
-    /// Returns the type name of the value as a string
+    /// Returns the type name of the value as a static string
+    /// For HostData, returns "host_data" to maintain static lifetime
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Int(_) => "int",
@@ -65,6 +141,16 @@ impl Value {
             Value::Variant { .. } => "variant",
             Value::Closure(_) => "function",
             Value::NativeFn { .. } => "function",
+            Value::HostData(_) => "host_data",
+        }
+    }
+
+    /// Returns the detailed type name of the value including host data type names
+    /// This allocates a String for host data types
+    pub fn type_name_string(&self) -> String {
+        match self {
+            Value::HostData(hd) => hd.type_name().to_string(),
+            _ => self.type_name().to_string(),
         }
     }
 
@@ -132,6 +218,7 @@ impl Value {
             Value::Variant { .. } => true,
             Value::Closure(_) => true,
             Value::NativeFn { .. } => true,
+            Value::HostData(_) => true,
         }
     }
 
@@ -363,6 +450,33 @@ impl Value {
         }
     }
 
+    /// Checks if the value is HostData
+    pub fn is_host_data(&self) -> bool {
+        matches!(self, Value::HostData(_))
+    }
+
+    /// Attempts to extract a HostData reference from the value
+    /// Returns Some(&HostData) if the value is HostData, None otherwise
+    pub fn as_host_data(&self) -> Option<&HostData> {
+        if let Value::HostData(hd) = self {
+            Some(hd)
+        } else {
+            None
+        }
+    }
+
+    /// Attempts to extract and downcast HostData to a specific type
+    /// Returns Some(Ref<T>) if the value is HostData of type T, None otherwise
+    pub fn as_host_data_of<T: Any + 'static>(&self) -> Option<std::cell::Ref<T>> {
+        self.as_host_data()?.try_borrow::<T>()
+    }
+
+    /// Attempts to extract and downcast HostData mutably to a specific type
+    /// Returns Some(RefMut<T>) if the value is HostData of type T, None otherwise
+    pub fn as_host_data_of_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<T>> {
+        self.as_host_data()?.try_borrow_mut::<T>()
+    }
+
     /// Convert a list to a vector of values
     /// Returns None if the list is malformed (tail is not Nil or Cons)
     pub fn list_to_vec(&self) -> Option<Vec<Value>> {
@@ -482,6 +596,7 @@ impl fmt::Display for Value {
             }
             Value::Closure(c) => write!(f, "{}", c),
             Value::NativeFn { name, .. } => write!(f, "<native fn {}>", name),
+            Value::HostData(hd) => write!(f, "<host object: {}>", hd.type_name()),
         }
     }
 }

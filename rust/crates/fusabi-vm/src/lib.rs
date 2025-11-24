@@ -13,7 +13,7 @@ pub use chunk::{Chunk, ChunkBuilder};
 pub use closure::{Closure, Upvalue};
 pub use host::{HostFn, HostRegistry};
 pub use instruction::Instruction;
-pub use value::Value;
+pub use value::{HostData, Value};
 pub use vm::{Frame, Vm, VmError};
 
 /// Magic bytes for Fusabi Bytecode files (.fzb)

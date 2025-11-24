@@ -1,13 +1,143 @@
 // High-level Host Interop API for Fusabi
 // Provides ergonomic embedding API for Rust applications
 
-use fusabi_vm::{HostRegistry, Value, Vm, VmError};
+use fusabi_vm::{HostData, HostRegistry, Value, Vm, VmError};
 use fusabi_frontend::{Compiler, Lexer, Parser};
 use fusabi_frontend::compiler::CompileOptions;
+use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::rc::Rc;
 use std::cell::RefCell;
+
+/// Module builder for grouping related host functions
+pub struct Module {
+    name: String,
+    functions: Vec<(String, Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>)>,
+}
+
+impl Module {
+    /// Create a new module
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            functions: Vec::new(),
+        }
+    }
+
+    /// Get the module name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Register a function with dynamic arity in this module
+    pub fn register<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn(&[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((
+            name.to_string(),
+            Box::new(move |_vm, args| f(args)),
+        ));
+        self
+    }
+
+    /// Register a raw function that needs VM access
+    pub fn register_raw<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((name.to_string(), Box::new(f)));
+        self
+    }
+
+    /// Register a nullary function (no arguments)
+    pub fn register_fn0<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn() -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((
+            name.to_string(),
+            Box::new(move |_vm, args| {
+                if !args.is_empty() {
+                    return Err(VmError::Runtime(format!(
+                        "Expected 0 arguments, got {}",
+                        args.len()
+                    )));
+                }
+                f()
+            }),
+        ));
+        self
+    }
+
+    /// Register a unary function (1 argument)
+    pub fn register_fn1<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn(Value) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((
+            name.to_string(),
+            Box::new(move |_vm, args| {
+                if args.len() != 1 {
+                    return Err(VmError::Runtime(format!(
+                        "Expected 1 argument, got {}",
+                        args.len()
+                    )));
+                }
+                f(args[0].clone())
+            }),
+        ));
+        self
+    }
+
+    /// Register a binary function (2 arguments)
+    pub fn register_fn2<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn(Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((
+            name.to_string(),
+            Box::new(move |_vm, args| {
+                if args.len() != 2 {
+                    return Err(VmError::Runtime(format!(
+                        "Expected 2 arguments, got {}",
+                        args.len()
+                    )));
+                }
+                f(args[0].clone(), args[1].clone())
+            }),
+        ));
+        self
+    }
+
+    /// Register a ternary function (3 arguments)
+    pub fn register_fn3<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: Fn(Value, Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        self.functions.push((
+            name.to_string(),
+            Box::new(move |_vm, args| {
+                if args.len() != 3 {
+                    return Err(VmError::Runtime(format!(
+                        "Expected 3 arguments, got {}",
+                        args.len()
+                    )));
+                }
+                f(args[0].clone(), args[1].clone(), args[2].clone())
+            }),
+        ));
+        self
+    }
+
+    /// Get the list of functions in this module
+    pub(crate) fn functions(
+        self,
+    ) -> Vec<(String, Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>)> {
+        self.functions
+    }
+}
 
 /// High-level API for embedding Fusabi in Rust applications
 ///
@@ -201,6 +331,54 @@ impl FusabiEngine {
     /// Get all registered host function names
     pub fn host_function_names(&self) -> Vec<String> {
         self.host_registry.borrow().function_names()
+    }
+
+    /// Register a module with namespaced functions
+    ///
+    /// # Example
+    /// ```no_run
+    /// use fusabi::{Engine, Module};
+    /// use fusabi::Value;
+    ///
+    /// let mut engine = Engine::new();
+    ///
+    /// let fs_module = Module::new("fs")
+    ///     .register_fn1("read", |path: Value| {
+    ///         // Implementation here
+    ///         Ok(Value::Str("file contents".to_string()))
+    ///     })
+    ///     .register_fn2("write", |path: Value, contents: Value| {
+    ///         // Implementation here
+    ///         Ok(Value::Unit)
+    ///     });
+    ///
+    /// engine.register_module(fs_module);
+    /// ```
+    pub fn register_module(&mut self, module: Module) {
+        let module_name = module.name().to_string();
+        for (fn_name, f) in module.functions() {
+            let full_name = format!("{}.{}", module_name, fn_name);
+            self.host_registry.borrow_mut().register(&full_name, f);
+        }
+    }
+
+    /// Create and return a host data value
+    ///
+    /// # Example
+    /// ```no_run
+    /// use fusabi::Engine;
+    /// use std::sync::Mutex;
+    ///
+    /// struct EventStore {
+    ///     events: Vec<String>,
+    /// }
+    ///
+    /// let mut engine = Engine::new();
+    /// let store = EventStore { events: vec![] };
+    /// let store_value = engine.create_host_data(store, "EventStore");
+    /// ```
+    pub fn create_host_data<T: Any + 'static>(&self, data: T, type_name: &str) -> Value {
+        Value::HostData(HostData::new(data, type_name))
     }
 
     /// Set a global variable
