@@ -13,22 +13,22 @@ use std::fmt;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Instruction {
     // ===== Stack Operations =====
-    /// Push constants[`idx`] onto stack
+    /// Push constants\[`idx`\] onto stack
     LoadConst(u16),
 
-    /// Push locals[`idx`] onto stack
+    /// Push locals\[`idx`\] onto stack
     LoadLocal(u8),
 
-    /// Pop stack top into locals[`idx`]
+    /// Pop stack top into locals\[`idx`\]
     StoreLocal(u8),
 
-    /// Push upvalues[`idx`] onto stack
+    /// Push upvalues\[`idx`\] onto stack
     LoadUpvalue(u8),
 
-    /// Pop stack top into upvalues[`idx`]
+    /// Pop stack top into upvalues\[`idx`\]
     StoreUpvalue(u8),
 
-    /// Load global variable by name (name is at constants[`idx`])
+    /// Load global variable by name (name is at constants\[`idx`\])
     LoadGlobal(u16),
 
     /// Pop top of stack and discard

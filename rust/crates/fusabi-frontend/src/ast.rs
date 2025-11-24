@@ -14,7 +14,7 @@
 //! - Conditional expressions (if-then-else)
 //! - Tuples (e.g., (1, 2), (x, y, z))
 //! - Lists (e.g., [1; 2; 3], []) and cons operator (::)
-//! - Arrays (e.g., [|1; 2; 3|], arr.[0], arr.[0] <- 99)
+//! - Arrays (e.g., [|1; 2; 3|], arr.\[0\], arr.\[0\] <- 99)
 //! - Records (e.g., type Person = { name: string; age: int })
 //!
 //! # Example
@@ -589,10 +589,10 @@ pub enum Expr {
     /// Array literal (e.g., [|1; 2; 3|], [||])
     Array(Vec<Expr>),
 
-    /// Array indexing (e.g., arr.[0], arr.[i])
+    /// Array indexing (e.g., arr.\[0\], arr.\[i\])
     ArrayIndex { array: Box<Expr>, index: Box<Expr> },
 
-    /// Array update (e.g., arr.[0] <- 99) - immutable, returns new array
+    /// Array update (e.g., arr.\[0\] <- 99) - immutable, returns new array
     ArrayUpdate {
         array: Box<Expr>,
         index: Box<Expr>,

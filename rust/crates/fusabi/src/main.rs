@@ -43,16 +43,30 @@ const BANNER: &str = r#"
 
 fn print_help() {
     println!("{}", BANNER.truecolor(153, 204, 51));
-    println!("{}", "Small. Potent. Functional.".italic().truecolor(128, 128, 128));
+    println!(
+        "{}",
+        "Small. Potent. Functional."
+            .italic()
+            .truecolor(128, 128, 128)
+    );
     println!();
     println!("{}", "USAGE:".bold());
     println!("    fus <COMMAND> [OPTIONS] [FILE]");
     println!("    fus run -e <EXPRESSION>");
     println!();
     println!("{}", "COMMANDS:".bold());
-    println!("    {}                 JIT execution of .fsx script (default)", "run".truecolor(153, 204, 51));
-    println!("    {}               Compile script to .fzb bytecode", "grind".truecolor(153, 204, 51));
-    println!("    {}                Package manager (coming soon)", "root".truecolor(153, 204, 51));
+    println!(
+        "    {}                 JIT execution of .fsx script (default)",
+        "run".truecolor(153, 204, 51)
+    );
+    println!(
+        "    {}               Compile script to .fzb bytecode",
+        "grind".truecolor(153, 204, 51)
+    );
+    println!(
+        "    {}                Package manager (coming soon)",
+        "root".truecolor(153, 204, 51)
+    );
     println!();
     println!("{}", "OPTIONS:".bold());
     println!("    -h, --help          Show this help message");
@@ -64,22 +78,44 @@ fn print_help() {
     println!("    FILE                Path to .fsx script file");
     println!();
     println!("{}", "EXAMPLES:".bold());
-    println!("    {}", "# JIT execute a script".italic().truecolor(128, 128, 128));
+    println!(
+        "    {}",
+        "# JIT execute a script".italic().truecolor(128, 128, 128)
+    );
     println!("    fus run examples/arithmetic.fsx");
     println!();
-    println!("    {}", "# Compile to bytecode".italic().truecolor(128, 128, 128));
+    println!(
+        "    {}",
+        "# Compile to bytecode".italic().truecolor(128, 128, 128)
+    );
     println!("    fus grind examples/arithmetic.fsx");
     println!();
-    println!("    {}", "# Evaluate an expression".italic().truecolor(128, 128, 128));
+    println!(
+        "    {}",
+        "# Evaluate an expression".italic().truecolor(128, 128, 128)
+    );
     println!("    fus run -e \"let x = 10 in x + 5\"");
     println!();
-    println!("    {}", "# Show bytecode disassembly".italic().truecolor(128, 128, 128));
+    println!(
+        "    {}",
+        "# Show bytecode disassembly"
+            .italic()
+            .truecolor(128, 128, 128)
+    );
     println!("    fus run --disasm examples/conditionals.fsx");
     println!();
-    println!("    {}", "# Package manager (placeholder)".italic().truecolor(128, 128, 128));
+    println!(
+        "    {}",
+        "# Package manager (placeholder)"
+            .italic()
+            .truecolor(128, 128, 128)
+    );
     println!("    fus root install some-package");
     println!();
-    println!("For more information, see: {}", "https://github.com/fusabi-lang/fusabi".cyan());
+    println!(
+        "For more information, see: {}",
+        "https://github.com/fusabi-lang/fusabi".cyan()
+    );
 }
 
 struct Config {
@@ -184,7 +220,11 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Mode::Version => {
-            println!("{} {}", "fus version".truecolor(153, 204, 51).bold(), VERSION);
+            println!(
+                "{} {}",
+                "fus version".truecolor(153, 204, 51).bold(),
+                VERSION
+            );
             Ok(())
         }
         Mode::Eval(expr) => {
@@ -212,14 +252,30 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         Mode::Root(subcommands) => {
             println!("{}", "Fusabi Package Manager - Coming Soon".yellow().bold());
             if !subcommands.is_empty() {
-                println!("{} fus root {}", "Requested:".italic().truecolor(128, 128, 128), subcommands.join(" "));
+                println!(
+                    "{} fus root {}",
+                    "Requested:".italic().truecolor(128, 128, 128),
+                    subcommands.join(" ")
+                );
             }
             println!();
             println!("{}", "Planned features:".bold());
-            println!("  - fus root install <package>  {}", "# Install package".italic().truecolor(128, 128, 128));
-            println!("  - fus root search <query>     {}", "# Search packages".italic().truecolor(128, 128, 128));
-            println!("  - fus root update             {}", "# Update packages".italic().truecolor(128, 128, 128));
-            println!("  - fus root init               {}", "# Initialize project".italic().truecolor(128, 128, 128));
+            println!(
+                "  - fus root install <package>  {}",
+                "# Install package".italic().truecolor(128, 128, 128)
+            );
+            println!(
+                "  - fus root search <query>     {}",
+                "# Search packages".italic().truecolor(128, 128, 128)
+            );
+            println!(
+                "  - fus root update             {}",
+                "# Update packages".italic().truecolor(128, 128, 128)
+            );
+            println!(
+                "  - fus root init               {}",
+                "# Initialize project".italic().truecolor(128, 128, 128)
+            );
             Ok(())
         }
     }
@@ -229,7 +285,12 @@ fn grind_command(file_path: &str) {
     let source = match fs::read_to_string(file_path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("{} reading file '{}': {}", "Error".truecolor(183, 65, 14).bold(), file_path, e);
+            eprintln!(
+                "{} reading file '{}': {}",
+                "Error".truecolor(183, 65, 14).bold(),
+                file_path,
+                e
+            );
             process::exit(1);
         }
     };
@@ -263,14 +324,23 @@ fn grind_command(file_path: &str) {
     let bytes = match fusabi_vm::serialize_chunk(&chunk) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("{} {}", "Serialization error:".truecolor(183, 65, 14).bold(), e);
+            eprintln!(
+                "{} {}",
+                "Serialization error:".truecolor(183, 65, 14).bold(),
+                e
+            );
             process::exit(1);
         }
     };
 
     let output_path = file_path.replace(".fsx", ".fzb");
     if let Err(e) = fs::write(&output_path, &bytes) {
-        eprintln!("{} Failed to write to '{}': {}", "Error:".truecolor(183, 65, 14).bold(), output_path, e);
+        eprintln!(
+            "{} Failed to write to '{}': {}",
+            "Error:".truecolor(183, 65, 14).bold(),
+            output_path,
+            e
+        );
         process::exit(1);
     }
 
@@ -288,7 +358,10 @@ fn main() {
         Ok(config) => config,
         Err(err) => {
             eprintln!("{} {}", "Error:".truecolor(183, 65, 14).bold(), err);
-            eprintln!("{} Try 'fus --help' for more information.", "Hint:".italic().truecolor(128, 128, 128));
+            eprintln!(
+                "{} Try 'fus --help' for more information.",
+                "Hint:".italic().truecolor(128, 128, 128)
+            );
             process::exit(1);
         }
     };

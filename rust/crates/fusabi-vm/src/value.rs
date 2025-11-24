@@ -466,13 +466,13 @@ impl Value {
     }
 
     /// Attempts to extract and downcast HostData to a specific type
-    /// Returns Some(Ref<T>) if the value is HostData of type T, None otherwise
+    /// Returns `Some(Ref<T>)` if the value is HostData of type T, None otherwise
     pub fn as_host_data_of<T: Any + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
         self.as_host_data()?.try_borrow::<T>()
     }
 
     /// Attempts to extract and downcast HostData mutably to a specific type
-    /// Returns Some(RefMut<T>) if the value is HostData of type T, None otherwise
+    /// Returns `Some(RefMut<T>)` if the value is HostData of type T, None otherwise
     pub fn as_host_data_of_mut<T: Any + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
         self.as_host_data()?.try_borrow_mut::<T>()
     }
