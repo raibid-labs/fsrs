@@ -1,6 +1,6 @@
 [package]
 name = "fusabi-vm"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "High-performance bytecode VM for Fusabi scripting language."
 repository = "https://github.com/fusabi-lang/fusabi"
