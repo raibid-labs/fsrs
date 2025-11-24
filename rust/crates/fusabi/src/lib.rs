@@ -52,7 +52,6 @@
 //! assert_eq!(result.as_int(), Some(42));
 //! ```
 
-use fusabi_frontend::compiler::CompileOptions;
 use fusabi_frontend::{Compiler, Lexer, Parser};
 use fusabi_vm::{deserialize_chunk, Vm, FZB_MAGIC};
 use std::error::Error;
@@ -203,7 +202,7 @@ pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Valu
         println!("Stage 2: Parsing");
     }
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()?;
+    let program = parser.parse_program()?;
     if options.verbose {
         println!("  Parsed AST successfully");
     }
@@ -212,12 +211,8 @@ pub fn run_source_with_options(source: &str, options: RunOptions) -> Result<Valu
     if options.verbose {
         println!("Stage 3: Compilation");
     }
-    let compile_options = CompileOptions {
-        enable_type_checking: options.enable_type_checking,
-        strict_mode: options.strict_mode,
-        allow_warnings: !options.strict_mode,
-    };
-    let chunk = Compiler::compile_with_options(&ast, compile_options)?;
+    // Note: compile_program doesn't support custom options yet, using default compilation
+    let chunk = Compiler::compile_program(&program)?;
     if options.verbose {
         println!("  Generated {} instructions", chunk.instructions.len());
         println!("  Constant pool size: {}", chunk.constants.len());
@@ -279,10 +274,10 @@ pub fn run_source_with_disasm(source: &str, name: &str) -> Result<Value, FusabiE
 
     // Stage 2: Parsing
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()?;
+    let program = parser.parse_program()?;
 
     // Stage 3: Compilation
-    let chunk = Compiler::compile(&ast)?;
+    let chunk = Compiler::compile_program(&program)?;
 
     // Disassemble the chunk
     println!("\n=== Disassembly of '{}' ===", name);
@@ -316,10 +311,10 @@ pub fn run_file_with_disasm(path: &str) -> Result<Value, FusabiError> {
 
         // Stage 2: Parsing
         let mut parser = Parser::new(tokens);
-        let ast = parser.parse()?;
+        let program = parser.parse_program()?;
 
         // Stage 3: Compilation
-        Compiler::compile(&ast)?
+        Compiler::compile_program(&program)?
     };
 
     // Disassemble the chunk

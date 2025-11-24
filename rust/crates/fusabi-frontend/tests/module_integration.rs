@@ -38,7 +38,10 @@ fn test_e2e_module_parsing_and_registration() {
         for item in &module.items {
             match item {
                 ModuleItem::Let(name, expr) => {
-                    bindings.insert(name.clone(), expr.clone());
+                    // Skip discard bindings
+                    if let Some(name) = name {
+                        bindings.insert(name.clone(), expr.clone());
+                    }
                 }
                 ModuleItem::LetRec(bindings_vec) => {
                     for (name, expr) in bindings_vec {

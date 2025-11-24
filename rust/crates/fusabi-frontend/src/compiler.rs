@@ -261,8 +261,10 @@ impl Compiler {
         for item in &module.items {
             match item {
                 ModuleItem::Let(name, expr) => {
-                    // Store binding for later compilation
-                    bindings.insert(name.clone(), expr.clone());
+                    // Store binding for later compilation (skip discard bindings)
+                    if let Some(name) = name {
+                        bindings.insert(name.clone(), expr.clone());
+                    }
                 }
                 ModuleItem::LetRec(rec_bindings) => {
                     // Handle recursive bindings
@@ -615,23 +617,29 @@ impl Compiler {
                     // Compile value
                     self.compile_expr(value)?;
 
-                    // Enter scope
-                    self.begin_scope();
-                    self.add_local(name.to_string())?;
+                    if let Some(name) = name {
+                        // Enter scope
+                        self.begin_scope();
+                        self.add_local(name.to_string())?;
 
-                    // Store local
-                    let local_idx = (self.locals.len() - 1) as u8;
-                    self.emit(Instruction::StoreLocal(local_idx));
+                        // Store local
+                        let local_idx = (self.locals.len() - 1) as u8;
+                        self.emit(Instruction::StoreLocal(local_idx));
 
-                    // Recurse
-                    self.compile_top_level_items(rest, main_expr)?;
+                        // Recurse
+                        self.compile_top_level_items(rest, main_expr)?;
 
-                    // Clean up scope
-                    let locals_to_remove = self.end_scope_count();
-                    for _ in 0..locals_to_remove {
-                        self.locals.pop();
+                        // Clean up scope
+                        let locals_to_remove = self.end_scope_count();
+                        for _ in 0..locals_to_remove {
+                            self.locals.pop();
+                        }
+                        self.scope_depth -= 1;
+                    } else {
+                        // Discard pattern: just pop the value and continue
+                        self.emit(Instruction::Pop);
+                        self.compile_top_level_items(rest, main_expr)?;
                     }
-                    self.scope_depth -= 1;
                 }
                 ModuleItem::LetRec(bindings) => {
                     if bindings.len() == 1 {

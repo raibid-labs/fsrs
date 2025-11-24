@@ -71,6 +71,8 @@ pub enum Token {
     Open,
     /// module keyword (for module definitions)
     Module,
+    /// do keyword (for side-effect expressions)
+    Do,
 
     // Operators
     /// + operator
@@ -196,6 +198,7 @@ impl fmt::Display for Token {
             Token::Of => write!(f, "of"),
             Token::Open => write!(f, "open"),
             Token::Module => write!(f, "module"),
+            Token::Do => write!(f, "do"),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -477,6 +480,7 @@ impl Lexer {
             "of" => Token::Of,
             "open" => Token::Open,
             "module" => Token::Module,
+            "do" => Token::Do,
             "true" => Token::Bool(true),
             "false" => Token::Bool(false),
             _ => Token::Ident(s),
