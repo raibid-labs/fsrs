@@ -626,6 +626,30 @@ pub enum Expr {
         /// Field values for this variant (empty for simple variants)
         fields: Vec<Box<Expr>>,
     },
+
+    /// Method call on an object (e.g., obj.method(arg1, arg2))
+    MethodCall {
+        /// Receiver expression (the object)
+        receiver: Box<Expr>,
+        /// Method name
+        method_name: String,
+        /// Method arguments
+        args: Vec<Expr>,
+    },
+
+    /// While loop (e.g., while x > 0 do x <- x - 1)
+    While {
+        /// Loop condition
+        cond: Box<Expr>,
+        /// Loop body
+        body: Box<Expr>,
+    },
+
+    /// Break statement (exits current loop)
+    Break,
+
+    /// Continue statement (skips to next iteration)
+    Continue,
 }
 
 /// Type alias for record field list: (field_name, value_expression)
@@ -735,6 +759,26 @@ impl Expr {
     /// Returns true if this expression is a variant constructor.
     pub fn is_variant_construct(&self) -> bool {
         matches!(self, Expr::VariantConstruct { .. })
+    }
+
+    /// Returns true if this expression is a method call.
+    pub fn is_method_call(&self) -> bool {
+        matches!(self, Expr::MethodCall { .. })
+    }
+
+    /// Returns true if this expression is a while loop.
+    pub fn is_while(&self) -> bool {
+        matches!(self, Expr::While { .. })
+    }
+
+    /// Returns true if this expression is a break statement.
+    pub fn is_break(&self) -> bool {
+        matches!(self, Expr::Break)
+    }
+
+    /// Returns true if this expression is a continue statement.
+    pub fn is_continue(&self) -> bool {
+        matches!(self, Expr::Continue)
     }
 
     /// Returns the variable name if this is a Var, otherwise None.
@@ -940,6 +984,25 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
+            Expr::MethodCall {
+                receiver,
+                method_name,
+                args,
+            } => {
+                write!(f, "({}.{}(", receiver, method_name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, "))")
+            }
+            Expr::While { cond, body } => {
+                write!(f, "(while {} do {})", cond, body)
+            }
+            Expr::Break => write!(f, "break"),
+            Expr::Continue => write!(f, "continue"),
         }
     }
 }

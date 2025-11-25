@@ -73,6 +73,12 @@ pub enum Token {
     Module,
     /// do keyword (for side-effect expressions)
     Do,
+    /// while keyword (for while loops)
+    While,
+    /// break keyword (for breaking out of loops)
+    Break,
+    /// continue keyword (for continuing to next iteration)
+    Continue,
 
     // Operators
     /// + operator
@@ -199,6 +205,9 @@ impl fmt::Display for Token {
             Token::Open => write!(f, "open"),
             Token::Module => write!(f, "module"),
             Token::Do => write!(f, "do"),
+            Token::While => write!(f, "while"),
+            Token::Break => write!(f, "break"),
+            Token::Continue => write!(f, "continue"),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -481,6 +490,9 @@ impl Lexer {
             "open" => Token::Open,
             "module" => Token::Module,
             "do" => Token::Do,
+            "while" => Token::While,
+            "break" => Token::Break,
+            "continue" => Token::Continue,
             "true" => Token::Bool(true),
             "false" => Token::Bool(false),
             _ => Token::Ident(s),

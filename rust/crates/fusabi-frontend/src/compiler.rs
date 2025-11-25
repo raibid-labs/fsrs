@@ -71,6 +71,10 @@ pub enum CompileError {
     ModuleNotFound(String),
     /// No module context available
     NoModuleContext,
+    /// Break statement used outside of loop
+    BreakOutsideLoop,
+    /// Continue statement used outside of loop
+    ContinueOutsideLoop,
 }
 
 impl fmt::Display for CompileError {
@@ -105,6 +109,12 @@ impl fmt::Display for CompileError {
             }
             CompileError::NoModuleContext => {
                 write!(f, "No module context available for qualified name lookup")
+            }
+            CompileError::BreakOutsideLoop => {
+                write!(f, "Break statement used outside of loop")
+            }
+            CompileError::ContinueOutsideLoop => {
+                write!(f, "Continue statement used outside of loop")
             }
         }
     }
@@ -146,6 +156,17 @@ struct Local {
     depth: usize,
 }
 
+/// Loop state for tracking break/continue targets
+#[derive(Debug, Clone)]
+struct LoopState {
+    /// Offset of the loop start (for continue)
+    start_offset: usize,
+    /// Offsets of break jumps to be patched to loop end
+    break_jumps: Vec<usize>,
+    /// Offsets of continue jumps to be patched to loop start
+    continue_jumps: Vec<usize>,
+}
+
 /// Bytecode compiler state
 pub struct Compiler {
     chunk: Chunk,
@@ -157,6 +178,9 @@ pub struct Compiler {
     // Module support
     module_registry: Option<ModuleRegistry>,
     imported_bindings: HashMap<String, Expr>,
+
+    // Loop support
+    loop_stack: Vec<LoopState>,
 }
 
 impl Compiler {
@@ -170,6 +194,7 @@ impl Compiler {
             type_env: None,
             module_registry: None,
             imported_bindings: HashMap::new(),
+            loop_stack: Vec::new(),
         }
     }
 
@@ -183,6 +208,7 @@ impl Compiler {
             type_env: None,
             module_registry: None,
             imported_bindings: HashMap::new(),
+            loop_stack: Vec::new(),
         }
     }
 
@@ -394,6 +420,14 @@ impl Compiler {
                 variant,
                 fields,
             } => self.compile_variant_construct(type_name, variant, fields),
+            Expr::MethodCall {
+                receiver,
+                method_name,
+                args,
+            } => self.compile_method_call(receiver, method_name, args),
+            Expr::While { cond, body } => self.compile_while(cond, body),
+            Expr::Break => self.compile_break(),
+            Expr::Continue => self.compile_continue(),
         }
     }
 
@@ -903,6 +937,108 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile a while loop: while <cond> do <body>
+    fn compile_while(&mut self, cond: &Expr, body: &Expr) -> CompileResult<()> {
+        // Record the loop start offset
+        let start_offset = self.chunk.current_offset();
+
+        // Compile condition
+        self.compile_expr(cond)?;
+
+        // Emit JumpIfFalse to loop end (placeholder offset)
+        let jump_to_end = self.emit_jump(Instruction::JumpIfFalse(0));
+
+        // Push loop state on stack
+        self.loop_stack.push(LoopState {
+            start_offset,
+            break_jumps: Vec::new(),
+            continue_jumps: Vec::new(),
+        });
+
+        // Compile body
+        self.compile_expr(body)?;
+
+        // Pop body result (loops return unit)
+        self.emit(Instruction::Pop);
+
+        // Jump back to loop start
+        let offset_to_start = self.chunk.current_offset() as i32 - start_offset as i32 + 1;
+        if offset_to_start > i16::MAX as i32 || -offset_to_start > i16::MAX as i32 {
+            return Err(CompileError::InvalidJumpOffset);
+        }
+        self.emit(Instruction::Jump(-offset_to_start as i16));
+
+        // Patch jump to end
+        self.patch_jump(jump_to_end)?;
+
+        // Pop loop state and patch all break/continue jumps
+        let loop_state = self.loop_stack.pop().unwrap();
+
+        // Patch all break jumps to point to current offset (after loop)
+        for break_jump in loop_state.break_jumps {
+            self.patch_jump(break_jump)?;
+        }
+
+        // Patch all continue jumps to point to loop start
+        for continue_jump in loop_state.continue_jumps {
+            let target = start_offset;
+            let offset = target as i32 - continue_jump as i32 - 1;
+            if offset > i16::MAX as i32 || offset < i16::MIN as i32 {
+                return Err(CompileError::InvalidJumpOffset);
+            }
+            match self.chunk.instructions[continue_jump] {
+                Instruction::Jump(_) => {
+                    self.chunk.instructions[continue_jump] = Instruction::Jump(offset as i16);
+                }
+                _ => unreachable!("Expected Jump instruction for continue"),
+            }
+        }
+
+        // Push unit (result of while loop)
+        let unit_idx = self.add_constant(Value::Unit)?;
+        self.emit(Instruction::LoadConst(unit_idx));
+
+        Ok(())
+    }
+
+    /// Compile a break statement
+    fn compile_break(&mut self) -> CompileResult<()> {
+        if self.loop_stack.is_empty() {
+            return Err(CompileError::BreakOutsideLoop);
+        }
+
+        // Emit a jump to loop end (placeholder offset)
+        let jump_idx = self.emit_jump(Instruction::Jump(0));
+
+        // Record this jump to be patched later
+        self.loop_stack
+            .last_mut()
+            .unwrap()
+            .break_jumps
+            .push(jump_idx);
+
+        Ok(())
+    }
+
+    /// Compile a continue statement
+    fn compile_continue(&mut self) -> CompileResult<()> {
+        if self.loop_stack.is_empty() {
+            return Err(CompileError::ContinueOutsideLoop);
+        }
+
+        // Emit a jump to loop start (placeholder offset)
+        let jump_idx = self.emit_jump(Instruction::Jump(0));
+
+        // Record this jump to be patched later
+        self.loop_stack
+            .last_mut()
+            .unwrap()
+            .continue_jumps
+            .push(jump_idx);
+
+        Ok(())
+    }
+
     /// Compile a match expression with full pattern matching support
     fn compile_match(&mut self, scrutinee: &Expr, arms: &[MatchArm]) -> CompileResult<()> {
         // Compile scrutinee once and keep it on the stack
@@ -1256,6 +1392,39 @@ impl Compiler {
         // Emit UpdateRecord instruction with update count
         let update_count = fields.len() as u16;
         self.emit(Instruction::UpdateRecord(update_count));
+
+        Ok(())
+    }
+
+    /// Compile a method call expression
+    /// Stack effect: pushes the result of the method call
+    fn compile_method_call(
+        &mut self,
+        receiver: &Expr,
+        method_name: &str,
+        args: &[Expr],
+    ) -> CompileResult<()> {
+        // Check if arg count fits in u8
+        if args.len() > u8::MAX as usize {
+            return Err(CompileError::CodeGenError(
+                "Too many method arguments (max 255)".to_string(),
+            ));
+        }
+
+        // Compile receiver expression
+        self.compile_expr(receiver)?;
+
+        // Compile argument expressions
+        for arg in args {
+            self.compile_expr(arg)?;
+        }
+
+        // Store method name in constants pool
+        let method_name_idx = self.add_constant(Value::Str(method_name.to_string()))?;
+
+        // Emit CallMethod instruction
+        let arg_count = args.len() as u8;
+        self.emit(Instruction::CallMethod(method_name_idx, arg_count));
 
         Ok(())
     }

@@ -469,13 +469,22 @@ impl Parser {
 
     /// Parse an expression
     fn parse_expr(&mut self) -> Result<Expr> {
-        // Try let, if, lambda, match first, then fall through to parse_pipeline_expr
+        // Try let, if, lambda, match, while first, then fall through to parse_pipeline_expr
         let tok = &self.current_token().token;
         match tok {
             Token::Let => self.parse_let(),
             Token::If => self.parse_if(),
             Token::Fun => self.parse_lambda(),
             Token::Match => self.parse_match(),
+            Token::While => self.parse_while(),
+            Token::Break => {
+                self.advance();
+                Ok(Expr::Break)
+            }
+            Token::Continue => {
+                self.advance();
+                Ok(Expr::Continue)
+            }
             _ => self.parse_pipeline_expr(), // Start parsing from pipeline operator level
         }
     }
@@ -643,6 +652,25 @@ impl Parser {
             cond: Box::new(cond),
             then_branch: Box::new(then_branch),
             else_branch: Box::new(else_branch),
+        })
+    }
+
+    /// Parse while loop: while <expr> do <expr>
+    fn parse_while(&mut self) -> Result<Expr> {
+        self.expect_token(Token::While)?;
+
+        // Parse condition
+        let cond = self.parse_expr()?;
+
+        // Expect 'do' keyword
+        self.expect_token(Token::Do)?;
+
+        // Parse body
+        let body = self.parse_expr()?;
+
+        Ok(Expr::While {
+            cond: Box::new(cond),
+            body: Box::new(body),
         })
     }
 
