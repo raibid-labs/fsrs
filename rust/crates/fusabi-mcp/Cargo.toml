@@ -1,0 +1,25 @@
+[package]
+name = "fusabi-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Model Context Protocol (MCP) server for Fusabi scripting language"
+repository = "https://github.com/fusabi-lang/fusabi"
+license = "MIT"
+
+[[bin]]
+name = "fusabi-mcp"
+path = "src/main.rs"
+
+[lib]
+name = "fusabi_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+fusabi = { path = "../fusabi", version = "0.6.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
