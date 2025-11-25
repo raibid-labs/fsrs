@@ -1,6 +1,6 @@
 [package]
 name = "fusabi-bench-compare"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
 description = "Benchmarking comparison harness for Fusabi vs other embedded languages"
 
