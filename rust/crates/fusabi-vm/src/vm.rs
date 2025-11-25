@@ -571,6 +571,63 @@ impl Vm {
                     }
                 }
 
+                Instruction::CallMethod(method_name_idx, argc) => {
+                    // Get method name from constants
+                    let method_name_val = self.current_frame()?.get_constant(method_name_idx)?;
+                    let method_name = match method_name_val {
+                        Value::Str(s) => s,
+                        _ => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "string (method name)",
+                                got: method_name_val.type_name(),
+                            })
+                        }
+                    };
+
+                    // Get receiver - it's at position [stack.len() - argc - 1]
+                    let receiver_idx = self
+                        .stack
+                        .len()
+                        .checked_sub(1 + argc as usize)
+                        .ok_or(VmError::StackUnderflow)?;
+                    let receiver = &self.stack[receiver_idx];
+
+                    // Check if receiver is HostData
+                    match receiver {
+                        Value::HostData(host_data) => {
+                            let type_id = host_data.type_id();
+
+                            // Collect all arguments including receiver
+                            let mut args = Vec::with_capacity(1 + argc as usize);
+                            args.push(receiver.clone()); // receiver is first arg
+
+                            // Pop method arguments from stack (in reverse order)
+                            for _ in 0..argc {
+                                args.push(self.pop()?);
+                            }
+                            // Reverse args (except receiver) to get correct order
+                            args[1..].reverse();
+
+                            // Pop the receiver from stack
+                            self.pop()?;
+
+                            // Call the method via registry
+                            let result = {
+                                let registry = self.host_registry.borrow();
+                                registry.call_method(type_id, &method_name, self, &args)?
+                            };
+
+                            self.push(result);
+                        }
+                        _ => {
+                            return Err(VmError::Runtime(format!(
+                                "Method dispatch not supported for type: {}",
+                                receiver.type_name()
+                            )))
+                        }
+                    }
+                }
+
                 Instruction::CloseUpvalue(_) => {
                     // Placeholder
                 }

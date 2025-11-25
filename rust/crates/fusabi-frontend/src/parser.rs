@@ -1048,12 +1048,41 @@ impl Parser {
                             };
                         }
                     } else {
-                        // Record field access: record.field
+                        // Could be record field access or method call
                         let field = self.expect_ident()?;
-                        expr = Expr::RecordAccess {
-                            record: Box::new(expr),
-                            field,
-                        };
+
+                        // Check if followed by '(' to distinguish method call from field access
+                        if self.current_token().token == Token::LParen {
+                            // Method call: obj.method(args)
+                            self.advance(); // consume '('
+
+                            let mut args = vec![];
+
+                            // Parse arguments
+                            if !matches!(self.current_token().token, Token::RParen) {
+                                loop {
+                                    args.push(self.parse_expr()?);
+
+                                    if !self.match_token(&Token::Comma) {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            self.expect_token(Token::RParen)?;
+
+                            expr = Expr::MethodCall {
+                                receiver: Box::new(expr),
+                                method_name: field,
+                                args,
+                            };
+                        } else {
+                            // Regular field access
+                            expr = Expr::RecordAccess {
+                                record: Box::new(expr),
+                                field,
+                            };
+                        }
                     }
                 }
                 _ => break,

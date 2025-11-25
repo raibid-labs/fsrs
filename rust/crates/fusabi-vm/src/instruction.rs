@@ -104,6 +104,11 @@ pub enum Instruction {
     /// Call function with N arguments
     Call(u8),
 
+    /// Call method on receiver with N arguments
+    /// Stack layout: [receiver, arg1, arg2, ..., argN]
+    /// The method name is passed as a constant index
+    CallMethod(u16, u8),
+
     /// Tail call optimization for recursive functions
     TailCall(u8),
 
@@ -236,6 +241,9 @@ impl fmt::Display for Instruction {
             Instruction::Jump(offset) => write!(f, "JUMP {}", offset),
             Instruction::JumpIfFalse(offset) => write!(f, "JUMP_IF_FALSE {}", offset),
             Instruction::Call(argc) => write!(f, "CALL {}", argc),
+            Instruction::CallMethod(method_idx, argc) => {
+                write!(f, "CALL_METHOD {} {}", method_idx, argc)
+            }
             Instruction::TailCall(argc) => write!(f, "TAIL_CALL {}", argc),
             Instruction::Return => write!(f, "RETURN"),
 

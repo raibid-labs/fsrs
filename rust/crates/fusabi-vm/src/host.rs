@@ -1,5 +1,6 @@
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
+use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -10,6 +11,8 @@ pub type HostFn = dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + S
 /// Registry for host functions that can be called from Fusabi scripts
 pub struct HostRegistry {
     functions: HashMap<String, Rc<HostFn>>,
+    /// Method registry keyed by (TypeId, method_name)
+    methods: HashMap<(TypeId, String), Rc<HostFn>>,
 }
 
 impl fmt::Debug for HostRegistry {
@@ -25,6 +28,7 @@ impl HostRegistry {
     pub fn new() -> Self {
         HostRegistry {
             functions: HashMap::new(),
+            methods: HashMap::new(),
         }
     }
 
@@ -151,6 +155,50 @@ impl HostRegistry {
     /// Get the count of registered functions
     pub fn count(&self) -> usize {
         self.functions.len()
+    }
+
+    /// Register a method on a specific host data type
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use fusabi_vm::host::HostRegistry;
+    /// # use fusabi_vm::value::Value;
+    /// # use fusabi_vm::vm::VmError;
+    /// # use std::any::TypeId;
+    /// let mut registry = HostRegistry::new();
+    /// registry.register_method::<MyCounter>("increment", |_vm, args| {
+    ///     // First arg is the receiver (self)
+    ///     // Remaining args are method arguments
+    ///     Ok(Value::Unit)
+    /// });
+    /// ```
+    pub fn register_method<T: 'static, F>(&mut self, method_name: &str, f: F)
+    where
+        F: Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync + 'static,
+    {
+        let type_id = TypeId::of::<T>();
+        let key = (type_id, method_name.to_string());
+        self.methods.insert(key, Rc::new(f));
+    }
+
+    /// Get a registered method for a specific type
+    pub fn get_method(&self, type_id: TypeId, method_name: &str) -> Option<Rc<HostFn>> {
+        let key = (type_id, method_name.to_string());
+        self.methods.get(&key).cloned()
+    }
+
+    /// Call a registered method
+    pub fn call_method(
+        &self,
+        type_id: TypeId,
+        method_name: &str,
+        vm: &mut Vm,
+        args: &[Value],
+    ) -> Result<Value, VmError> {
+        let f = self
+            .get_method(type_id, method_name)
+            .ok_or_else(|| VmError::Runtime(format!("Method not found: {}", method_name)))?;
+        f(vm, args)
     }
 }
 

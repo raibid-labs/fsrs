@@ -2,7 +2,7 @@
 // Defines runtime values for the bytecode VM
 
 use crate::closure::Closure;
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -12,6 +12,7 @@ use std::rc::Rc;
 pub struct HostData {
     data: Rc<RefCell<dyn Any>>,
     type_name: String,
+    type_id: TypeId,
 }
 
 impl HostData {
@@ -20,12 +21,18 @@ impl HostData {
         Self {
             data: Rc::new(RefCell::new(data)),
             type_name: type_name.to_string(),
+            type_id: TypeId::of::<T>(),
         }
     }
 
     /// Get the type name of the wrapped data
     pub fn type_name(&self) -> &str {
         &self.type_name
+    }
+
+    /// Get the TypeId of the wrapped data
+    pub fn type_id(&self) -> TypeId {
+        self.type_id
     }
 
     /// Try to borrow the data as a specific type
@@ -49,6 +56,7 @@ impl Clone for HostData {
         Self {
             data: self.data.clone(),
             type_name: self.type_name.clone(),
+            type_id: self.type_id,
         }
     }
 }
@@ -72,6 +80,7 @@ impl Default for HostData {
         Self {
             data: Rc::new(RefCell::new(())),
             type_name: "<invalid>".to_string(),
+            type_id: TypeId::of::<()>(),
         }
     }
 }
