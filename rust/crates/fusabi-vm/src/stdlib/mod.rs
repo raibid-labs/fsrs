@@ -109,6 +109,42 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Option.defaultValue", |_vm, args| {
             wrap_binary(args, option::option_default_value)
         });
+        registry.register("Option.defaultWith", option::option_default_with);
+        registry.register("Option.map", option::option_map);
+        registry.register("Option.bind", option::option_bind);
+        registry.register("Option.iter", option::option_iter);
+        registry.register("Option.map2", option::option_map2);
+        registry.register("Option.orElse", |_vm, args| {
+            wrap_binary(args, option::option_or_else)
+        });
+
+        // Option constructors - Some and None
+        registry.register("Some", |_vm, args| {
+            if args.len() != 1 {
+                return Err(VmError::Runtime(format!(
+                    "Some expects 1 argument, got {}",
+                    args.len()
+                )));
+            }
+            Ok(Value::Variant {
+                type_name: "Option".to_string(),
+                variant_name: "Some".to_string(),
+                fields: vec![args[0].clone()],
+            })
+        });
+        registry.register("None", |_vm, args| {
+            if !args.is_empty() {
+                return Err(VmError::Runtime(format!(
+                    "None expects 0 arguments, got {}",
+                    args.len()
+                )));
+            }
+            Ok(Value::Variant {
+                type_name: "Option".to_string(),
+                variant_name: "None".to_string(),
+                fields: vec![],
+            })
+        });
     }
 
     // 2. Populate Globals with Module Records
@@ -247,5 +283,53 @@ mod tests {
         } else {
             panic!("List global is not a record");
         }
+    }
+
+    #[test]
+    fn test_register_option_functions() {
+        let mut vm = Vm::new();
+        register_stdlib(&mut vm);
+
+        // Check all Option functions are registered
+        assert!(vm.host_registry.borrow().has_function("Option.isSome"));
+        assert!(vm.host_registry.borrow().has_function("Option.isNone"));
+        assert!(vm.host_registry.borrow().has_function("Option.defaultValue"));
+        assert!(vm.host_registry.borrow().has_function("Option.defaultWith"));
+        assert!(vm.host_registry.borrow().has_function("Option.map"));
+        assert!(vm.host_registry.borrow().has_function("Option.bind"));
+        assert!(vm.host_registry.borrow().has_function("Option.iter"));
+        assert!(vm.host_registry.borrow().has_function("Option.map2"));
+        assert!(vm.host_registry.borrow().has_function("Option.orElse"));
+
+        // Check constructors
+        assert!(vm.host_registry.borrow().has_function("Some"));
+        assert!(vm.host_registry.borrow().has_function("None"));
+    }
+
+    #[test]
+    fn test_register_option_globals() {
+        let mut vm = Vm::new();
+        register_stdlib(&mut vm);
+
+        // Check Option module global
+        assert!(vm.globals.contains_key("Option"));
+        if let Some(Value::Record(r)) = vm.globals.get("Option") {
+            let borrowed = r.borrow();
+            assert!(borrowed.contains_key("isSome"));
+            assert!(borrowed.contains_key("isNone"));
+            assert!(borrowed.contains_key("defaultValue"));
+            assert!(borrowed.contains_key("defaultWith"));
+            assert!(borrowed.contains_key("map"));
+            assert!(borrowed.contains_key("bind"));
+            assert!(borrowed.contains_key("iter"));
+            assert!(borrowed.contains_key("map2"));
+            assert!(borrowed.contains_key("orElse"));
+        } else {
+            panic!("Option global is not a record");
+        }
+
+        // Check constructor globals
+        assert!(vm.globals.contains_key("Some"));
+        assert!(vm.globals.contains_key("None"));
     }
 }
