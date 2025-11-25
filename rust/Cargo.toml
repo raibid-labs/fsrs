@@ -3,5 +3,7 @@ members = [
   "crates/fusabi-frontend",
   "crates/fusabi-vm",
   "crates/fusabi",
+  "crates/fusabi-bench-compare",
+  "crates/fusabi-mcp",
 ]
 resolver = "2"

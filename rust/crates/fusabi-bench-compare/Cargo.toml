@@ -1,0 +1,16 @@
+[package]
+name = "fusabi-bench-compare"
+version = "0.1.0"
+edition = "2021"
+description = "Benchmarking comparison harness for Fusabi vs other embedded languages"
+
+[[bin]]
+name = "compare"
+path = "src/main.rs"
+
+[dependencies]
+fusabi = { path = "../fusabi" }
+rhai = "1.19"
+mlua = { version = "0.9", features = ["lua54", "vendored"] }
+criterion = "0.5"
+serde = { version = "1.0", features = ["derive"] }

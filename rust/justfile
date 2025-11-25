@@ -1,0 +1,72 @@
+# Fusabi Project Justfile
+# Run benchmarks and tests
+
+# List available recipes
+default:
+    @just --list
+
+# Run all micro-benchmarks for fusabi-vm
+benchmark-micro:
+    @echo "Running micro-benchmarks for fusabi-vm..."
+    cargo bench -p fusabi-vm
+
+# Run specific micro-benchmark
+benchmark-ops:
+    @echo "Running operation dispatch benchmarks..."
+    cargo bench -p fusabi-vm --bench op_dispatch
+
+benchmark-alloc:
+    @echo "Running allocation benchmarks..."
+    cargo bench -p fusabi-vm --bench alloc
+
+benchmark-calls:
+    @echo "Running function call benchmarks..."
+    cargo bench -p fusabi-vm --bench function_calls
+
+# Run macro-benchmarks (F# scripts)
+benchmark-macro:
+    @echo "Running macro-benchmarks..."
+    @echo "\nFibonacci (fib 25):"
+    @time cargo run --release --bin fusabi -- examples/benchmarks/fib.fsx
+    @echo "\nSieve of Eratosthenes (primes to 1000):"
+    @time cargo run --release --bin fusabi -- examples/benchmarks/sieve.fsx
+    @echo "\nBinary Trees (depth 10):"
+    @time cargo run --release --bin fusabi -- examples/benchmarks/binary_trees.fsx
+    @echo "\nTakeuchi (18, 12, 6):"
+    @time cargo run --release --bin fusabi -- examples/benchmarks/tak.fsx
+
+# Run comparison benchmarks (Fusabi vs Rhai vs Lua)
+benchmark-compare:
+    @echo "Running comparison benchmarks..."
+    cargo run --release -p fusabi-bench-compare
+
+# Run all benchmarks
+benchmark: benchmark-micro benchmark-compare
+    @echo "\nAll benchmarks complete!"
+
+# Quick benchmark (just comparisons)
+benchmark-quick: benchmark-compare
+
+# Build everything in release mode
+build-release:
+    cargo build --release --all
+
+# Run tests
+test:
+    cargo test --all
+
+# Clean build artifacts
+clean:
+    cargo clean
+
+# Format code
+fmt:
+    cargo fmt --all
+
+# Check code (without building)
+check:
+    cargo check --all
+
+# Run clippy
+lint:
+    cargo clippy --all -- -D warnings
