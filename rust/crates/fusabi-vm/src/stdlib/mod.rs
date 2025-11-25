@@ -123,10 +123,20 @@ pub fn register_stdlib(vm: &mut Vm) {
     option_fields.insert("isSome".to_string(), native("Option.isSome", 1));
     option_fields.insert("isNone".to_string(), native("Option.isNone", 1));
     option_fields.insert("defaultValue".to_string(), native("Option.defaultValue", 2));
+    option_fields.insert("defaultWith".to_string(), native("Option.defaultWith", 2));
+    option_fields.insert("map".to_string(), native("Option.map", 2));
+    option_fields.insert("bind".to_string(), native("Option.bind", 2));
+    option_fields.insert("iter".to_string(), native("Option.iter", 2));
+    option_fields.insert("map2".to_string(), native("Option.map2", 3));
+    option_fields.insert("orElse".to_string(), native("Option.orElse", 2));
     vm.globals.insert(
         "Option".to_string(),
         Value::Record(Rc::new(RefCell::new(option_fields))),
     );
+
+    // Register Option constructors as globals
+    vm.globals.insert("Some".to_string(), native("Some", 1));
+    vm.globals.insert("None".to_string(), native("None", 0));
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>

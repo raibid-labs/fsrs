@@ -416,6 +416,8 @@ impl Trace for Closure {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+    use std::cell::RefCell;
     use super::*;
 
     #[test]
