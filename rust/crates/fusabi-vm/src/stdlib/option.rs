@@ -49,6 +49,208 @@ pub fn option_default_value(default: &Value, opt: &Value) -> Result<Value, VmErr
         }),
     }
 }
+/// Option.defaultWith : (unit -> 'a) -> 'a option -> 'a
+/// Returns the value inside Some, or calls the default function if None
+pub fn option_default_with(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Option.defaultWith expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let default_fn = &args[0];
+    let opt = &args[1];
+
+    match opt {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if variant_name == "Some" && !fields.is_empty() {
+                Ok(fields[0].clone())
+            } else {
+                vm.call_value(default_fn.clone(), &[Value::Unit])
+            }
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: opt.type_name(),
+        }),
+    }
+}
+
+/// Option.map : ('a -> 'b) -> 'a option -> 'b option
+/// Transforms the value inside Some with the given function
+pub fn option_map(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Option.map expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let f = &args[0];
+    let opt = &args[1];
+
+    match opt {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            if variant_name == "Some" && !fields.is_empty() {
+                let result = vm.call_value(f.clone(), &[fields[0].clone()])?;
+                Ok(Value::Variant {
+                    type_name: type_name.clone(),
+                    variant_name: "Some".to_string(),
+                    fields: vec![result],
+                })
+            } else {
+                Ok(opt.clone())
+            }
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: opt.type_name(),
+        }),
+    }
+}
+
+/// Option.bind : ('a -> 'b option) -> 'a option -> 'b option
+/// Monadic bind for Option (also known as flatMap or andThen)
+pub fn option_bind(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Option.bind expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let f = &args[0];
+    let opt = &args[1];
+
+    match opt {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if variant_name == "Some" && !fields.is_empty() {
+                vm.call_value(f.clone(), &[fields[0].clone()])
+            } else {
+                Ok(opt.clone())
+            }
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: opt.type_name(),
+        }),
+    }
+}
+
+/// Option.iter : ('a -> unit) -> 'a option -> unit
+/// Calls the function with the value if Some, does nothing if None
+pub fn option_iter(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Option.iter expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let f = &args[0];
+    let opt = &args[1];
+
+    match opt {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if variant_name == "Some" && !fields.is_empty() {
+                vm.call_value(f.clone(), &[fields[0].clone()])?;
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: opt.type_name(),
+        }),
+    }
+}
+
+/// Option.map2 : ('a -> 'b -> 'c) -> 'a option -> 'b option -> 'c option
+/// Combines two options with a function
+pub fn option_map2(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 3 {
+        return Err(VmError::Runtime(format!(
+            "Option.map2 expects 3 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let f = &args[0];
+    let opt1 = &args[1];
+    let opt2 = &args[2];
+
+    match (opt1, opt2) {
+        (
+            Value::Variant {
+                variant_name: vn1,
+                fields: fields1,
+                ..
+            },
+            Value::Variant {
+                type_name: tn2,
+                variant_name: vn2,
+                fields: fields2,
+            },
+        ) => {
+            if vn1 == "Some" && vn2 == "Some" && !fields1.is_empty() && !fields2.is_empty() {
+                let result = vm.call_value(f.clone(), &[fields1[0].clone(), fields2[0].clone()])?;
+                Ok(Value::Variant {
+                    type_name: tn2.clone(),
+                    variant_name: "Some".to_string(),
+                    fields: vec![result],
+                })
+            } else {
+                Ok(Value::Variant {
+                    type_name: tn2.clone(),
+                    variant_name: "None".to_string(),
+                    fields: vec![],
+                })
+            }
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: "non-variant",
+        }),
+    }
+}
+
+/// Option.orElse : 'a option -> 'a option -> 'a option
+/// Returns the first option if Some, otherwise returns the second option
+pub fn option_or_else(opt1: &Value, opt2: &Value) -> Result<Value, VmError> {
+    match opt1 {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if variant_name == "Some" && !fields.is_empty() {
+                Ok(opt1.clone())
+            } else {
+                Ok(opt2.clone())
+            }
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "Option variant",
+            got: opt1.type_name(),
+        }),
+    }
+}
 
 #[cfg(test)]
 mod tests {
