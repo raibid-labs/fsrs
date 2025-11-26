@@ -6,6 +6,9 @@ pub mod map;
 pub mod option;
 pub mod string;
 
+#[cfg(feature = "osc")]
+pub mod net;
+
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
 use std::cell::RefCell;
@@ -145,6 +148,16 @@ pub fn register_stdlib(vm: &mut Vm) {
                 fields: vec![],
             })
         });
+
+        // Net.Osc functions (if osc feature is enabled)
+        #[cfg(feature = "osc")]
+        {
+            registry.register("Osc.client", net::osc::osc_client);
+            registry.register("Osc.send", net::osc::osc_send);
+            registry.register("Osc.sendInt", net::osc::osc_send_int);
+            registry.register("Osc.sendFloat", net::osc::osc_send_float);
+            registry.register("Osc.sendString", net::osc::osc_send_string);
+        }
     }
 
     // 2. Populate Globals with Module Records
@@ -223,6 +236,21 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register Option constructors as globals
     vm.globals.insert("Some".to_string(), native("Some", 1));
     vm.globals.insert("None".to_string(), native("None", 0));
+
+    // Osc Module (if osc feature is enabled)
+    #[cfg(feature = "osc")]
+    {
+        let mut osc_fields = HashMap::new();
+        osc_fields.insert("client".to_string(), native("Osc.client", 2));
+        osc_fields.insert("send".to_string(), native("Osc.send", 2));
+        osc_fields.insert("sendInt".to_string(), native("Osc.sendInt", 3));
+        osc_fields.insert("sendFloat".to_string(), native("Osc.sendFloat", 3));
+        osc_fields.insert("sendString".to_string(), native("Osc.sendString", 3));
+        vm.globals.insert(
+            "Osc".to_string(),
+            Value::Record(Rc::new(RefCell::new(osc_fields))),
+        );
+    }
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>
