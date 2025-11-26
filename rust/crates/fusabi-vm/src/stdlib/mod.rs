@@ -72,6 +72,12 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("String.endsWith", |_vm, args| {
             wrap_binary(args, string::string_ends_with)
         });
+        registry.register("String.format", |_vm, args| {
+            wrap_binary(args, string::string_format)
+        });
+        registry.register("sprintf", |_vm, args| {
+            wrap_binary(args, string::string_format)
+        });
 
         // Map functions
         registry.register("Map.empty", |_vm, args| {
@@ -209,10 +215,14 @@ pub fn register_stdlib(vm: &mut Vm) {
     string_fields.insert("contains".to_string(), native("String.contains", 2));
     string_fields.insert("startsWith".to_string(), native("String.startsWith", 2));
     string_fields.insert("endsWith".to_string(), native("String.endsWith", 2));
+    string_fields.insert("format".to_string(), native("String.format", 2));
     vm.globals.insert(
         "String".to_string(),
         Value::Record(Rc::new(RefCell::new(string_fields))),
     );
+
+    // Register sprintf as a global alias for String.format
+    vm.globals.insert("sprintf".to_string(), native("sprintf", 2));
 
     // Map Module
     let mut map_fields = HashMap::new();

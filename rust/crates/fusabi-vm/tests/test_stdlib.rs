@@ -129,6 +129,26 @@ fn test_string_predicates_integration() {
     assert_eq!(ends, Value::Bool(true));
 }
 
+#[test]
+fn test_string_format_integration() {
+    let fmt = Value::Str("%s version %d.%d".to_string());
+    let args = Value::vec_to_cons(vec![
+        Value::Str("MyApp".to_string()),
+        Value::Int(1),
+        Value::Int(0),
+    ]);
+    let result = string_format(&fmt, &args).unwrap();
+    assert_eq!(result, Value::Str("MyApp version 1.0".to_string()));
+}
+
+#[test]
+fn test_string_format_precision_integration() {
+    let fmt = Value::Str("Price: $%.2f".to_string());
+    let args = Value::vec_to_cons(vec![Value::Float(19.99)]);
+    let result = string_format(&fmt, &args).unwrap();
+    assert_eq!(result, Value::Str("Price: $19.99".to_string()));
+}
+
 // ========== Option Tests ==========
 
 #[test]
@@ -259,6 +279,40 @@ fn test_string_concat_through_vm() {
     ]);
     let result = call_stdlib_function(&mut vm, "String.concat", &[list]).unwrap();
     assert_eq!(result, Value::Str("helloworld".to_string()));
+}
+
+#[test]
+fn test_string_format_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    let fmt = Value::Str("%s version %d.%d".to_string());
+    let args = Value::vec_to_cons(vec![
+        Value::Str("MyApp".to_string()),
+        Value::Int(1),
+        Value::Int(0),
+    ]);
+    let result = call_stdlib_function(&mut vm, "String.format", &[fmt, args]).unwrap();
+    assert_eq!(result, Value::Str("MyApp version 1.0".to_string()));
+}
+
+#[test]
+fn test_sprintf_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    let fmt = Value::Str("Hello, %s!".to_string());
+    let args = Value::vec_to_cons(vec![Value::Str("World".to_string())]);
+    let result = call_stdlib_function(&mut vm, "sprintf", &[fmt, args]).unwrap();
+    assert_eq!(result, Value::Str("Hello, World!".to_string()));
+}
+
+#[test]
+fn test_string_format_precision_through_vm() {
+    let mut vm = Vm::new();
+    register_stdlib(&mut vm);
+    let fmt = Value::Str("Price: $%.2f".to_string());
+    let args = Value::vec_to_cons(vec![Value::Float(19.99)]);
+    let result = call_stdlib_function(&mut vm, "String.format", &[fmt, args]).unwrap();
+    assert_eq!(result, Value::Str("Price: $19.99".to_string()));
 }
 
 #[test]
