@@ -53,6 +53,39 @@ fus grind config.fsx
 fus run config.fzb  # Faster startup, same logic
 ```
 
+### Let Bindings - Fully Supported
+
+Fusabi has complete support for `let` bindings, the foundation of F# programming:
+
+```fsharp
+// Simple value bindings
+let x = 42
+let message = "Hello, Fusabi!"
+
+// Function bindings
+let add x y = x + y
+let double x = x * 2
+
+// Recursive functions
+let rec factorial n =
+    match n with
+    | 0 -> 1
+    | 1 -> 1
+    | _ -> n * factorial (n - 1)
+
+// Local scoping with 'in'
+let result =
+    let temp = 10 in
+    let doubled = temp * 2 in
+    doubled + 5  // => 25
+
+// Shadowing (rebinding)
+let count = 10
+let count = count + 5  // => 15
+```
+
+See [examples/let_bindings_showcase.fsx](examples/let_bindings_showcase.fsx) for comprehensive examples.
+
 ## What You Get
 
 ### 🟢 Typed & Functional
@@ -69,6 +102,65 @@ Safe, re-entrant API designed for embedding. Call Rust functions from F#. Expose
 
 ### 🔧 Developer-First Tooling
 `fus run` for instant iteration. `fus grind` for production builds. Clear error messages. No ceremony, no config files unless you want them.
+
+## Language Features
+
+Fusabi supports a comprehensive subset of F# for practical, production-ready scripting:
+
+### Core Language
+- ✅ **Let bindings** - Value and function bindings (`let x = 42`, `let add x y = x + y`)
+- ✅ **Recursive bindings** - Recursive functions (`let rec factorial n = ...`)
+- ✅ **Local scoping** - Scoped bindings with `in` (`let x = 1 in x + 2`)
+- ✅ **Shadowing** - Variable rebinding (`let x = 1; let x = x + 1`)
+- ✅ **Anonymous functions** - Lambda expressions (`fun x -> x * 2`)
+- ✅ **Higher-order functions** - Functions as values, partial application
+- ✅ **Currying** - Automatic function currying
+
+### Data Types
+- ✅ **Primitives** - `int`, `float`, `bool`, `string`, `unit`
+- ✅ **Tuples** - `(1, "hello", true)`
+- ✅ **Lists** - `[1; 2; 3]` with `::` cons operator
+- ✅ **Arrays** - `[|1; 2; 3|]` with mutable updates
+- ✅ **Records** - Named fields with dot notation (`{ name = "Alice"; age = 30 }`)
+- ✅ **Discriminated Unions** - Sum types with pattern matching
+- ✅ **Options** - `Some(value)` and `None` for null safety
+
+### Control Flow
+- ✅ **Pattern matching** - `match` expressions with guards
+- ✅ **Conditionals** - `if/then/else` expressions
+- ✅ **Recursion** - Full support for recursive functions
+
+### Operators & Composition
+- ✅ **Arithmetic** - `+`, `-`, `*`, `/`, `%`
+- ✅ **Comparison** - `==`, `!=`, `<`, `>`, `<=`, `>=`
+- ✅ **Boolean logic** - `&&`, `||`, `not`
+- ✅ **Pipeline operator** - `|>` for left-to-right composition
+- ✅ **Composition operators** - `>>` (forward), `<<` (backward)
+- ✅ **List cons** - `::` for list construction
+
+### Modules & Organization
+- ✅ **Module definitions** - `module MyModule = ...`
+- ✅ **Nested modules** - Hierarchical organization
+- ✅ **Qualified access** - `List.map`, `String.trim`
+
+### Standard Library
+- ✅ **List module** - `length`, `head`, `tail`, `reverse`, `append`, `concat`, `map`, `filter`, `fold`
+- ✅ **String module** - `length`, `trim`, `toUpper`, `toLower`, `split`, `concat`, `contains`, `startsWith`, `endsWith`
+- ✅ **Option module** - `isSome`, `isNone`, `defaultValue`, `map`, `bind`
+- ✅ **Json module** - `parse`, `stringify` for JSON handling
+- ✅ **Net.Osc module** - OSC (Open Sound Control) support
+
+### Advanced Features
+- ✅ **Type inference** - Automatic type deduction
+- ✅ **Bytecode compilation** - AOT compilation to `.fzb` format
+- ✅ **Host interop** - Safe bidirectional Rust/F# calls
+- ✅ **Closures** - Lexical scoping and captured variables
+
+### Coming Soon
+- 🚧 **Type annotations** - Explicit type signatures
+- 🚧 **Generic functions** - Parametric polymorphism
+- 🚧 **Mutable references** - `ref` cells
+- 🚧 **Async/await** - Asynchronous programming
 
 ## Current Status
 
@@ -87,10 +179,11 @@ just bootstrap  # Sets up dev environment
 just build      # Compiles Fusabi
 
 # Take It for a Spin
-fus run examples/hello.fsx           # Instant gratification
-fus run examples/stdlib_demo.fsx     # See the std lib in action
-fus grind examples/fibonacci.fsx     # AOT compile to bytecode
-fus run examples/fibonacci.fzb       # Run the bytecode
+fus run examples/hello.fsx                   # Instant gratification
+fus run examples/let_bindings_showcase.fsx   # Learn let bindings
+fus run examples/stdlib_demo.fsx             # See the std lib in action
+fus grind examples/fibonacci.fsx             # AOT compile to bytecode
+fus run examples/fibonacci.fzb               # Run the bytecode
 
 # Explore More
 ls examples/  # 30+ examples covering all features
@@ -202,7 +295,7 @@ See the [Embedding Guide](docs/embedding-guide.md) for production patterns and p
 - **[Bytecode Format](docs/bytecode-format.md)** - The `.fzb` binary format specification
 - **[Embedding Guide](docs/embedding-guide.md)** - Production deployment with bytecode compilation
 - **[Host Interop](docs/host-interop.md)** - Embedding Fusabi in your Rust app
-- **[Standard Library](docs/stdlib-implementation.md)** - What's in the box
+- **[Standard Library API](docs/stdlib/)** - Complete API reference for List, String, Option, and Map modules
 
 ### Project Info
 - **[Roadmap](docs/roadmap.md)** - What's next for Fusabi
