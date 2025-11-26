@@ -1730,6 +1730,7 @@ impl Parser {
         let op = match tok {
             Token::Plus => Some(BinOp::Add),
             Token::Minus => Some(BinOp::Sub),
+            Token::PlusPlus => Some(BinOp::Concat),
             _ => None,
         };
 
@@ -1791,5 +1792,52 @@ mod tests {
     fn test_parse_lambda() {
         let expr = parse_str("fun x -> x").unwrap();
         assert!(expr.is_lambda());
+    }
+
+    #[test]
+    fn test_parse_string_concat() {
+        let expr = parse_str(r#""hello" ++ "world""#).unwrap();
+        match expr {
+            Expr::BinOp { op, left, right } => {
+                assert_eq!(op, BinOp::Concat);
+                assert!(matches!(*left, Expr::Lit(Literal::Str(_))));
+                assert!(matches!(*right, Expr::Lit(Literal::Str(_))));
+            }
+            _ => panic!("Expected BinOp with Concat"),
+        }
+    }
+
+    #[test]
+    fn test_parse_string_concat_chain() {
+        let expr = parse_str(r#""a" ++ "b" ++ "c""#).unwrap();
+        // Should parse as left-associative: ("a" ++ "b") ++ "c"
+        match expr {
+            Expr::BinOp {
+                op,
+                left,
+                right: _,
+            } => {
+                assert_eq!(op, BinOp::Concat);
+                match *left {
+                    Expr::BinOp { op, .. } => {
+                        assert_eq!(op, BinOp::Concat);
+                    }
+                    _ => panic!("Expected nested BinOp"),
+                }
+            }
+            _ => panic!("Expected BinOp"),
+        }
+    }
+
+    #[test]
+    fn test_parse_concat_precedence() {
+        // ++ should have same precedence as +, so this should parse correctly
+        let expr = parse_str(r#""http://" ++ host ++ ":" ++ port"#).unwrap();
+        match expr {
+            Expr::BinOp { op, .. } => {
+                assert_eq!(op, BinOp::Concat);
+            }
+            _ => panic!("Expected BinOp"),
+        }
     }
 }

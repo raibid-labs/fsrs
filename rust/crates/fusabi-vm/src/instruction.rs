@@ -65,6 +65,9 @@ pub enum Instruction {
     /// Pop two integers, push quotient (a / b)
     Div,
 
+    /// Pop two strings, push concatenated string (a ++ b)
+    Concat,
+
     // ===== Comparison Operations =====
     /// Pop two values, push equality result (a == b)
     Eq,
@@ -223,6 +226,7 @@ impl fmt::Display for Instruction {
             Instruction::Sub => write!(f, "SUB"),
             Instruction::Mul => write!(f, "MUL"),
             Instruction::Div => write!(f, "DIV"),
+            Instruction::Concat => write!(f, "CONCAT"),
 
             // Comparison
             Instruction::Eq => write!(f, "EQ"),

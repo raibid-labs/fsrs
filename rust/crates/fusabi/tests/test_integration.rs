@@ -45,6 +45,27 @@ mod pipeline_integration_tests {
     }
 
     #[test]
+    fn test_string_concatenation() {
+        let source = r#""hello" ++ "world""#;
+        let result = run_source(source).expect("Failed to execute string concatenation");
+        assert_eq!(result, Value::Str("helloworld".to_string()));
+    }
+
+    #[test]
+    fn test_string_concat_with_spaces() {
+        let source = r#""hello" ++ " " ++ "world""#;
+        let result = run_source(source).expect("Failed to execute string concat chain");
+        assert_eq!(result, Value::Str("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_string_concat_example() {
+        let source = r#"let host = "localhost" in let port = "8080" in "http://" ++ host ++ ":" ++ port"#;
+        let result = run_source(source).expect("Failed to execute URL building");
+        assert_eq!(result, Value::Str("http://localhost:8080".to_string()));
+    }
+
+    #[test]
     fn test_unit_literal() {
         let source = "()";
         let result = run_source(source).expect("Failed to execute unit");

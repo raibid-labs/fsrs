@@ -64,6 +64,38 @@ fn test_integration_complex_arithmetic() {
 }
 
 #[test]
+fn test_integration_string_concat() {
+    let chunk = compile_source(r#""hello" ++ "world""#).unwrap();
+
+    assert_eq!(chunk.constants.len(), 2);
+    assert_eq!(chunk.constants[0], Value::Str("hello".to_string()));
+    assert_eq!(chunk.constants[1], Value::Str("world".to_string()));
+
+    assert_eq!(chunk.instructions[0], Instruction::LoadConst(0));
+    assert_eq!(chunk.instructions[1], Instruction::LoadConst(1));
+    assert_eq!(chunk.instructions[2], Instruction::Concat);
+    assert_eq!(chunk.instructions[3], Instruction::Return);
+}
+
+#[test]
+fn test_integration_string_concat_chain() {
+    let chunk = compile_source(r#""a" ++ "b" ++ "c""#).unwrap();
+
+    // Should have constants for "a", "b", "c"
+    assert!(chunk.constants.contains(&Value::Str("a".to_string())));
+    assert!(chunk.constants.contains(&Value::Str("b".to_string())));
+    assert!(chunk.constants.contains(&Value::Str("c".to_string())));
+
+    // Should have two Concat instructions (left-associative)
+    let concat_count = chunk
+        .instructions
+        .iter()
+        .filter(|i| matches!(i, Instruction::Concat))
+        .count();
+    assert_eq!(concat_count, 2);
+}
+
+#[test]
 fn test_integration_let_binding() {
     let chunk = compile_source("let x = 42 in x + 1").unwrap();
 

@@ -494,6 +494,25 @@ impl Vm {
                     }
                 }
 
+                Instruction::Concat => {
+                    let b = self.pop()?;
+                    let a = self.pop()?;
+                    match (a, b) {
+                        (Value::Str(a), Value::Str(b)) => {
+                            let mut result = a.clone();
+                            result.push_str(&b);
+                            self.push(Value::Str(result))
+                        }
+                        (a, b) => {
+                            return Err(VmError::Runtime(format!(
+                                "Type mismatch in concatenation: {} ++ {}",
+                                a.type_name(),
+                                b.type_name()
+                            )))
+                        }
+                    }
+                }
+
                 // Comparison operations
                 Instruction::Eq => {
                     let b = self.pop()?;

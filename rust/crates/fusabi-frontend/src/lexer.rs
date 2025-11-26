@@ -115,6 +115,8 @@ pub enum Token {
     LArrow,
     /// |> operator (pipeline)
     PipeRight,
+    /// ++ operator (string concatenation)
+    PlusPlus,
 
     // Punctuation
     /// ( left parenthesis
@@ -192,6 +194,7 @@ impl fmt::Display for Token {
             Token::ColonColon => write!(f, "::"),
             Token::LArrow => write!(f, "<-"),
             Token::PipeRight => write!(f, "|>"),
+            Token::PlusPlus => write!(f, "++"),
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
             Token::LBracket => write!(f, "["),
@@ -374,10 +377,7 @@ impl Lexer {
                 }
             }
             '"' => self.lex_string(),
-            '+' => {
-                self.advance();
-                Ok(Token::Plus)
-            }
+            '+' => self.lex_plus_or_plusplus(),
             '-' => self.lex_minus_or_arrow(),
             '*' => {
                 self.advance();
@@ -550,6 +550,17 @@ impl Lexer {
 
         self.advance(); // consume closing "
         Ok(Token::String(s))
+    }
+
+    /// Lex + or ++.
+    fn lex_plus_or_plusplus(&mut self) -> Result<Token, LexError> {
+        self.advance();
+        if !self.is_at_end() && self.current_char() == '+' {
+            self.advance();
+            Ok(Token::PlusPlus)
+        } else {
+            Ok(Token::Plus)
+        }
     }
 
     /// Lex - or ->.
@@ -950,5 +961,36 @@ mod tests {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_lex_plusplus() {
+        let mut lexer = Lexer::new("\"hello\" ++ \"world\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 4); // "hello", ++, "world", EOF
+        assert_eq!(tokens[0].token, Token::String("hello".to_string()));
+        assert_eq!(tokens[1].token, Token::PlusPlus);
+        assert_eq!(tokens[2].token, Token::String("world".to_string()));
+        assert_eq!(tokens[3].token, Token::Eof);
+    }
+
+    #[test]
+    fn test_lex_plusplus_vs_plus() {
+        let mut lexer = Lexer::new("1 + 2 ++ 3");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Int(1));
+        assert_eq!(tokens[1].token, Token::Plus);
+        assert_eq!(tokens[2].token, Token::Int(2));
+        assert_eq!(tokens[3].token, Token::PlusPlus);
+        assert_eq!(tokens[4].token, Token::Int(3));
+    }
+
+    #[test]
+    fn test_lex_plusplus_no_space() {
+        let mut lexer = Lexer::new("a++b");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Ident("a".to_string()));
+        assert_eq!(tokens[1].token, Token::PlusPlus);
+        assert_eq!(tokens[2].token, Token::Ident("b".to_string()));
     }
 }
