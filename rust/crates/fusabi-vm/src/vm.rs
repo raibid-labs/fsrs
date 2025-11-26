@@ -208,6 +208,92 @@ impl Vm {
         self.run()
     }
 
+    /// Create a VM instance from pre-compiled bytecode.
+    ///
+    /// This method deserializes bytecode (with FZB magic header) and creates a VM
+    /// instance ready to execute it. The VM is created with default settings and
+    /// does NOT have the standard library registered - you must call
+    /// `fusabi_vm::stdlib::register_stdlib(&mut vm)` if you need stdlib functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - Serialized bytecode bytes with FZB header
+    ///
+    /// # Returns
+    ///
+    /// A new VM instance ready to execute the bytecode via the `run()` method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use fusabi_vm::{Vm, stdlib};
+    ///
+    /// let bytecode = std::fs::read("script.fzb").unwrap();
+    /// let mut vm = Vm::from_bytecode(&bytecode).unwrap();
+    ///
+    /// // Register stdlib if needed
+    /// stdlib::register_stdlib(&mut vm);
+    ///
+    /// // Execute by calling run() since the chunk is already loaded
+    /// let result = vm.run().unwrap();
+    /// ```
+    #[cfg(feature = "serde")]
+    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, VmError> {
+        use crate::deserialize_chunk;
+        
+        // Deserialize the chunk from bytecode
+        let chunk = deserialize_chunk(bytecode)
+            .map_err(|e| VmError::Runtime(format!("Failed to deserialize bytecode: {}", e)))?;
+        
+        // Create a new VM
+        let mut vm = Vm::new();
+        
+        // Wrap the chunk in a closure and push initial frame
+        let closure = Rc::new(Closure::new(chunk));
+        let frame = Frame::new(closure, 0);
+        vm.frames.push(frame);
+        
+        Ok(vm)
+    }
+
+    /// Load and execute bytecode directly in a new VM instance.
+    ///
+    /// This is a convenience method that combines VM creation, stdlib registration,
+    /// bytecode loading, and execution into a single call.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - Serialized bytecode bytes with FZB header
+    ///
+    /// # Returns
+    ///
+    /// The final value produced by executing the bytecode.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use fusabi_vm::Vm;
+    ///
+    /// let bytecode = std::fs::read("script.fzb").unwrap();
+    /// let result = Vm::execute_bytecode(&bytecode).unwrap();
+    /// println!("Result: {:?}", result);
+    /// ```
+    #[cfg(feature = "serde")]
+    pub fn execute_bytecode(bytecode: &[u8]) -> Result<Value, VmError> {
+        use crate::{deserialize_chunk, stdlib};
+        
+        // Deserialize the chunk from bytecode
+        let chunk = deserialize_chunk(bytecode)
+            .map_err(|e| VmError::Runtime(format!("Failed to deserialize bytecode: {}", e)))?;
+        
+        // Create a new VM with stdlib registered
+        let mut vm = Vm::new();
+        stdlib::register_stdlib(&mut vm);
+        
+        // Execute the chunk
+        vm.execute(chunk)
+    }
+
     /// Run the interpreter loop
     pub fn run(&mut self) -> Result<Value, VmError> {
         let start_depth = self.frames.len();
