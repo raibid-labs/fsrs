@@ -12,7 +12,7 @@
 //! - Binary operations: arithmetic, comparison, logical
 //! - Conditional expressions: `if cond then expr1 else expr2`
 //! - Tuples: `(1, 2)`, `(x, y, z)`, `(42,)` (single-element)
-//! - Lists: `[1; 2; 3]`, `[]`
+//! - Lists: `[1, 2, 3]`, `[1; 2; 3]`, `[]`
 //! - Arrays: `[|1; 2; 3|]`, `arr.[0]`, `arr.[0] <- 99`
 //! - Records: `type Person = { name: string }`, `{ name = "John" }`, `person.name`, `{ person with age = 31 }`
 //! - Discriminated Unions: `type Option = Some of int | None`, `Some(42)`, `None`, `Some 42`
@@ -52,7 +52,7 @@
 //! postfix_expr ::= primary (".[" expr "]" ("<-" expr)?)*
 //! primary    ::= INT | FLOAT | BOOL | STRING | IDENT | "(" expr ")" | tuple | list | array | "Array.length" primary | variant_construct
 //! tuple      ::= "(" ")" | "(" expr ("," expr)* ","? ")"
-//! list       ::= "[" "]" | "[" expr (";" expr)* ";"? "]"
+//! list       ::= "[" "]" | "[" expr (("," | ";") expr)* ("," | ";")? "]"
 //! array      ::= "[|" "]" | "[|" expr (";" expr)* ";"? "|]"
 //! record_literal ::= "{" (IDENT "=" expr (";" IDENT "=" expr)* ";"?)? "}"
 //! record_update  ::= "{" expr "with" IDENT "=" expr (";" IDENT "=" expr)* ";"? "}"
@@ -1444,7 +1444,10 @@ impl Parser {
         }
     }
 
-    /// Parse list: [1; 2; 3] or []
+    /// Parse list: [1, 2, 3] or [1; 2; 3] or []
+    ///
+    /// Supports both comma and semicolon separators for backward compatibility.
+    /// Trailing separators are allowed: [1, 2, 3,] or [1; 2; 3;]
     fn parse_list(&mut self) -> Result<Expr> {
         self.expect_token(Token::LBracket)?;
 
@@ -1459,9 +1462,9 @@ impl Parser {
         loop {
             elements.push(self.parse_expr()?);
 
-            // Check for semicolon separator
-            if self.match_token(&Token::Semicolon) {
-                // Check for trailing semicolon before ]
+            // Check for comma or semicolon separator
+            if self.match_token(&Token::Comma) || self.match_token(&Token::Semicolon) {
+                // Check for trailing separator before ]
                 if matches!(self.current_token().token, Token::RBracket) {
                     break;
                 }
