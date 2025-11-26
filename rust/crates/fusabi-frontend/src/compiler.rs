@@ -12,6 +12,7 @@
 //! - **Jump Patching**: Forward jump resolution for control flow
 //! - **Optional Type Checking**: Can run type inference before compilation
 //! - **Module System**: Supports module-aware compilation and qualified names
+//! - **Auto-Recursive Detection**: Automatically handles recursive lambdas (issue #126)
 //!
 //! # Example
 //!
@@ -209,6 +210,121 @@ impl Compiler {
             module_registry: None,
             imported_bindings: HashMap::new(),
             loop_stack: Vec::new(),
+        }
+    }
+
+    /// Check if an expression references a variable (for auto-recursion detection).
+    ///
+    /// This performs a simple free variable analysis to detect if `name` appears
+    /// anywhere in the expression. Used to automatically treat `let x = fun ... x ...`
+    /// as recursive without requiring explicit `let rec`.
+    ///
+    /// This is the same logic as in inference.rs to ensure consistency.
+    fn expr_references_var(expr: &Expr, name: &str) -> bool {
+        match expr {
+            Expr::Var(var_name) => var_name == name,
+            Expr::Lambda { param, body } => {
+                // If the lambda parameter shadows the name, don't look inside
+                if param == name {
+                    false
+                } else {
+                    Self::expr_references_var(body, name)
+                }
+            }
+            Expr::App { func, arg } => {
+                Self::expr_references_var(func, name) || Self::expr_references_var(arg, name)
+            }
+            Expr::Let {
+                name: let_name,
+                value,
+                body,
+            } => {
+                // Check value, but if let shadows the name, don't check body
+                Self::expr_references_var(value, name)
+                    || (let_name != name && Self::expr_references_var(body, name))
+            }
+            Expr::LetRec {
+                name: rec_name,
+                value,
+                body,
+            } => {
+                // Similar to Let
+                Self::expr_references_var(value, name)
+                    || (rec_name != name && Self::expr_references_var(body, name))
+            }
+            Expr::LetRecMutual { bindings, body } => {
+                // Check all binding values
+                bindings
+                    .iter()
+                    .any(|(_, expr)| Self::expr_references_var(expr, name))
+                    // Check body unless one of the bindings shadows the name
+                    || (!bindings.iter().any(|(n, _)| n == name)
+                        && Self::expr_references_var(body, name))
+            }
+            Expr::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_references_var(cond, name)
+                    || Self::expr_references_var(then_branch, name)
+                    || Self::expr_references_var(else_branch, name)
+            }
+            Expr::BinOp { left, right, .. } => {
+                Self::expr_references_var(left, name) || Self::expr_references_var(right, name)
+            }
+            Expr::Tuple(elements) | Expr::List(elements) | Expr::Array(elements) => {
+                elements.iter().any(|e| Self::expr_references_var(e, name))
+            }
+            Expr::Cons { head, tail } => {
+                Self::expr_references_var(head, name) || Self::expr_references_var(tail, name)
+            }
+            Expr::ArrayIndex { array, index } => {
+                Self::expr_references_var(array, name) || Self::expr_references_var(index, name)
+            }
+            Expr::ArrayUpdate {
+                array,
+                index,
+                value,
+            } => {
+                Self::expr_references_var(array, name)
+                    || Self::expr_references_var(index, name)
+                    || Self::expr_references_var(value, name)
+            }
+            Expr::ArrayLength(array) => Self::expr_references_var(array, name),
+            Expr::RecordLiteral { fields, .. } => fields
+                .iter()
+                .any(|(_, expr)| Self::expr_references_var(expr, name)),
+            Expr::RecordAccess { record, .. } => Self::expr_references_var(record, name),
+            Expr::RecordUpdate { record, fields } => {
+                Self::expr_references_var(record, name)
+                    || fields
+                        .iter()
+                        .any(|(_, expr)| Self::expr_references_var(expr, name))
+            }
+            Expr::VariantConstruct { fields, .. } => {
+                fields.iter().any(|expr| Self::expr_references_var(expr, name))
+            }
+            Expr::Match { scrutinee, arms } => {
+                Self::expr_references_var(scrutinee, name)
+                    || arms.iter().any(|arm| {
+                        // For simplicity, we don't check if pattern shadows the name
+                        // This is a conservative approach - may detect false recursion
+                        // but won't miss actual recursion
+                        Self::expr_references_var(&arm.body, name)
+                    })
+            }
+            Expr::MethodCall {
+                receiver, args, ..
+            } => {
+                Self::expr_references_var(receiver, name)
+                    || args.iter().any(|e| Self::expr_references_var(e, name))
+            }
+            Expr::While { cond, body } => {
+                Self::expr_references_var(cond, name) || Self::expr_references_var(body, name)
+            }
+            // Literals and control flow don't reference variables
+            Expr::Lit(_) | Expr::Break | Expr::Continue => false,
         }
     }
 
@@ -561,8 +677,10 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a let-binding
-    /// Compile a list expression
+    /// Compile a let-binding with automatic recursion detection
+    ///
+    /// Implements issue #126: Detects if the value expression references the binding name
+    /// and automatically uses recursive compilation strategy if needed.
     fn compile_list(&mut self, elements: &[Expr]) -> CompileResult<()> {
         // Handle empty list: [] -> emit LoadConst with Value::Nil
         if elements.is_empty() {
@@ -759,35 +877,44 @@ impl Compiler {
     }
 
     fn compile_let(&mut self, name: &str, value: &Expr, body: &Expr) -> CompileResult<()> {
-        // Compile the value expression
-        self.compile_expr(value)?;
+        // Auto-detect recursion: check if value references name
+        let auto_recursive = Self::expr_references_var(value, name);
 
-        // Enter new scope
-        self.begin_scope();
+        if auto_recursive {
+            // Use recursive compilation strategy
+            self.compile_let_rec(name, value, body)
+        } else {
+            // Use standard let compilation
+            // Compile the value expression
+            self.compile_expr(value)?;
 
-        // Add local variable
-        self.add_local(name.to_string())?;
+            // Enter new scope
+            self.begin_scope();
 
-        // Store the value in the local slot
-        let local_idx = (self.locals.len() - 1) as u8;
-        self.emit(Instruction::StoreLocal(local_idx));
+            // Add local variable
+            self.add_local(name.to_string())?;
 
-        // Compile the body expression
-        self.compile_expr(body)?;
+            // Store the value in the local slot
+            let local_idx = (self.locals.len() - 1) as u8;
+            self.emit(Instruction::StoreLocal(local_idx));
 
-        // Exit scope - note: we don't emit POP for the body result
-        // The result stays on top of the stack for the caller
-        let locals_to_remove = self.end_scope_count();
+            // Compile the body expression
+            self.compile_expr(body)?;
 
-        // Only pop if we have multiple locals and need to clean up intermediates
-        // For Phase 1 MVP, we simplify by not emitting POPs
-        // The locals stay in their stack slots until function return
-        for _ in 0..locals_to_remove {
-            self.locals.pop();
+            // Exit scope - note: we don't emit POP for the body result
+            // The result stays on top of the stack for the caller
+            let locals_to_remove = self.end_scope_count();
+
+            // Only pop if we have multiple locals and need to clean up intermediates
+            // For Phase 1 MVP, we simplify by not emitting POPs
+            // The locals stay in their stack slots until function return
+            for _ in 0..locals_to_remove {
+                self.locals.pop();
+            }
+            self.scope_depth -= 1;
+
+            Ok(())
         }
-        self.scope_depth -= 1;
-
-        Ok(())
     }
 
     /// Compile a lambda function

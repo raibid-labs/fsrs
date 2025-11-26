@@ -34,6 +34,7 @@
 //! - **Pattern matching**: Full support for match expressions
 //! - **Records and variants**: Type checking for structural types
 //! - **Helpful errors**: Detailed error messages with suggestions
+//! - **Auto-recursive detection**: Automatically detects recursive lambdas (issue #126)
 
 use crate::ast::{BinOp, Expr, Literal, MatchArm, Pattern};
 use crate::error::{TypeError, TypeErrorKind};
@@ -82,6 +83,130 @@ impl TypeInference {
     /// Add a constraint to the constraint set.
     fn add_constraint(&mut self, constraint: Constraint) {
         self.constraints.push(constraint);
+    }
+
+    /// Check if an expression references a variable (for auto-recursion detection).
+    ///
+    /// This performs a simple free variable analysis to detect if `name` appears
+    /// anywhere in the expression. Used to automatically treat `let x = fun ... x ...`
+    /// as recursive without requiring explicit `let rec`.
+    fn expr_references_var(expr: &Expr, name: &str) -> bool {
+        match expr {
+            Expr::Var(var_name) => var_name == name,
+            Expr::Lambda { param, body } => {
+                // If the lambda parameter shadows the name, don't look inside
+                if param == name {
+                    false
+                } else {
+                    Self::expr_references_var(body, name)
+                }
+            }
+            Expr::App { func, arg } => {
+                Self::expr_references_var(func, name) || Self::expr_references_var(arg, name)
+            }
+            Expr::Let {
+                name: let_name,
+                value,
+                body,
+            } => {
+                // Check value, but if let shadows the name, don't check body
+                Self::expr_references_var(value, name)
+                    || (let_name != name && Self::expr_references_var(body, name))
+            }
+            Expr::LetRec {
+                name: rec_name,
+                value,
+                body,
+            } => {
+                // Similar to Let
+                Self::expr_references_var(value, name)
+                    || (rec_name != name && Self::expr_references_var(body, name))
+            }
+            Expr::LetRecMutual { bindings, body } => {
+                // Check all binding values
+                bindings
+                    .iter()
+                    .any(|(_, expr)| Self::expr_references_var(expr, name))
+                    // Check body unless one of the bindings shadows the name
+                    || (!bindings.iter().any(|(n, _)| n == name)
+                        && Self::expr_references_var(body, name))
+            }
+            Expr::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_references_var(cond, name)
+                    || Self::expr_references_var(then_branch, name)
+                    || Self::expr_references_var(else_branch, name)
+            }
+            Expr::BinOp { left, right, .. } => {
+                Self::expr_references_var(left, name) || Self::expr_references_var(right, name)
+            }
+            Expr::Tuple(elements) | Expr::List(elements) | Expr::Array(elements) => {
+                elements.iter().any(|e| Self::expr_references_var(e, name))
+            }
+            Expr::Cons { head, tail } => {
+                Self::expr_references_var(head, name) || Self::expr_references_var(tail, name)
+            }
+            Expr::ArrayIndex { array, index } => {
+                Self::expr_references_var(array, name) || Self::expr_references_var(index, name)
+            }
+            Expr::ArrayUpdate {
+                array,
+                index,
+                value,
+            } => {
+                Self::expr_references_var(array, name)
+                    || Self::expr_references_var(index, name)
+                    || Self::expr_references_var(value, name)
+            }
+            Expr::ArrayLength(array) => Self::expr_references_var(array, name),
+            Expr::RecordLiteral { fields, .. } => fields
+                .iter()
+                .any(|(_, expr)| Self::expr_references_var(expr, name)),
+            Expr::RecordAccess { record, .. } => Self::expr_references_var(record, name),
+            Expr::RecordUpdate { record, fields } => {
+                Self::expr_references_var(record, name)
+                    || fields
+                        .iter()
+                        .any(|(_, expr)| Self::expr_references_var(expr, name))
+            }
+            Expr::VariantConstruct { fields, .. } => {
+                fields.iter().any(|expr| Self::expr_references_var(expr, name))
+            }
+            Expr::Match { scrutinee, arms } => {
+                Self::expr_references_var(scrutinee, name)
+                    || arms.iter().any(|arm| {
+                        // Check if pattern binds the name (shadows it)
+                        let pattern_binds = Self::pattern_binds(&arm.pattern, name);
+                        // Only check body if pattern doesn't shadow the name
+                        !pattern_binds && Self::expr_references_var(&arm.body, name)
+                    })
+            }
+            Expr::MethodCall {
+                receiver, args, ..
+            } => {
+                Self::expr_references_var(receiver, name)
+                    || args.iter().any(|e| Self::expr_references_var(e, name))
+            }
+            Expr::While { cond, body } => {
+                Self::expr_references_var(cond, name) || Self::expr_references_var(body, name)
+            }
+            // Literals and control flow don't reference variables
+            Expr::Lit(_) | Expr::Break | Expr::Continue => false,
+        }
+    }
+
+    /// Check if a pattern binds a variable name.
+    fn pattern_binds(pattern: &Pattern, name: &str) -> bool {
+        match pattern {
+            Pattern::Var(var_name) => var_name == name,
+            Pattern::Tuple(patterns) | Pattern::Variant { patterns, .. } => {
+                patterns.iter().any(|p| Self::pattern_binds(p, name))
+            }
+            Pattern::Wildcard | Pattern::Literal(_) => false,
+        }
     }
 
     /// Infer the type of an expression in the given environment.
@@ -277,15 +402,16 @@ impl TypeInference {
         Ok(result_type)
     }
 
-    /// Infer the type of a let-binding.
+    /// Infer the type of a let-binding with automatic recursion detection.
     ///
     /// For `let x = value in body`:
-    /// 1. Infer the type t1 of value
-    /// 2. Generalize t1 to a type scheme (for polymorphism)
-    /// 3. Extend environment with x: scheme
+    /// 1. Check if value references x (auto-detect recursion)
+    /// 2. If recursive or is_recursive is true, infer with x in scope
+    /// 3. Generalize the type (let-polymorphism)
     /// 4. Infer and return the type of body
     ///
-    /// For recursive bindings, we add x to the environment before inferring value.
+    /// This implements issue #126: automatic recursive function detection
+    /// for lambda expressions like `let factorial = fun n -> ... factorial ...`
     fn infer_let(
         &mut self,
         name: &str,
@@ -294,7 +420,11 @@ impl TypeInference {
         env: &TypeEnv,
         is_recursive: bool,
     ) -> Result<Type, TypeError> {
-        let value_type = if is_recursive {
+        // Auto-detect recursion: check if value references name
+        let auto_recursive = !is_recursive && Self::expr_references_var(value, name);
+        let treat_as_recursive = is_recursive || auto_recursive;
+
+        let value_type = if treat_as_recursive {
             // For recursive bindings, assume a fresh type variable for the name
             let rec_var = Type::Var(self.fresh_var());
             let rec_scheme = TypeScheme::mono(rec_var.clone());
@@ -923,6 +1053,14 @@ mod tests {
         }
     }
 
+    fn let_expr(name: &str, value: Expr, body: Expr) -> Expr {
+        Expr::Let {
+            name: name.to_string(),
+            value: Box::new(value),
+            body: Box::new(body),
+        }
+    }
+
     // ========================================================================
     // Basic Inference Tests
     // ========================================================================
@@ -1003,5 +1141,99 @@ mod tests {
             TypeErrorKind::UnboundVariable { name } => assert_eq!(name, "x"),
             _ => panic!("Expected UnboundVariable error"),
         }
+    }
+
+    // ========================================================================
+    // Auto-Recursive Detection Tests (Issue #126)
+    // ========================================================================
+
+    #[test]
+    fn test_auto_recursive_lambda_factorial() {
+        let mut inf = TypeInference::new();
+        let env = TypeEnv::new();
+
+        // let factorial = fun n ->
+        //     if n <= 1 then 1
+        //     else n * factorial (n - 1)
+        // in factorial 5
+        let cond = Expr::BinOp {
+            op: BinOp::Lte,
+            left: Box::new(var("n")),
+            right: Box::new(lit_int(1)),
+        };
+        let then_branch = lit_int(1);
+        let else_branch = Expr::BinOp {
+            op: BinOp::Mul,
+            left: Box::new(var("n")),
+            right: Box::new(app(
+                var("factorial"),
+                Expr::BinOp {
+                    op: BinOp::Sub,
+                    left: Box::new(var("n")),
+                    right: Box::new(lit_int(1)),
+                },
+            )),
+        };
+        let factorial_body = Expr::If {
+            cond: Box::new(cond),
+            then_branch: Box::new(then_branch),
+            else_branch: Box::new(else_branch),
+        };
+        let factorial_lambda = lambda("n", factorial_body);
+        let expr = let_expr("factorial", factorial_lambda, app(var("factorial"), lit_int(5)));
+
+        // Should successfully infer type without needing explicit 'rec'
+        let ty = inf.infer_and_solve(&expr, &env).unwrap();
+        assert_eq!(ty, Type::Int);
+    }
+
+    #[test]
+    fn test_auto_recursive_simple() {
+        let mut inf = TypeInference::new();
+        let env = TypeEnv::new();
+
+        // let f = fun x -> f x in f 42
+        let f_body = app(var("f"), var("x"));
+        let f_lambda = lambda("x", f_body);
+        let expr = let_expr("f", f_lambda, app(var("f"), lit_int(42)));
+
+        // Should infer type (may be polymorphic)
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_non_recursive_lambda_still_works() {
+        let mut inf = TypeInference::new();
+        let env = TypeEnv::new();
+
+        // let double = fun x -> x * 2 in double 21
+        let double_body = Expr::BinOp {
+            op: BinOp::Mul,
+            left: Box::new(var("x")),
+            right: Box::new(lit_int(2)),
+        };
+        let double_lambda = lambda("x", double_body);
+        let expr = let_expr("double", double_lambda, app(var("double"), lit_int(21)));
+
+        let ty = inf.infer_and_solve(&expr, &env).unwrap();
+        assert_eq!(ty, Type::Int);
+    }
+
+    #[test]
+    fn test_shadowing_prevents_auto_recursion() {
+        let mut inf = TypeInference::new();
+        let env = TypeEnv::new();
+
+        // let f = fun f -> f in f 42
+        // The parameter 'f' shadows the binding name, so this is not recursive
+        // f is the identity function: 'a -> 'a
+        // When applied to 42, it returns 42
+        let f_lambda = lambda("f", var("f"));
+        let expr = let_expr("f", f_lambda, app(var("f"), lit_int(42)));
+
+        let ty = inf.infer_and_solve(&expr, &env).unwrap();
+        // Result type should be int (identity function applied to int gives int)
+        assert_eq!(ty, Type::Int);
     }
 }
