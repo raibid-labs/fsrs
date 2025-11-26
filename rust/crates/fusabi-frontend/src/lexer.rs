@@ -10,6 +10,7 @@
 //! - Punctuation: parentheses, arrows, commas, brackets, semicolons
 //! - Array syntax: [|, |], <-, .
 //! - Anonymous record syntax: {|, |}
+//! - Comments: single-line (//) and multi-line ((* *)) with nesting support
 //! - Position tracking for error reporting
 //!
 //! # Example
@@ -261,6 +262,8 @@ pub enum LexError {
     UnterminatedString(Position),
     /// Invalid number format
     InvalidNumber(String, Position),
+    /// Unterminated multi-line comment
+    UnterminatedComment(Position),
 }
 
 impl fmt::Display for LexError {
@@ -274,6 +277,9 @@ impl fmt::Display for LexError {
             }
             LexError::InvalidNumber(s, pos) => {
                 write!(f, "Invalid number '{}' at {}", s, pos)
+            }
+            LexError::UnterminatedComment(pos) => {
+                write!(f, "Unterminated multi-line comment at {}", pos)
             }
         }
     }
@@ -311,7 +317,7 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace_and_comments();
+            self.skip_whitespace_and_comments()?;
             if self.is_at_end() {
                 break;
             }
@@ -331,7 +337,7 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace_and_comments();
+            self.skip_whitespace_and_comments()?;
             if self.is_at_end() {
                 break;
             }
@@ -650,7 +656,7 @@ impl Lexer {
     }
 
     /// Skip whitespace and comments.
-    fn skip_whitespace_and_comments(&mut self) {
+    fn skip_whitespace_and_comments(&mut self) -> Result<(), LexError> {
         loop {
             if self.is_at_end() {
                 break;
@@ -666,14 +672,63 @@ impl Lexer {
                     self.advance();
                 }
                 '/' if !self.is_at_end_or(1) && self.peek_char() == '/' => {
-                    // Line comment
-                    while !self.is_at_end() && self.current_char() != '\n' {
-                        self.advance();
-                    }
+                    // Single-line comment
+                    self.skip_single_line_comment();
+                }
+                '(' if !self.is_at_end_or(1) && self.peek_char() == '*' => {
+                    // Multi-line comment
+                    self.skip_multiline_comment()?;
                 }
                 _ => break,
             }
         }
+        Ok(())
+    }
+
+    /// Skip a single-line comment.
+    fn skip_single_line_comment(&mut self) {
+        while !self.is_at_end() && self.current_char() != '\n' {
+            self.advance();
+        }
+    }
+
+    /// Skip a multi-line comment with support for nested comments.
+    /// F#-style comments: (* ... *) with nesting support.
+    fn skip_multiline_comment(&mut self) -> Result<(), LexError> {
+        let start_pos = self.current_position();
+        let mut depth = 1;
+
+        self.advance(); // skip '('
+        self.advance(); // skip '*'
+
+        while depth > 0 && !self.is_at_end() {
+            let ch = self.current_char();
+
+            if ch == '(' && !self.is_at_end_or(1) && self.peek_char() == '*' {
+                // Nested comment start
+                depth += 1;
+                self.advance();
+                self.advance();
+            } else if ch == '*' && !self.is_at_end_or(1) && self.peek_char() == ')' {
+                // Comment end
+                depth -= 1;
+                self.advance();
+                self.advance();
+            } else if ch == '\n' {
+                // Track line numbers in comments
+                self.line += 1;
+                self.column = 0; // Will be incremented to 1 by advance()
+                self.advance();
+            } else {
+                self.advance();
+            }
+        }
+
+        if depth > 0 {
+            return Err(LexError::UnterminatedComment(start_pos));
+        }
+
+        Ok(())
     }
 
     /// Get the current character without consuming it.
@@ -756,5 +811,144 @@ mod tests {
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(tokens.len(), 2); // |} and EOF
         assert_eq!(tokens[0].token, Token::PipeRBrace);
+    }
+
+    // Multi-line comment tests
+    #[test]
+    fn test_simple_multiline_comment() {
+        let mut lexer = Lexer::new("(* comment *) let x = 42");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens.len(), 5); // let, x, =, 42, EOF
+        assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_multiline_comment_multiline() {
+        let source = r#"(* This is a
+        multi-line comment
+        spanning three lines *)
+        let x = 10"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+        assert_eq!(tokens[1].token, Token::Ident("x".to_string()));
+    }
+
+    #[test]
+    fn test_nested_multiline_comments() {
+        let source = "(* outer (* inner *) still outer *) let x = 5";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_deeply_nested_comments() {
+        let source = "(* level 1 (* level 2 (* level 3 *) level 2 *) level 1 *) let x = 1";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_inline_multiline_comment() {
+        let source = "let x = (* inline comment *) 42";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+        assert_eq!(tokens[1].token, Token::Ident("x".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(tokens[3].token, Token::Int(42));
+    }
+
+    #[test]
+    fn test_multiline_comment_with_special_chars() {
+        let source = r#"(* Comment with special chars: !@#$%^&*()[]{}:;"'<>,.?/\|`~ *) let x = 1"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_multiple_multiline_comments() {
+        let source = "(* first *) let (* second *) x (* third *) = 42";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+        assert_eq!(tokens[1].token, Token::Ident("x".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(tokens[3].token, Token::Int(42));
+    }
+
+    #[test]
+    fn test_unterminated_multiline_comment() {
+        let source = "(* This comment is not terminated let x = 42";
+        let mut lexer = Lexer::new(source);
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            LexError::UnterminatedComment(_) => (),
+            _ => panic!("Expected UnterminatedComment error"),
+        }
+    }
+
+    #[test]
+    fn test_unterminated_nested_comment() {
+        let source = "(* outer (* inner *) still outer";
+        let mut lexer = Lexer::new(source);
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            LexError::UnterminatedComment(_) => (),
+            _ => panic!("Expected UnterminatedComment error"),
+        }
+    }
+
+    #[test]
+    fn test_mixed_single_and_multiline_comments() {
+        let source = r#"
+        // Single-line comment
+        let x = 42 (* inline multi-line *)
+        // Another single-line
+        (* Multi-line
+           spanning lines *)
+        "#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+        assert_eq!(tokens[1].token, Token::Ident("x".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(tokens[3].token, Token::Int(42));
+    }
+
+    #[test]
+    fn test_comment_does_not_affect_string() {
+        // Comments should not be recognized inside strings
+        let source = r#"let s = "(* not a comment *)""#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+        assert_eq!(tokens[1].token, Token::Ident("s".to_string()));
+        assert_eq!(tokens[2].token, Token::Eq);
+        assert_eq!(
+            tokens[3].token,
+            Token::String("(* not a comment *)".to_string())
+        );
+    }
+
+    #[test]
+    fn test_empty_multiline_comment() {
+        let source = "(**) let x = 1";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
+    }
+
+    #[test]
+    fn test_multiline_comment_with_asterisks() {
+        let source = "(* ** *** **** *) let x = 1";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[0].token, Token::Let);
     }
 }
