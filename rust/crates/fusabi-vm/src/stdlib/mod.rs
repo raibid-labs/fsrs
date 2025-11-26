@@ -6,6 +6,9 @@ pub mod map;
 pub mod option;
 pub mod string;
 
+#[cfg(feature = "json")]
+pub mod json;
+
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
 use std::cell::RefCell;
@@ -145,6 +148,20 @@ pub fn register_stdlib(vm: &mut Vm) {
                 fields: vec![],
             })
         });
+
+        // Json functions (if json feature is enabled)
+        #[cfg(feature = "json")]
+        {
+            registry.register("Json.parse", |_vm, args| {
+                wrap_unary(args, json::json_parse)
+            });
+            registry.register("Json.stringify", |_vm, args| {
+                wrap_unary(args, json::json_stringify)
+            });
+            registry.register("Json.stringifyPretty", |_vm, args| {
+                wrap_unary(args, json::json_stringify_pretty)
+            });
+        }
     }
 
     // 2. Populate Globals with Module Records
@@ -223,6 +240,22 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register Option constructors as globals
     vm.globals.insert("Some".to_string(), native("Some", 1));
     vm.globals.insert("None".to_string(), native("None", 0));
+
+    // Json Module (if json feature is enabled)
+    #[cfg(feature = "json")]
+    {
+        let mut json_fields = HashMap::new();
+        json_fields.insert("parse".to_string(), native("Json.parse", 1));
+        json_fields.insert("stringify".to_string(), native("Json.stringify", 1));
+        json_fields.insert(
+            "stringifyPretty".to_string(),
+            native("Json.stringifyPretty", 1),
+        );
+        vm.globals.insert(
+            "Json".to_string(),
+            Value::Record(Rc::new(RefCell::new(json_fields))),
+        );
+    }
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>
