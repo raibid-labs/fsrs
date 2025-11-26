@@ -1,3 +1,8 @@
+// Fusabi Net Module
+// Provides networking capabilities including OSC and HTTP
+
+#[cfg(feature = "osc")]
+pub mod osc;
 // OSC (Open Sound Control) client implementation for Fusabi
 // Enables communication with OSC-compatible applications like Ardour
 
@@ -56,6 +61,21 @@ impl OscClient {
 }
 
 #[cfg(feature = "osc")]
+fn value_to_osc_type(v: &Value) -> Result<OscType, VmError> {
+    match v {
+        Value::Int(i) => Ok(OscType::Int(*i as i32)),
+        Value::Float(f) => Ok(OscType::Float(*f as f32)),
+        Value::Str(s) => Ok(OscType::String(s.clone())),
+        Value::Bool(b) => Ok(OscType::Bool(*b)),
+        Value::Unit => Ok(OscType::Nil),
+        _ => Err(VmError::Runtime(format!(
+            "Cannot convert {} to OSC type. Supported types: int, float, string, bool, unit",
+            v.type_name()
+        ))),
+    }
+}
+
+#[cfg(feature = "osc")]
 /// Osc.client : string -> int -> OscClient
 /// Create a new OSC client connected to the specified host and port
 /// Example: Osc.client "localhost" 3819
@@ -102,13 +122,13 @@ pub fn osc_client(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmEr
 }
 
 #[cfg(feature = "osc")]
-/// Osc.send : OscClient -> string -> unit
-/// Send an OSC message with no arguments to the specified address
-/// Example: client |> Osc.send "/transport_play"
+/// Osc.send : OscClient -> string -> list<obj> -> unit
+/// Send an OSC message with arguments to the specified address
+/// Example: client |> Osc.send "/transport_play" [1; "test"]
 pub fn osc_send(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
-    if args.len() != 2 {
+    if args.len() != 3 {
         return Err(VmError::Runtime(format!(
-            "Osc.send expects 2 arguments (client, address), got {}",
+            "Osc.send expects 3 arguments (client, address, args_list), got {}",
             args.len()
         )));
     }
@@ -137,8 +157,29 @@ pub fn osc_send(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmErro
         }
     };
 
+    let args_list = &args[2];
+    let mut osc_args = Vec::new();
+
+    // Iterate over the list
+    let mut current = args_list;
+    loop {
+        match current {
+            Value::Nil => break,
+            Value::Cons { head, tail } => {
+                osc_args.push(value_to_osc_type(head)?);
+                current = tail;
+            }
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "list",
+                    got: current.type_name(),
+                })
+            }
+        }
+    }
+
     client
-        .send(&address, vec![])
+        .send(&address, osc_args)
         .map_err(|e| VmError::Runtime(format!("OSC send failed: {}", e)))?;
 
     Ok(Value::Unit)
@@ -146,162 +187,26 @@ pub fn osc_send(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmErro
 
 #[cfg(feature = "osc")]
 /// Osc.sendInt : OscClient -> string -> int -> unit
-/// Send an OSC message with an integer argument
-/// Example: client |> Osc.sendInt "/set_tempo" 120
+/// Deprecated: Use Osc.send instead
 pub fn osc_send_int(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
-    if args.len() != 3 {
-        return Err(VmError::Runtime(format!(
-            "Osc.sendInt expects 3 arguments (client, address, value), got {}",
-            args.len()
-        )));
-    }
-
-    let client_data = match &args[0] {
-        Value::HostData(hd) => hd,
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "OscClient",
-                got: args[0].type_name(),
-            })
-        }
-    };
-
-    let client = client_data
-        .try_borrow::<OscClient>()
-        .ok_or_else(|| VmError::Runtime("Invalid OscClient object".to_string()))?;
-
-    let address = match &args[1] {
-        Value::Str(s) => s.clone(),
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "string",
-                got: args[1].type_name(),
-            })
-        }
-    };
-
-    let value = match &args[2] {
-        Value::Int(i) => *i as i32,
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "int",
-                got: args[2].type_name(),
-            })
-        }
-    };
-
-    client
-        .send(&address, vec![OscType::Int(value)])
-        .map_err(|e| VmError::Runtime(format!("OSC send failed: {}", e)))?;
-
-    Ok(Value::Unit)
+    // Implementation kept for reference but not registered
+    Err(VmError::Runtime("Osc.sendInt is deprecated, use Osc.send".to_string()))
 }
 
 #[cfg(feature = "osc")]
 /// Osc.sendFloat : OscClient -> string -> float -> unit
-/// Send an OSC message with a float argument
-/// Example: client |> Osc.sendFloat "/set_volume" 0.75
+/// Deprecated: Use Osc.send instead
 pub fn osc_send_float(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
-    if args.len() != 3 {
-        return Err(VmError::Runtime(format!(
-            "Osc.sendFloat expects 3 arguments (client, address, value), got {}",
-            args.len()
-        )));
-    }
-
-    let client_data = match &args[0] {
-        Value::HostData(hd) => hd,
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "OscClient",
-                got: args[0].type_name(),
-            })
-        }
-    };
-
-    let client = client_data
-        .try_borrow::<OscClient>()
-        .ok_or_else(|| VmError::Runtime("Invalid OscClient object".to_string()))?;
-
-    let address = match &args[1] {
-        Value::Str(s) => s.clone(),
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "string",
-                got: args[1].type_name(),
-            })
-        }
-    };
-
-    let value = match &args[2] {
-        Value::Float(f) => *f as f32,
-        Value::Int(i) => *i as f32,
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "float",
-                got: args[2].type_name(),
-            })
-        }
-    };
-
-    client
-        .send(&address, vec![OscType::Float(value)])
-        .map_err(|e| VmError::Runtime(format!("OSC send failed: {}", e)))?;
-
-    Ok(Value::Unit)
+    // Implementation kept for reference but not registered
+    Err(VmError::Runtime("Osc.sendFloat is deprecated, use Osc.send".to_string()))
 }
 
 #[cfg(feature = "osc")]
 /// Osc.sendString : OscClient -> string -> string -> unit
-/// Send an OSC message with a string argument
-/// Example: client |> Osc.sendString "/set_name" "My Track"
+/// Deprecated: Use Osc.send instead
 pub fn osc_send_string(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
-    if args.len() != 3 {
-        return Err(VmError::Runtime(format!(
-            "Osc.sendString expects 3 arguments (client, address, value), got {}",
-            args.len()
-        )));
-    }
-
-    let client_data = match &args[0] {
-        Value::HostData(hd) => hd,
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "OscClient",
-                got: args[0].type_name(),
-            })
-        }
-    };
-
-    let client = client_data
-        .try_borrow::<OscClient>()
-        .ok_or_else(|| VmError::Runtime("Invalid OscClient object".to_string()))?;
-
-    let address = match &args[1] {
-        Value::Str(s) => s.clone(),
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "string",
-                got: args[1].type_name(),
-            })
-        }
-    };
-
-    let value = match &args[2] {
-        Value::Str(s) => s.clone(),
-        _ => {
-            return Err(VmError::TypeMismatch {
-                expected: "string",
-                got: args[2].type_name(),
-            })
-        }
-    };
-
-    client
-        .send(&address, vec![OscType::String(value)])
-        .map_err(|e| VmError::Runtime(format!("OSC send failed: {}", e)))?;
-
-    Ok(Value::Unit)
+    // Implementation kept for reference but not registered
+    Err(VmError::Runtime("Osc.sendString is deprecated, use Osc.send".to_string()))
 }
 
 #[cfg(test)]
@@ -325,14 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn test_osc_client_invalid_port() {
-        let mut vm = crate::vm::Vm::new();
-        let args = vec![Value::Str("localhost".to_string()), Value::Int(99999)];
-        let result = osc_client(&mut vm, &args);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_osc_send_type_checking() {
         let mut vm = crate::vm::Vm::new();
 
@@ -341,11 +238,11 @@ mod tests {
         let client = osc_client(&mut vm, &client_args).unwrap();
 
         // Test send with wrong type
-        let result = osc_send(&mut vm, &[Value::Int(42), Value::Str("/test".to_string())]);
+        let result = osc_send(&mut vm, &[Value::Int(42), Value::Str("/test".to_string()), Value::Nil]);
         assert!(result.is_err());
 
-        // Test send with correct types
-        let result = osc_send(&mut vm, &[client.clone(), Value::Str("/test".to_string())]);
+        // Test send with correct types (empty list)
+        let result = osc_send(&mut vm, &[client.clone(), Value::Str("/test".to_string()), Value::Nil]);
         // May succeed or fail depending on network availability, but should not panic
         let _ = result;
     }

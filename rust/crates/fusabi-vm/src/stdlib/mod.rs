@@ -171,9 +171,6 @@ pub fn register_stdlib(vm: &mut Vm) {
         {
             registry.register("Osc.client", net::osc::osc_client);
             registry.register("Osc.send", net::osc::osc_send);
-            registry.register("Osc.sendInt", net::osc::osc_send_int);
-            registry.register("Osc.sendFloat", net::osc::osc_send_float);
-            registry.register("Osc.sendString", net::osc::osc_send_string);
         }
     }
 
@@ -275,10 +272,7 @@ pub fn register_stdlib(vm: &mut Vm) {
     {
         let mut osc_fields = HashMap::new();
         osc_fields.insert("client".to_string(), native("Osc.client", 2));
-        osc_fields.insert("send".to_string(), native("Osc.send", 2));
-        osc_fields.insert("sendInt".to_string(), native("Osc.sendInt", 3));
-        osc_fields.insert("sendFloat".to_string(), native("Osc.sendFloat", 3));
-        osc_fields.insert("sendString".to_string(), native("Osc.sendString", 3));
+        osc_fields.insert("send".to_string(), native("Osc.send", 3));
         vm.globals.insert(
             "Osc".to_string(),
             Value::Record(Rc::new(RefCell::new(osc_fields))),
