@@ -645,6 +645,7 @@ impl Compiler {
             BinOp::Sub => Instruction::Sub,
             BinOp::Mul => Instruction::Mul,
             BinOp::Div => Instruction::Div,
+            BinOp::Concat => Instruction::Concat,
             BinOp::Eq => Instruction::Eq,
             BinOp::Neq => Instruction::Neq,
             BinOp::Lt => Instruction::Lt,

@@ -79,6 +79,8 @@ pub enum BinOp {
     Mul,
     /// Division (/)
     Div,
+    /// String concatenation (++)
+    Concat,
 
     // Comparison operators
     /// Equality (=)
@@ -108,6 +110,7 @@ impl fmt::Display for BinOp {
             BinOp::Sub => "-",
             BinOp::Mul => "*",
             BinOp::Div => "/",
+            BinOp::Concat => "++",
             BinOp::Eq => "=",
             BinOp::Neq => "<>",
             BinOp::Lt => "<",
