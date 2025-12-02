@@ -5,6 +5,9 @@ pub mod array;
 pub mod list;
 pub mod map;
 pub mod option;
+pub mod math;
+pub mod result;
+pub mod print;
 pub mod string;
 
 #[cfg(feature = "json")]
@@ -110,6 +113,79 @@ pub fn register_stdlib(vm: &mut Vm) {
             wrap_binary(args, string::string_format)
         });
 
+        // Print functions (global functions, not in a module)
+        registry.register("print", |_vm, args| {
+            wrap_unary(args, print::print_value)
+        });
+        registry.register("printfn", |_vm, args| {
+            wrap_unary(args, print::printfn_value)
+        });
+
+        // Math functions
+        registry.register("Math.pi", |_vm, args| {
+            wrap_unary(args, math::math_pi)
+        });
+        registry.register("Math.e", |_vm, args| {
+            wrap_unary(args, math::math_e)
+        });
+        registry.register("Math.abs", |_vm, args| {
+            wrap_unary(args, math::math_abs)
+        });
+        registry.register("Math.sqrt", |_vm, args| {
+            wrap_unary(args, math::math_sqrt)
+        });
+        registry.register("Math.pow", |_vm, args| {
+            wrap_binary(args, math::math_pow)
+        });
+        registry.register("Math.max", |_vm, args| {
+            wrap_binary(args, math::math_max)
+        });
+        registry.register("Math.min", |_vm, args| {
+            wrap_binary(args, math::math_min)
+        });
+        registry.register("Math.sin", |_vm, args| {
+            wrap_unary(args, math::math_sin)
+        });
+        registry.register("Math.cos", |_vm, args| {
+            wrap_unary(args, math::math_cos)
+        });
+        registry.register("Math.tan", |_vm, args| {
+            wrap_unary(args, math::math_tan)
+        });
+        registry.register("Math.asin", |_vm, args| {
+            wrap_unary(args, math::math_asin)
+        });
+        registry.register("Math.acos", |_vm, args| {
+            wrap_unary(args, math::math_acos)
+        });
+        registry.register("Math.atan", |_vm, args| {
+            wrap_unary(args, math::math_atan)
+        });
+        registry.register("Math.atan2", |_vm, args| {
+            wrap_binary(args, math::math_atan2)
+        });
+        registry.register("Math.log", |_vm, args| {
+            wrap_unary(args, math::math_log)
+        });
+        registry.register("Math.log10", |_vm, args| {
+            wrap_unary(args, math::math_log10)
+        });
+        registry.register("Math.exp", |_vm, args| {
+            wrap_unary(args, math::math_exp)
+        });
+        registry.register("Math.floor", |_vm, args| {
+            wrap_unary(args, math::math_floor)
+        });
+        registry.register("Math.ceil", |_vm, args| {
+            wrap_unary(args, math::math_ceil)
+        });
+        registry.register("Math.round", |_vm, args| {
+            wrap_unary(args, math::math_round)
+        });
+        registry.register("Math.truncate", |_vm, args| {
+            wrap_unary(args, math::math_truncate)
+        });
+
         // Map functions
         registry.register("Map.empty", |_vm, args| {
             wrap_unary(args, map::map_empty)
@@ -191,6 +267,50 @@ pub fn register_stdlib(vm: &mut Vm) {
             })
         });
 
+        // Result functions
+        registry.register("Result.isOk", |_vm, args| {
+            wrap_unary(args, result::result_is_ok)
+        });
+        registry.register("Result.isError", |_vm, args| {
+            wrap_unary(args, result::result_is_error)
+        });
+        registry.register("Result.defaultValue", |_vm, args| {
+            wrap_binary(args, result::result_default_value)
+        });
+        registry.register("Result.defaultWith", result::result_default_with);
+        registry.register("Result.map", result::result_map);
+        registry.register("Result.mapError", result::result_map_error);
+        registry.register("Result.bind", result::result_bind);
+        registry.register("Result.iter", result::result_iter);
+
+        // Result constructors - Ok and Error
+        registry.register("Ok", |_vm, args| {
+            if args.len() != 1 {
+                return Err(VmError::Runtime(format!(
+                    "Ok expects 1 argument, got {}",
+                    args.len()
+                )));
+            }
+            Ok(Value::Variant {
+                type_name: "Result".to_string(),
+                variant_name: "Ok".to_string(),
+                fields: vec![args[0].clone()],
+            })
+        });
+        registry.register("Error", |_vm, args| {
+            if args.len() != 1 {
+                return Err(VmError::Runtime(format!(
+                    "Error expects 1 argument, got {}",
+                    args.len()
+                )));
+            }
+            Ok(Value::Variant {
+                type_name: "Result".to_string(),
+                variant_name: "Error".to_string(),
+                fields: vec![args[0].clone()],
+            })
+        });
+
         // Json functions (if json feature is enabled)
         #[cfg(feature = "json")]
         {
@@ -263,6 +383,38 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register sprintf as a global alias for String.format
     vm.globals.insert("sprintf".to_string(), native("sprintf", 2));
 
+    // Register print functions as globals
+    vm.globals.insert("print".to_string(), native("print", 1));
+    vm.globals.insert("printfn".to_string(), native("printfn", 1));
+
+    // Math Module
+    let mut math_fields = HashMap::new();
+    math_fields.insert("pi".to_string(), native("Math.pi", 1));
+    math_fields.insert("e".to_string(), native("Math.e", 1));
+    math_fields.insert("abs".to_string(), native("Math.abs", 1));
+    math_fields.insert("sqrt".to_string(), native("Math.sqrt", 1));
+    math_fields.insert("pow".to_string(), native("Math.pow", 2));
+    math_fields.insert("max".to_string(), native("Math.max", 2));
+    math_fields.insert("min".to_string(), native("Math.min", 2));
+    math_fields.insert("sin".to_string(), native("Math.sin", 1));
+    math_fields.insert("cos".to_string(), native("Math.cos", 1));
+    math_fields.insert("tan".to_string(), native("Math.tan", 1));
+    math_fields.insert("asin".to_string(), native("Math.asin", 1));
+    math_fields.insert("acos".to_string(), native("Math.acos", 1));
+    math_fields.insert("atan".to_string(), native("Math.atan", 1));
+    math_fields.insert("atan2".to_string(), native("Math.atan2", 2));
+    math_fields.insert("log".to_string(), native("Math.log", 1));
+    math_fields.insert("log10".to_string(), native("Math.log10", 1));
+    math_fields.insert("exp".to_string(), native("Math.exp", 1));
+    math_fields.insert("floor".to_string(), native("Math.floor", 1));
+    math_fields.insert("ceil".to_string(), native("Math.ceil", 1));
+    math_fields.insert("round".to_string(), native("Math.round", 1));
+    math_fields.insert("truncate".to_string(), native("Math.truncate", 1));
+    vm.globals.insert(
+        "Math".to_string(),
+        Value::Record(Arc::new(Mutex::new(math_fields))),
+    );
+
     // Array Module
     let mut array_fields = HashMap::new();
     array_fields.insert("length".to_string(), native("Array.length", 1));
@@ -316,6 +468,25 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register Option constructors as globals
     vm.globals.insert("Some".to_string(), native("Some", 1));
     vm.globals.insert("None".to_string(), native("None", 0));
+
+    // Result Module
+    let mut result_fields = HashMap::new();
+    result_fields.insert("isOk".to_string(), native("Result.isOk", 1));
+    result_fields.insert("isError".to_string(), native("Result.isError", 1));
+    result_fields.insert("defaultValue".to_string(), native("Result.defaultValue", 2));
+    result_fields.insert("defaultWith".to_string(), native("Result.defaultWith", 2));
+    result_fields.insert("map".to_string(), native("Result.map", 2));
+    result_fields.insert("mapError".to_string(), native("Result.mapError", 2));
+    result_fields.insert("bind".to_string(), native("Result.bind", 2));
+    result_fields.insert("iter".to_string(), native("Result.iter", 2));
+    vm.globals.insert(
+        "Result".to_string(),
+        Value::Record(Arc::new(Mutex::new(result_fields))),
+    );
+
+    // Register Result constructors as globals
+    vm.globals.insert("Ok".to_string(), native("Ok", 1));
+    vm.globals.insert("Error".to_string(), native("Error", 1));
 
     // Json Module (if json feature is enabled)
     #[cfg(feature = "json")]

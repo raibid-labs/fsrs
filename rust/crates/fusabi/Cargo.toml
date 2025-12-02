@@ -1,6 +1,6 @@
 [package]
 name = "fusabi"
-version = "0.19.0"
+version = "0.20.0"
 edition = "2021"
 description = "A potent, functional scripting layer for Rust infrastructure."
 repository = "https://github.com/fusabi-lang/fusabi"
@@ -15,8 +15,8 @@ name = "fusabi"
 path = "src/lib.rs"
 
 [dependencies]
-fusabi-frontend = { path = "../fusabi-frontend", version = "0.19.0" }
-fusabi-vm = { path = "../fusabi-vm", version = "0.19.0", features = ["serde"] }
+fusabi-frontend = { path = "../fusabi-frontend", version = "0.20.0" }
+fusabi-vm = { path = "../fusabi-vm", version = "0.20.0", features = ["serde"] }
 colored = "2.1"
 
 [features]

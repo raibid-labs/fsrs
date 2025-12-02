@@ -1,0 +1,45 @@
+// Fusabi Math Module Demonstration
+
+printfn "=== Math Module Demo ==="
+printfn ""
+
+// Constants
+printfn "Constants:"
+let pi = Math.pi ()
+let e = Math.e ()
+printfn (sprintf "  Pi = %.5f" [pi])
+printfn (sprintf "  e = %.5f" [e])
+printfn ""
+
+// Basic operations
+printfn "Basic Operations:"
+printfn (sprintf "  abs(-42) = %d" [Math.abs -42])
+printfn (sprintf "  sqrt(25.0) = %.1f" [Math.sqrt 25.0])
+printfn (sprintf "  pow(2.0, 8.0) = %.0f" [Math.pow 2.0 8.0])
+printfn (sprintf "  max(10, 20) = %d" [Math.max 10 20])
+printfn (sprintf "  min(10, 20) = %d" [Math.min 10 20])
+printfn ""
+
+// Trigonometry
+printfn "Trigonometry (radians):"
+printfn (sprintf "  sin(0.0) = %.2f" [Math.sin 0.0])
+printfn (sprintf "  cos(0.0) = %.2f" [Math.cos 0.0])
+printfn (sprintf "  tan(0.0) = %.2f" [Math.tan 0.0])
+printfn ""
+
+// Logarithms
+printfn "Logarithms:"
+printfn (sprintf "  log(e) = %.2f" [Math.log e])
+printfn (sprintf "  log10(100.0) = %.1f" [Math.log10 100.0])
+printfn (sprintf "  exp(1.0) = %.5f" [Math.exp 1.0])
+printfn ""
+
+// Rounding
+printfn "Rounding:"
+printfn (sprintf "  floor(3.7) = %.0f" [Math.floor 3.7])
+printfn (sprintf "  ceil(3.2) = %.0f" [Math.ceil 3.2])
+printfn (sprintf "  round(3.5) = %.0f" [Math.round 3.5])
+printfn (sprintf "  truncate(3.9) = %.0f" [Math.truncate 3.9])
+printfn ""
+
+printfn "=== Demo Complete ==="

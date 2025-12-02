@@ -549,3 +549,56 @@ fn test_option_iter_through_vm() {
     let result = call_stdlib_function(&mut vm, "Option.iter", &[Value::Closure(func_closure), some_val]).unwrap();
     assert_eq!(result, Value::Unit);
 }
+
+// ========== Print Function Tests ==========
+
+#[test]
+fn test_print_function_exists() {
+    let vm = get_test_vm();
+    // Check print is registered as a global
+    assert!(vm.globals.contains_key("print"));
+    assert!(vm.globals.contains_key("printfn"));
+}
+
+#[test]
+fn test_print_returns_unit() {
+    let mut vm = get_test_vm();
+    // Both print and printfn should return Unit
+    let result_print = call_stdlib_function(&mut vm, "print", &[Value::Int(42)]).unwrap();
+    assert_eq!(result_print, Value::Unit);
+
+    let result_printfn = call_stdlib_function(&mut vm, "printfn", &[Value::Str("test".to_string())]).unwrap();
+    assert_eq!(result_printfn, Value::Unit);
+}
+
+#[test]
+fn test_print_various_types() {
+    let mut vm = get_test_vm();
+
+    // Test with different types - all should return Unit without error
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Int(42)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Float(3.14)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Bool(true)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Str("hello".to_string())]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Unit]).unwrap(), Value::Unit);
+
+    let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[list]).unwrap(), Value::Unit);
+
+    let tuple = Value::Tuple(vec![Value::Int(1), Value::Str("test".to_string())]);
+    assert_eq!(call_stdlib_function(&mut vm, "print", &[tuple]).unwrap(), Value::Unit);
+}
+
+#[test]
+fn test_printfn_various_types() {
+    let mut vm = get_test_vm();
+
+    // Test with different types - all should return Unit without error
+    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Int(42)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Float(3.14)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Bool(false)]).unwrap(), Value::Unit);
+    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Str("world".to_string())]).unwrap(), Value::Unit);
+
+    let list = Value::vec_to_cons(vec![Value::Int(10), Value::Int(20)]);
+    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[list]).unwrap(), Value::Unit);
+}
