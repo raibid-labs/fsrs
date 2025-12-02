@@ -1,6 +1,7 @@
 // Fusabi Standard Library
-// Provides built-in functions for List, String, Map, and Option operations
+// Provides built-in functions for List, String, Map, Array, and Option operations
 
+pub mod array;
 pub mod list;
 pub mod map;
 pub mod option;
@@ -43,6 +44,36 @@ pub fn register_stdlib(vm: &mut Vm) {
             wrap_unary(args, list::list_concat)
         });
         registry.register("List.map", list::list_map);
+        registry.register("List.iter", list::list_iter);
+        registry.register("List.filter", list::list_filter);
+        registry.register("List.fold", list::list_fold);
+        registry.register("List.exists", list::list_exists);
+        registry.register("List.find", list::list_find);
+        registry.register("List.tryFind", list::list_try_find);
+
+        // Array functions
+        registry.register("Array.length", |_vm, args| {
+            wrap_unary(args, array::array_length)
+        });
+        registry.register("Array.isEmpty", |_vm, args| {
+            wrap_unary(args, array::array_is_empty)
+        });
+        registry.register("Array.get", |_vm, args| {
+            wrap_binary(args, array::array_get)
+        });
+        registry.register("Array.set", |_vm, args| {
+            wrap_ternary(args, array::array_set)
+        });
+        registry.register("Array.ofList", |_vm, args| {
+            wrap_unary(args, array::array_of_list)
+        });
+        registry.register("Array.toList", |_vm, args| {
+            wrap_unary(args, array::array_to_list)
+        });
+        registry.register("Array.init", array::array_init);
+        registry.register("Array.create", |_vm, args| {
+            wrap_binary(args, array::array_create)
+        });
 
         // String functions
         registry.register("String.length", |_vm, args| {
@@ -110,6 +141,8 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Map.toList", |_vm, args| {
             wrap_unary(args, map::map_to_list)
         });
+        registry.register("Map.map", map::map_map);
+        registry.register("Map.iter", map::map_iter);
 
         // Option functions
         registry.register("Option.isSome", |_vm, args| {
@@ -199,6 +232,12 @@ pub fn register_stdlib(vm: &mut Vm) {
     list_fields.insert("append".to_string(), native("List.append", 2));
     list_fields.insert("concat".to_string(), native("List.concat", 1));
     list_fields.insert("map".to_string(), native("List.map", 2));
+    list_fields.insert("iter".to_string(), native("List.iter", 2));
+    list_fields.insert("filter".to_string(), native("List.filter", 2));
+    list_fields.insert("fold".to_string(), native("List.fold", 3));
+    list_fields.insert("exists".to_string(), native("List.exists", 2));
+    list_fields.insert("find".to_string(), native("List.find", 2));
+    list_fields.insert("tryFind".to_string(), native("List.tryFind", 2));
     vm.globals.insert(
         "List".to_string(),
         Value::Record(Arc::new(Mutex::new(list_fields))),
@@ -224,6 +263,21 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register sprintf as a global alias for String.format
     vm.globals.insert("sprintf".to_string(), native("sprintf", 2));
 
+    // Array Module
+    let mut array_fields = HashMap::new();
+    array_fields.insert("length".to_string(), native("Array.length", 1));
+    array_fields.insert("isEmpty".to_string(), native("Array.isEmpty", 1));
+    array_fields.insert("get".to_string(), native("Array.get", 2));
+    array_fields.insert("set".to_string(), native("Array.set", 3));
+    array_fields.insert("ofList".to_string(), native("Array.ofList", 1));
+    array_fields.insert("toList".to_string(), native("Array.toList", 1));
+    array_fields.insert("init".to_string(), native("Array.init", 2));
+    array_fields.insert("create".to_string(), native("Array.create", 2));
+    vm.globals.insert(
+        "Array".to_string(),
+        Value::Record(Arc::new(Mutex::new(array_fields))),
+    );
+
     // Map Module
     let mut map_fields = HashMap::new();
     map_fields.insert("empty".to_string(), native("Map.empty", 1));
@@ -236,6 +290,8 @@ pub fn register_stdlib(vm: &mut Vm) {
     map_fields.insert("count".to_string(), native("Map.count", 1));
     map_fields.insert("ofList".to_string(), native("Map.ofList", 1));
     map_fields.insert("toList".to_string(), native("Map.toList", 1));
+    map_fields.insert("map".to_string(), native("Map.map", 2));
+    map_fields.insert("iter".to_string(), native("Map.iter", 2));
     vm.globals.insert(
         "Map".to_string(),
         Value::Record(Arc::new(Mutex::new(map_fields))),
