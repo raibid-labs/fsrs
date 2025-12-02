@@ -84,14 +84,12 @@ pub fn string_split(delimiter: &Value, s: &Value) -> Result<Value, VmError> {
 /// String.concat : string list -> string
 /// Concatenates a list of strings into a single string
 pub fn string_concat(list: &Value) -> Result<Value, VmError> {
-    println!("DEBUG: string_concat called with list={:?}", list);
     let mut result = String::new();
     let mut current = list.clone();
 
     loop {
         match current {
             Value::Nil => {
-                println!("DEBUG: string_concat returning Str({:?})", result);
                 return Ok(Value::Str(result));
             }
             Value::Cons { head, tail } => {

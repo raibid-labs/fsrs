@@ -249,7 +249,9 @@ pub fn map_iter(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 
             for key in keys {
                 if let Some(value) = m.get(&key) {
-                    vm.call_value(func.clone(), &[Value::Str(key), value.clone()])?;
+                    // Curried function: func key value => (func key) value
+                    let partial = vm.call_value(func.clone(), &[Value::Str(key)])?;
+                    vm.call_value(partial, &[value.clone()])?;
                 }
             }
 

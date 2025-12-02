@@ -1103,8 +1103,14 @@ impl Parser {
                         // Could be record field access or method call
                         let field = self.expect_ident()?;
 
+                        // Check if the base expression is a module (uppercase identifier)
+                        // If so, use record access (for F#-style Module.function calls)
+                        // not method call syntax
+                        let is_module = matches!(&expr, Expr::Var(name) if Self::is_uppercase_ident(name));
+
                         // Check if followed by '(' to distinguish method call from field access
-                        if self.current_token().token == Token::LParen {
+                        // But don't use method call for module access (List.map, Array.ofList, etc.)
+                        if self.current_token().token == Token::LParen && !is_module {
                             // Method call: obj.method(args)
                             self.advance(); // consume '('
 
@@ -1129,7 +1135,7 @@ impl Parser {
                                 args,
                             };
                         } else {
-                            // Regular field access
+                            // Regular field access (also for module function access)
                             expr = Expr::RecordAccess {
                                 record: Box::new(expr),
                                 field,
@@ -1359,17 +1365,18 @@ impl Parser {
                 let val = name.clone();
                 self.advance();
 
-                // Check for Array.length
+                // Check for Array.length (special case for compatibility)
                 if val == "Array" && self.match_token(&Token::Dot) {
                     let method = self.expect_ident()?;
                     if method == "length" {
                         let arr = Box::new(self.parse_postfix_expr()?);
                         return Ok(Expr::ArrayLength(arr));
                     } else {
-                        let tok = self.current_token();
-                        return Err(ParseError::InvalidExpr {
-                            message: format!("Unknown Array method: {}", method),
-                            pos: tok.pos,
+                        // For other Array methods, treat as module access like List.map
+                        let record = Expr::Var("Array".to_string());
+                        return Ok(Expr::RecordAccess {
+                            record: Box::new(record),
+                            field: method,
                         });
                     }
                 }

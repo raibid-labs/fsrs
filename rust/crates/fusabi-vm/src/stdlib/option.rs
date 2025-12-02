@@ -209,7 +209,9 @@ pub fn option_map2(vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmEr
             },
         ) => {
             if vn1 == "Some" && vn2 == "Some" && !fields1.is_empty() && !fields2.is_empty() {
-                let result = vm.call_value(f.clone(), &[fields1[0].clone(), fields2[0].clone()])?;
+                // Curried function: f a b => (f a) b
+                let partial = vm.call_value(f.clone(), &[fields1[0].clone()])?;
+                let result = vm.call_value(partial, &[fields2[0].clone()])?;
                 Ok(Value::Variant {
                     type_name: tn2.clone(),
                     variant_name: "Some".to_string(),
