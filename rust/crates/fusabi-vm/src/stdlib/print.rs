@@ -4,15 +4,15 @@
 use crate::value::Value;
 use crate::vm::VmError;
 
-/// Print a value to stdout without a newline
-/// Signature: print : 'a -> unit
+/// print : 'a -> unit
+/// Prints a value to stdout without a trailing newline
 pub fn print_value(value: &Value) -> Result<Value, VmError> {
     print!("{}", value);
     Ok(Value::Unit)
 }
 
-/// Print a value to stdout with a newline
-/// Signature: printfn : 'a -> unit
+/// printfn : 'a -> unit
+/// Prints a value to stdout with a trailing newline
 pub fn printfn_value(value: &Value) -> Result<Value, VmError> {
     println!("{}", value);
     Ok(Value::Unit)

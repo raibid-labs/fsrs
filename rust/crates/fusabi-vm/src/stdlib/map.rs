@@ -5,10 +5,14 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Map.empty : unit -> 'a map
+/// Creates an empty map
 pub fn map_empty(_unit: &Value) -> Result<Value, VmError> {
     Ok(Value::Map(Arc::new(Mutex::new(HashMap::new()))))
 }
 
+/// Map.add : string -> 'a -> 'a map -> 'a map
+/// Adds a key-value pair to the map, returning a new map
 pub fn map_add(key: &Value, value: &Value, map: &Value) -> Result<Value, VmError> {
     let key_str = key.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -27,6 +31,8 @@ pub fn map_add(key: &Value, value: &Value, map: &Value) -> Result<Value, VmError
     }
 }
 
+/// Map.remove : string -> 'a map -> 'a map
+/// Removes a key from the map, returning a new map
 pub fn map_remove(key: &Value, map: &Value) -> Result<Value, VmError> {
     let key_str = key.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -45,6 +51,8 @@ pub fn map_remove(key: &Value, map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.find : string -> 'a map -> 'a
+/// Looks up a key in the map, throws error if not found
 pub fn map_find(key: &Value, map: &Value) -> Result<Value, VmError> {
     let key_str = key.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -64,6 +72,8 @@ pub fn map_find(key: &Value, map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.tryFind : string -> 'a map -> 'a option
+/// Looks up a key in the map, returns Some(value) or None
 pub fn map_try_find(key: &Value, map: &Value) -> Result<Value, VmError> {
     let key_str = key.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -92,6 +102,8 @@ pub fn map_try_find(key: &Value, map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.containsKey : string -> 'a map -> bool
+/// Returns true if the map contains the given key
 pub fn map_contains_key(key: &Value, map: &Value) -> Result<Value, VmError> {
     let key_str = key.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -109,6 +121,8 @@ pub fn map_contains_key(key: &Value, map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.isEmpty : 'a map -> bool
+/// Returns true if the map is empty
 pub fn map_is_empty(map: &Value) -> Result<Value, VmError> {
     match map {
         Value::Map(m) => Ok(Value::Bool(m.lock().unwrap().is_empty())),
@@ -119,6 +133,8 @@ pub fn map_is_empty(map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.count : 'a map -> int
+/// Returns the number of key-value pairs in the map
 pub fn map_count(map: &Value) -> Result<Value, VmError> {
     match map {
         Value::Map(m) => Ok(Value::Int(m.lock().unwrap().len() as i64)),
@@ -129,6 +145,8 @@ pub fn map_count(map: &Value) -> Result<Value, VmError> {
     }
 }
 
+/// Map.ofList : (string * 'a) list -> 'a map
+/// Creates a map from a list of key-value tuples
 pub fn map_of_list(list: &Value) -> Result<Value, VmError> {
     let mut map = HashMap::new();
     let mut current = list.clone();
@@ -165,6 +183,8 @@ pub fn map_of_list(list: &Value) -> Result<Value, VmError> {
     Ok(Value::Map(Arc::new(Mutex::new(map))))
 }
 
+/// Map.toList : 'a map -> (string * 'a) list
+/// Converts a map to a list of key-value tuples (sorted by key)
 pub fn map_to_list(map: &Value) -> Result<Value, VmError> {
     match map {
         Value::Map(m) => {
@@ -192,9 +212,8 @@ pub fn map_to_list(map: &Value) -> Result<Value, VmError> {
     }
 }
 
-/// Apply a function to each value in a map, returning a new map with transformed values.
-/// Signature: ('v -> 'v2) -> string map -> 'v2 map
-/// Keys remain the same, only values are transformed.
+/// Map.map : ('a -> 'b) -> 'a map -> 'b map
+/// Applies a function to each value in the map, returning a new map
 pub fn map_map(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
         return Err(VmError::Runtime(format!(
@@ -225,9 +244,8 @@ pub fn map_map(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     }
 }
 
-/// Iterate over a map, calling a function on each key-value pair for side effects.
-/// Signature: (string -> 'v -> unit) -> string map -> unit
-/// Returns Unit after calling the function on all entries.
+/// Map.iter : (string -> 'a -> unit) -> 'a map -> unit
+/// Calls a function on each key-value pair for side effects
 pub fn map_iter(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
         return Err(VmError::Runtime(format!(
