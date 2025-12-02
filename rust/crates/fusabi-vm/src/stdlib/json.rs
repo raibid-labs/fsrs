@@ -13,15 +13,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(feature = "json")]
-/// Parse a JSON string into a Fusabi Value
-/// Mapping:
-/// - JSON null -> Value::Unit
-/// - JSON bool -> Value::Bool
-/// - JSON number (integer) -> Value::Int
-/// - JSON number (float) -> Value::Float
-/// - JSON string -> Value::Str
-/// - JSON array -> Value::Array
-/// - JSON object -> Value::Record
+/// Json.parse : string -> 'a
+/// Parses a JSON string into a Fusabi value
 pub fn json_parse(arg: &Value) -> Result<Value, VmError> {
     match arg {
         Value::Str(json_str) => {
@@ -72,18 +65,8 @@ fn json_value_to_fusabi(json: &serde_json::Value) -> Result<Value, VmError> {
 }
 
 #[cfg(feature = "json")]
-/// Convert a Fusabi Value to a JSON string
-/// Mapping:
-/// - Value::Unit -> "null"
-/// - Value::Bool -> "true" or "false"
-/// - Value::Int -> number
-/// - Value::Float -> number
-/// - Value::Str -> string
-/// - Value::Array -> array
-/// - Value::Record -> object
-/// - Value::Map -> object
-/// - Value::Tuple -> array
-/// - Value::Cons/Nil -> array (converted from list)
+/// Json.stringify : 'a -> string
+/// Converts a Fusabi value to a JSON string
 pub fn json_stringify(arg: &Value) -> Result<Value, VmError> {
     let json_value = fusabi_value_to_json(arg)?;
     let json_str = serde_json::to_string(&json_value).map_err(|e| {
@@ -168,7 +151,8 @@ fn cons_to_vec(value: &Value) -> Result<Vec<Value>, VmError> {
 }
 
 #[cfg(feature = "json")]
-/// Pretty-print a Fusabi Value as formatted JSON
+/// Json.stringifyPretty : 'a -> string
+/// Converts a Fusabi value to a pretty-printed JSON string
 pub fn json_stringify_pretty(arg: &Value) -> Result<Value, VmError> {
     let json_value = fusabi_value_to_json(arg)?;
     let json_str = serde_json::to_string_pretty(&json_value).map_err(|e| {
