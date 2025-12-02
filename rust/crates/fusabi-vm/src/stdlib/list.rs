@@ -279,7 +279,10 @@ pub fn list_fold(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     let mut acc = init.clone();
 
     for elem in elements {
-        acc = vm.call_value(func.clone(), &[acc, elem])?;
+        // Curried function: first apply acc, then elem
+        // func acc elem => (func acc) elem
+        let partial = vm.call_value(func.clone(), &[acc])?;
+        acc = vm.call_value(partial, &[elem])?;
     }
 
     Ok(acc)
