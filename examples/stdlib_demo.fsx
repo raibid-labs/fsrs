@@ -1,5 +1,5 @@
 // FSRS Standard Library Demonstration
-// This file shows how to use the built-in List, String, and Option modules
+// This file shows how to use the built-in List, String, Array, Map, and Option modules
 
 // ========== List Operations ==========
 
@@ -29,6 +29,54 @@ let combined = List.append numbers moreNumbers in  // [1; 2; 3; 4; 5; 6; 7; 8]
 // Concatenate a list of lists
 let listOfLists = [[1; 2]; [3; 4]; [5]] in
 let flattened = List.concat listOfLists in  // [1; 2; 3; 4; 5]
+
+// Map a function over a list
+let doubled = List.map (fun x -> x * 2) numbers in  // [2; 4; 6; 8; 10]
+
+// Filter elements based on a predicate
+let evens = List.filter (fun x -> x % 2 = 0) numbers in  // [2; 4]
+
+// Fold (reduce) a list to a single value
+let sum = List.fold (fun acc x -> acc + x) 0 numbers in  // 15
+
+// Check if any element satisfies a predicate
+let hasEven = List.exists (fun x -> x % 2 = 0) numbers in  // true
+
+// Find the first element matching a predicate
+let firstEven = List.find (fun x -> x % 2 = 0) numbers in  // 2
+
+// Safely find (returns Option)
+let maybeEven = List.tryFind (fun x -> x > 10) numbers in  // None
+
+// Iterate over a list for side effects
+let _ = List.iter (fun x -> x) numbers in  // Returns unit
+
+
+// ========== Array Operations ==========
+
+// Create arrays from lists
+let arr = Array.ofList [1; 2; 3; 4; 5] in
+
+// Get array length
+let arrLen = Array.length arr in  // 5
+
+// Check if array is empty
+let arrEmpty = Array.isEmpty arr in  // false
+
+// Get element by index (0-based)
+let third = Array.get 2 arr in  // 3
+
+// Set element by index (mutates in place)
+let _ = Array.set 0 100 arr in  // arr[0] is now 100
+
+// Create array filled with a value
+let zeros = Array.create 5 0 in  // [|0; 0; 0; 0; 0|]
+
+// Create array using initializer function
+let squares = Array.init 5 (fun i -> i * i) in  // [|0; 1; 4; 9; 16|]
+
+// Convert array back to list
+let arrList = Array.toList squares in  // [0; 1; 4; 9; 16]
 
 
 // ========== String Operations ==========
@@ -60,19 +108,36 @@ let startsHello = String.startsWith "hello" text in  // true
 let endsWorld = String.endsWith "world" text in    // true
 
 
+// ========== Map Operations ==========
+
+// Create an empty map
+let emptyMap = Map.empty () in
+
+// Add entries to a map
+let myMap = Map.add "name" "Alice" (Map.add "city" "NYC" emptyMap) in
+
+// Find a value by key
+let name = Map.find "name" myMap in  // "Alice"
+
+// Safely find (returns Option)
+let maybeName = Map.tryFind "age" myMap in  // None
+
+// Check if key exists
+let hasName = Map.containsKey "name" myMap in  // true
+
+// Get map size
+let mapSize = Map.count myMap in  // 2
+
+// Transform all values in a map
+let upperMap = Map.map String.toUpper myMap in
+
+// Iterate over map entries
+let _ = Map.iter (fun k v -> ()) myMap in  // Returns unit
+
+
 // ========== Option Operations ==========
 
-// Option type definition syntax is not yet stable or fully supported for generics.
-// Using explicit constructors for now.
-// For type-safe Option handling, it's recommended to register Option.Some and Option.None
-// as host functions, or use built-in VM variants where appropriate.
-
-// Create option values (assuming Some/None are in scope or registered as variant constructors)
-// The compiler/VM already supports Discriminated Unions and their variants.
-// If not defined here, 'Some' and 'None' need to be defined as variants of a type.
-// Example: type MyOption = Some of any | None
-// Or rely on host-defined variant constructors.
-// For this demo, we'll assume Some and None are available as variant constructors.
+// Create option values
 let someValue = Some(42) in
 let noValue = None in
 
@@ -84,6 +149,15 @@ let isNone = Option.isNone noValue in     // true
 let value = Option.defaultValue 0 someValue in  // 42
 let defaulted = Option.defaultValue 0 noValue in  // 0
 
+// Map over options
+let doubledOpt = Option.map (fun x -> x * 2) someValue in  // Some(84)
+
+// Bind (flatMap) options
+let bound = Option.bind (fun x -> Some(x + 1)) someValue in  // Some(43)
+
+// Iterate over option for side effects
+let _ = Option.iter (fun x -> ()) someValue in  // Returns unit
+
 
 // ========== Real-World Examples ==========
 
@@ -91,17 +165,19 @@ let defaulted = Option.defaultValue 0 noValue in  // 0
 let csvData = "name,age,city" in
 let fields = String.split "," csvData in
 let fieldCount = List.length fields in  // 3
-let upperFields = List.map String.toUpper fields in  // Not implemented yet
+let upperFields = List.map String.toUpper fields in  // ["NAME"; "AGE"; "CITY"]
 
 // Example 2: Safe string processing with options
 let maybeName = Some("Alice") in
 let defaultName = Option.defaultValue "Unknown" maybeName in
 let greeting = String.concat ["Hello, "; defaultName; "!"] in
 
-// Example 3: List transformations
+// Example 3: List transformations with higher-order functions
 let data = [1; 2; 3; 4; 5] in
-let reversed = List.reverse data in
-let doubled = List.map (fun x -> x * 2) data in  // Not implemented yet
+let processed = data
+    |> List.filter (fun x -> x > 2)
+    |> List.map (fun x -> x * 2)
+    |> List.fold (fun acc x -> acc + x) 0 in  // 24 (sum of [6; 8; 10])
 
 // Example 4: String cleaning pipeline
 let rawInput = "  HELLO WORLD  " in
@@ -109,21 +185,14 @@ let cleaned = rawInput
     |> String.trim
     |> String.toLower in  // "hello world"
 
-// Example 5: Combining list and string operations
+// Example 5: Array manipulation
+let arr = Array.init 10 (fun i -> i + 1) in  // [|1; 2; 3; ...; 10|]
+let _ = Array.set 0 999 arr in  // Mutate first element
+let firstElem = Array.get 0 arr in  // 999
+
+// Example 6: Combining list and string operations
 let paths = ["/home"; "/user"; "/docs"] in
 let fullPath = String.concat (List.append paths ["/file.txt"]) in
 // Result: "/home/user/docs/file.txt"
 
-
-// ========== Notes ==========
-
-// The following higher-order functions are referenced but not yet implemented:
-// - List.map : ('a -> 'b) -> 'a list -> 'b list
-// - List.filter : ('a -> bool) -> 'a list -> 'a list
-// - List.fold : ('a -> 'b -> 'a) -> 'a -> 'b list -> 'a
-// - Option.map : ('a -> 'b) -> 'a option -> 'b option
-// - Option.bind : ('a -> 'b option) -> 'a option -> 'b option
-
-// These will be added in future iterations when closures and
-// first-class functions are fully integrated with the VM.
 fullPath // Return the last calculated value to be printed by the CLI

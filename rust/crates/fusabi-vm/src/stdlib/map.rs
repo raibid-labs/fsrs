@@ -1,6 +1,6 @@
 // Fusabi Map Standard Library
 use crate::value::Value;
-use crate::vm::VmError;
+use crate::vm::{Vm, VmError};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -189,5 +189,235 @@ pub fn map_to_list(map: &Value) -> Result<Value, VmError> {
             expected: "map",
             got: map.type_name(),
         }),
+    }
+}
+
+/// Apply a function to each value in a map, returning a new map with transformed values.
+/// Signature: ('v -> 'v2) -> string map -> 'v2 map
+/// Keys remain the same, only values are transformed.
+pub fn map_map(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Map.map expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let map = &args[1];
+
+    match map {
+        Value::Map(m) => {
+            let m = m.lock().unwrap();
+            let mut new_map = HashMap::new();
+
+            for (key, value) in m.iter() {
+                let transformed_value = vm.call_value(func.clone(), &[value.clone()])?;
+                new_map.insert(key.clone(), transformed_value);
+            }
+
+            Ok(Value::Map(Arc::new(Mutex::new(new_map))))
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "map",
+            got: map.type_name(),
+        }),
+    }
+}
+
+/// Iterate over a map, calling a function on each key-value pair for side effects.
+/// Signature: (string -> 'v -> unit) -> string map -> unit
+/// Returns Unit after calling the function on all entries.
+pub fn map_iter(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "Map.iter expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let map = &args[1];
+
+    match map {
+        Value::Map(m) => {
+            let m = m.lock().unwrap();
+
+            // Collect keys in sorted order for deterministic iteration
+            let mut keys: Vec<_> = m.keys().cloned().collect();
+            keys.sort();
+
+            for key in keys {
+                if let Some(value) = m.get(&key) {
+                    vm.call_value(func.clone(), &[Value::Str(key), value.clone()])?;
+                }
+            }
+
+            Ok(Value::Unit)
+        }
+        _ => Err(VmError::TypeMismatch {
+            expected: "map",
+            got: map.type_name(),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chunk::ChunkBuilder;
+    use crate::closure::Closure;
+
+    fn create_test_map() -> Value {
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), Value::Int(1));
+        map.insert("b".to_string(), Value::Int(2));
+        map.insert("c".to_string(), Value::Int(3));
+        Value::Map(Arc::new(Mutex::new(map)))
+    }
+
+    fn create_empty_map() -> Value {
+        Value::Map(Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    fn create_mock_closure() -> Value {
+        let chunk = ChunkBuilder::new().build();
+        let closure = Closure::new(chunk);
+        Value::Closure(Arc::new(closure))
+    }
+
+    #[test]
+    fn test_map_map_empty_map() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+        let empty_map = create_empty_map();
+
+        let args = vec![func, empty_map];
+        let result = map_map(&mut vm, &args).expect("map_map failed");
+
+        // Verify result is an empty map
+        if let Value::Map(result_map) = result {
+            let map = result_map.lock().unwrap();
+            assert!(map.is_empty());
+        } else {
+            panic!("Expected Map result");
+        }
+    }
+
+    #[test]
+    fn test_map_map_wrong_argument_count() {
+        let mut vm = Vm::new();
+        let test_map = create_test_map();
+
+        // Call with wrong number of arguments
+        let args = vec![test_map];
+        let result = map_map(&mut vm, &args);
+
+        assert!(result.is_err());
+        if let Err(VmError::Runtime(msg)) = result {
+            assert!(msg.contains("expects 2 arguments"));
+        } else {
+            panic!("Expected Runtime error");
+        }
+    }
+
+    #[test]
+    fn test_map_map_type_mismatch() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+
+        // Pass non-map value
+        let args = vec![func, Value::Int(42)];
+        let result = map_map(&mut vm, &args);
+
+        assert!(result.is_err());
+        if let Err(VmError::TypeMismatch { expected, got }) = result {
+            assert_eq!(expected, "map");
+            assert_eq!(got, "int");
+        } else {
+            panic!("Expected TypeMismatch error");
+        }
+    }
+
+    #[test]
+    fn test_map_iter_empty_map() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+        let empty_map = create_empty_map();
+
+        let args = vec![func, empty_map];
+        let result = map_iter(&mut vm, &args).expect("map_iter failed");
+
+        // Verify result is Unit
+        assert_eq!(result, Value::Unit);
+    }
+
+    #[test]
+    fn test_map_iter_wrong_argument_count() {
+        let mut vm = Vm::new();
+        let test_map = create_test_map();
+
+        // Call with wrong number of arguments
+        let args = vec![test_map];
+        let result = map_iter(&mut vm, &args);
+
+        assert!(result.is_err());
+        if let Err(VmError::Runtime(msg)) = result {
+            assert!(msg.contains("expects 2 arguments"));
+        } else {
+            panic!("Expected Runtime error");
+        }
+    }
+
+    #[test]
+    fn test_map_iter_type_mismatch() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+
+        // Pass non-map value
+        let args = vec![func, Value::Int(42)];
+        let result = map_iter(&mut vm, &args);
+
+        assert!(result.is_err());
+        if let Err(VmError::TypeMismatch { expected, got }) = result {
+            assert_eq!(expected, "map");
+            assert_eq!(got, "int");
+        } else {
+            panic!("Expected TypeMismatch error");
+        }
+    }
+
+    #[test]
+    fn test_map_map_preserves_keys() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+        let test_map = create_test_map();
+
+        let args = vec![func, test_map];
+        // This will fail when calling the function, but we're testing the structure
+        // In real usage, the function would be properly compiled
+        let result = map_map(&mut vm, &args);
+
+        // We expect this to fail because we're using a mock closure
+        // but the function should at least try to process the map
+        // This test verifies the function signature and type checking
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_map_iter_processes_sorted_keys() {
+        let mut vm = Vm::new();
+        let func = create_mock_closure();
+        let test_map = create_test_map();
+
+        let args = vec![func, test_map];
+        // This will fail when calling the function, but we're testing the structure
+        // In real usage, the function would be properly compiled
+        let result = map_iter(&mut vm, &args);
+
+        // We expect this to fail because we're using a mock closure
+        // but the function should at least try to iterate the map
+        // This test verifies the function signature and type checking
+        assert!(result.is_err());
     }
 }

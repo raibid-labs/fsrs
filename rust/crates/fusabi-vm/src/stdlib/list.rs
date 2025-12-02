@@ -176,6 +176,254 @@ pub fn list_map(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     Ok(Value::vec_to_cons(mapped_elements))
 }
 
+/// List.iter : ('a -> unit) -> 'a list -> unit
+/// Calls a function on each element for side effects, returns Unit
+pub fn list_iter(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.iter expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+
+    for elem in elements {
+        vm.call_value(func.clone(), &[elem])?;
+    }
+
+    Ok(Value::Unit)
+}
+
+/// List.filter : ('a -> bool) -> 'a list -> 'a list
+/// Returns list of elements where predicate returns true
+pub fn list_filter(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.filter expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+    let mut filtered_elements = Vec::new();
+
+    for elem in elements {
+        let result = vm.call_value(func.clone(), &[elem.clone()])?;
+        match result {
+            Value::Bool(true) => filtered_elements.push(elem),
+            Value::Bool(false) => {}
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "bool",
+                    got: result.type_name(),
+                })
+            }
+        }
+    }
+
+    Ok(Value::vec_to_cons(filtered_elements))
+}
+
+/// List.fold : ('a -> 'b -> 'a) -> 'a -> 'b list -> 'a
+/// Applies folder function to accumulator and each element
+pub fn list_fold(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 3 {
+        return Err(VmError::Runtime(format!(
+            "List.fold expects 3 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let init = &args[1];
+    let list = &args[2];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+    let mut acc = init.clone();
+
+    for elem in elements {
+        acc = vm.call_value(func.clone(), &[acc, elem])?;
+    }
+
+    Ok(acc)
+}
+
+/// List.exists : ('a -> bool) -> 'a list -> bool
+/// Returns true if any element satisfies the predicate
+pub fn list_exists(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.exists expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+
+    for elem in elements {
+        let result = vm.call_value(func.clone(), &[elem])?;
+        match result {
+            Value::Bool(true) => return Ok(Value::Bool(true)),
+            Value::Bool(false) => {}
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "bool",
+                    got: result.type_name(),
+                })
+            }
+        }
+    }
+
+    Ok(Value::Bool(false))
+}
+
+/// List.find : ('a -> bool) -> 'a list -> 'a
+/// Returns first element satisfying predicate
+/// Throws error if not found
+pub fn list_find(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.find expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+
+    for elem in elements {
+        let result = vm.call_value(func.clone(), &[elem.clone()])?;
+        match result {
+            Value::Bool(true) => return Ok(elem),
+            Value::Bool(false) => {}
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "bool",
+                    got: result.type_name(),
+                })
+            }
+        }
+    }
+
+    Err(VmError::Runtime(
+        "List.find: no element satisfies predicate".to_string(),
+    ))
+}
+
+/// List.tryFind : ('a -> bool) -> 'a list -> 'a option
+/// Returns Some(elem) if found, None otherwise
+pub fn list_try_find(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.tryFind expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+
+    for elem in elements {
+        let result = vm.call_value(func.clone(), &[elem.clone()])?;
+        match result {
+            Value::Bool(true) => {
+                return Ok(Value::Variant {
+                    type_name: "Option".to_string(),
+                    variant_name: "Some".to_string(),
+                    fields: vec![elem],
+                })
+            }
+            Value::Bool(false) => {}
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "bool",
+                    got: result.type_name(),
+                })
+            }
+        }
+    }
+
+    Ok(Value::Variant {
+        type_name: "Option".to_string(),
+        variant_name: "None".to_string(),
+        fields: vec![],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,5 +584,304 @@ mod tests {
         assert!(list_tail(&not_list).is_err());
         assert!(list_reverse(&not_list).is_err());
         assert!(list_is_empty(&not_list).is_err());
+    }
+
+    // Tests for list_iter
+    #[test]
+    fn test_list_iter_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_iter(&mut vm, &[func, list]).unwrap();
+        assert_eq!(result, Value::Unit);
+    }
+
+    #[test]
+    fn test_list_iter_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_iter(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_iter_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_iter(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_filter
+    #[test]
+    fn test_list_filter_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_filter(&mut vm, &[func, list]).unwrap();
+        assert_eq!(result, Value::Nil);
+    }
+
+    #[test]
+    fn test_list_filter_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_filter(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_filter_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_filter(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_fold
+    #[test]
+    fn test_list_fold_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let init = Value::Int(0);
+        let list = Value::Nil;
+        let result = list_fold(&mut vm, &[func, init.clone(), list]).unwrap();
+        assert_eq!(result, init);
+    }
+
+    #[test]
+    fn test_list_fold_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_fold(&mut vm, &[Value::Int(1), Value::Int(2)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_fold_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let init = Value::Int(0);
+        let not_list = Value::Int(42);
+        let result = list_fold(&mut vm, &[func, init, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_exists
+    #[test]
+    fn test_list_exists_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_exists(&mut vm, &[func, list]).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_list_exists_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_exists(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_exists_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_exists(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_find
+    #[test]
+    fn test_list_find_empty_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_find(&mut vm, &[func, list]);
+        assert!(matches!(result, Err(VmError::Runtime(_))));
+    }
+
+    #[test]
+    fn test_list_find_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_find(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_find_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_find(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_try_find
+    #[test]
+    fn test_list_try_find_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_try_find(&mut vm, &[func, list]).unwrap();
+        assert!(matches!(
+            result,
+            Value::Variant {
+                variant_name,
+                ..
+            } if variant_name == "None"
+        ));
+    }
+
+    #[test]
+    fn test_list_try_find_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_try_find(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_try_find_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_try_find(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_list_try_find_returns_none_variant() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_try_find(&mut vm, &[func, list]).unwrap();
+
+        match result {
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => {
+                assert_eq!(type_name, "Option");
+                assert_eq!(variant_name, "None");
+                assert_eq!(fields.len(), 0);
+            }
+            _ => panic!("Expected Variant value"),
+        }
     }
 }
