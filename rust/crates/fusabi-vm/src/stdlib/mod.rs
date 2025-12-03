@@ -4,6 +4,7 @@
 pub mod array;
 pub mod commands;
 pub mod config;
+pub mod console;
 pub mod events;
 pub mod list;
 pub mod map;
@@ -499,6 +500,23 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Commands.list", commands::commands_list);
         registry.register("Commands.getById", commands::commands_get_by_id);
         registry.register("Commands.invoke", commands::commands_invoke);
+
+        // Console functions
+        registry.register("Console.readLine", |_vm, args| {
+            wrap_unary(args, console::console_read_line)
+        });
+        registry.register("Console.readKey", |_vm, args| {
+            wrap_unary(args, console::console_read_key)
+        });
+        registry.register("Console.write", |_vm, args| {
+            wrap_unary(args, console::console_write)
+        });
+        registry.register("Console.writeLine", |_vm, args| {
+            wrap_unary(args, console::console_write_line)
+        });
+        registry.register("Console.clear", |_vm, args| {
+            wrap_unary(args, console::console_clear)
+        });
     }
 
     // 2. Populate Globals with Module Records
@@ -802,6 +820,18 @@ pub fn register_stdlib(vm: &mut Vm) {
     vm.globals.insert(
         "Commands".to_string(),
         Value::Record(Arc::new(Mutex::new(commands_fields))),
+    );
+
+    // Console Module
+    let mut console_fields = HashMap::new();
+    console_fields.insert("readLine".to_string(), native("Console.readLine", 1));
+    console_fields.insert("readKey".to_string(), native("Console.readKey", 1));
+    console_fields.insert("write".to_string(), native("Console.write", 1));
+    console_fields.insert("writeLine".to_string(), native("Console.writeLine", 1));
+    console_fields.insert("clear".to_string(), native("Console.clear", 1));
+    vm.globals.insert(
+        "Console".to_string(),
+        Value::Record(Arc::new(Mutex::new(console_fields))),
     );
 }
 
