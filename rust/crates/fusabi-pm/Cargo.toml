@@ -1,0 +1,23 @@
+[package]
+name = "fusabi-pm"
+version = "0.1.0"
+edition = "2021"
+description = "Fusabi Package Manager"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+thiserror = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.0"
+
+[lib]
+name = "fusabi_pm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fpm"
+path = "src/cli.rs"
