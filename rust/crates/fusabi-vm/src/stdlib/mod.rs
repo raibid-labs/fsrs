@@ -4,6 +4,7 @@
 pub mod array;
 pub mod commands;
 pub mod config;
+pub mod console;
 pub mod events;
 pub mod list;
 pub mod map;
@@ -62,6 +63,10 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("List.exists", list::list_exists);
         registry.register("List.find", list::list_find);
         registry.register("List.tryFind", list::list_try_find);
+        registry.register("List.nth", |_vm, args| {
+            wrap_binary(args, list::list_nth)
+        });
+        registry.register("List.mapi", list::list_mapi);
 
         // Array functions
         registry.register("Array.length", |_vm, args| {
@@ -499,6 +504,23 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Commands.list", commands::commands_list);
         registry.register("Commands.getById", commands::commands_get_by_id);
         registry.register("Commands.invoke", commands::commands_invoke);
+
+        // Console functions
+        registry.register("Console.readLine", |_vm, args| {
+            wrap_unary(args, console::console_read_line)
+        });
+        registry.register("Console.readKey", |_vm, args| {
+            wrap_unary(args, console::console_read_key)
+        });
+        registry.register("Console.write", |_vm, args| {
+            wrap_unary(args, console::console_write)
+        });
+        registry.register("Console.writeLine", |_vm, args| {
+            wrap_unary(args, console::console_write_line)
+        });
+        registry.register("Console.clear", |_vm, args| {
+            wrap_unary(args, console::console_clear)
+        });
     }
 
     // 2. Populate Globals with Module Records
@@ -526,6 +548,8 @@ pub fn register_stdlib(vm: &mut Vm) {
     list_fields.insert("exists".to_string(), native("List.exists", 2));
     list_fields.insert("find".to_string(), native("List.find", 2));
     list_fields.insert("tryFind".to_string(), native("List.tryFind", 2));
+    list_fields.insert("nth".to_string(), native("List.nth", 2));
+    list_fields.insert("mapi".to_string(), native("List.mapi", 2));
     vm.globals.insert(
         "List".to_string(),
         Value::Record(Arc::new(Mutex::new(list_fields))),
@@ -802,6 +826,18 @@ pub fn register_stdlib(vm: &mut Vm) {
     vm.globals.insert(
         "Commands".to_string(),
         Value::Record(Arc::new(Mutex::new(commands_fields))),
+    );
+
+    // Console Module
+    let mut console_fields = HashMap::new();
+    console_fields.insert("readLine".to_string(), native("Console.readLine", 1));
+    console_fields.insert("readKey".to_string(), native("Console.readKey", 1));
+    console_fields.insert("write".to_string(), native("Console.write", 1));
+    console_fields.insert("writeLine".to_string(), native("Console.writeLine", 1));
+    console_fields.insert("clear".to_string(), native("Console.clear", 1));
+    vm.globals.insert(
+        "Console".to_string(),
+        Value::Record(Arc::new(Mutex::new(console_fields))),
     );
 }
 

@@ -427,6 +427,113 @@ pub fn list_try_find(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     })
 }
 
+/// List.nth : int -> 'a list -> 'a option
+/// Returns the element at the given index, or None if out of bounds
+pub fn list_nth(index: &Value, list: &Value) -> Result<Value, VmError> {
+    // Check index is Int
+    let idx = match index {
+        Value::Int(n) => *n,
+        _ => {
+            return Err(VmError::TypeMismatch {
+                expected: "int",
+                got: index.type_name(),
+            })
+        }
+    };
+
+    // If negative, return None
+    if idx < 0 {
+        return Ok(Value::Variant {
+            type_name: "Option".to_string(),
+            variant_name: "None".to_string(),
+            fields: vec![],
+        });
+    }
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    // Walk the list to the index
+    let mut current = list.clone();
+    let mut current_idx = 0i64;
+
+    loop {
+        match current {
+            Value::Nil => {
+                // Reached end of list before finding index
+                return Ok(Value::Variant {
+                    type_name: "Option".to_string(),
+                    variant_name: "None".to_string(),
+                    fields: vec![],
+                });
+            }
+            Value::Cons { head, tail } => {
+                if current_idx == idx {
+                    // Found the element
+                    return Ok(Value::Variant {
+                        type_name: "Option".to_string(),
+                        variant_name: "Some".to_string(),
+                        fields: vec![(*head).clone()],
+                    });
+                }
+                current_idx += 1;
+                current = (*tail).clone();
+            }
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "list",
+                    got: current.type_name(),
+                })
+            }
+        }
+    }
+}
+
+/// List.mapi : (int -> 'a -> 'b) -> 'a list -> 'b list
+/// Maps with index - needs VM for callback execution
+pub fn list_mapi(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+    if args.len() != 2 {
+        return Err(VmError::Runtime(format!(
+            "List.mapi expects 2 arguments, got {}",
+            args.len()
+        )));
+    }
+
+    let func = &args[0];
+    let list = &args[1];
+
+    // Verify list type
+    if !matches!(list, Value::Nil | Value::Cons { .. }) {
+        return Err(VmError::TypeMismatch {
+            expected: "list",
+            got: list.type_name(),
+        });
+    }
+
+    let elements = list
+        .list_to_vec()
+        .ok_or(VmError::Runtime("Malformed list".into()))?;
+    let mut mapped_elements = Vec::new();
+
+    for (index, elem) in elements.iter().enumerate() {
+        // Call func with index and element
+        // Since the function is curried (int -> 'a -> 'b), we need to:
+        // 1. Call func with index to get a partial function
+        // 2. Call the partial with elem to get the result
+        let index_val = Value::Int(index as i64);
+        let partial = vm.call_value(func.clone(), &[index_val])?;
+        let result = vm.call_value(partial, &[elem.clone()])?;
+        mapped_elements.push(result);
+    }
+
+    Ok(Value::vec_to_cons(mapped_elements))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -886,5 +993,174 @@ mod tests {
             }
             _ => panic!("Expected Variant value"),
         }
+    }
+
+    // Tests for list_nth
+    #[test]
+    fn test_list_nth_empty() {
+        let list = Value::Nil;
+        let index = Value::Int(0);
+        let result = list_nth(&index, &list).unwrap();
+        assert!(matches!(
+            result,
+            Value::Variant {
+                variant_name,
+                ..
+            } if variant_name == "None"
+        ));
+    }
+
+    #[test]
+    fn test_list_nth_negative_index() {
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let index = Value::Int(-1);
+        let result = list_nth(&index, &list).unwrap();
+        assert!(matches!(
+            result,
+            Value::Variant {
+                variant_name,
+                ..
+            } if variant_name == "None"
+        ));
+    }
+
+    #[test]
+    fn test_list_nth_out_of_bounds() {
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let index = Value::Int(10);
+        let result = list_nth(&index, &list).unwrap();
+        assert!(matches!(
+            result,
+            Value::Variant {
+                variant_name,
+                ..
+            } if variant_name == "None"
+        ));
+    }
+
+    #[test]
+    fn test_list_nth_first_element() {
+        let list = Value::vec_to_cons(vec![Value::Int(42), Value::Int(100), Value::Int(200)]);
+        let index = Value::Int(0);
+        let result = list_nth(&index, &list).unwrap();
+        match result {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if variant_name == "Some" => {
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0], Value::Int(42));
+            }
+            _ => panic!("Expected Some variant"),
+        }
+    }
+
+    #[test]
+    fn test_list_nth_middle_element() {
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let index = Value::Int(1);
+        let result = list_nth(&index, &list).unwrap();
+        match result {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if variant_name == "Some" => {
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0], Value::Int(2));
+            }
+            _ => panic!("Expected Some variant"),
+        }
+    }
+
+    #[test]
+    fn test_list_nth_last_element() {
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let index = Value::Int(2);
+        let result = list_nth(&index, &list).unwrap();
+        match result {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if variant_name == "Some" => {
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0], Value::Int(3));
+            }
+            _ => panic!("Expected Some variant"),
+        }
+    }
+
+    #[test]
+    fn test_list_nth_type_error_index() {
+        let list = Value::vec_to_cons(vec![Value::Int(1)]);
+        let index = Value::Str("not an int".to_string());
+        let result = list_nth(&index, &list);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "int",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_list_nth_type_error_list() {
+        let not_list = Value::Int(42);
+        let index = Value::Int(0);
+        let result = list_nth(&index, &not_list);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
+    }
+
+    // Tests for list_mapi
+    #[test]
+    fn test_list_mapi_empty() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let list = Value::Nil;
+        let result = list_mapi(&mut vm, &[func, list]).unwrap();
+        assert_eq!(result, Value::Nil);
+    }
+
+    #[test]
+    fn test_list_mapi_wrong_arg_count() {
+        let mut vm = Vm::new();
+        let result = list_mapi(&mut vm, &[Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_mapi_type_error() {
+        use crate::chunk::Chunk;
+        use crate::closure::Closure;
+        use std::sync::Arc;
+
+        let mut vm = Vm::new();
+        let chunk = Chunk::new();
+        let closure = Closure::new(chunk);
+        let func = Value::Closure(Arc::new(closure));
+        let not_list = Value::Int(42);
+        let result = list_mapi(&mut vm, &[func, not_list]);
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "list",
+                ..
+            })
+        ));
     }
 }
