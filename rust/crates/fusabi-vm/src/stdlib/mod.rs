@@ -2,6 +2,7 @@
 // Provides built-in functions for List, String, Map, Array, and Option operations
 
 pub mod array;
+pub mod config;
 pub mod list;
 pub mod map;
 pub mod option;
@@ -9,6 +10,9 @@ pub mod math;
 pub mod result;
 pub mod print;
 pub mod string;
+pub mod process;
+pub mod url;
+pub mod time;
 
 #[cfg(feature = "json")]
 pub mod json;
@@ -311,6 +315,70 @@ pub fn register_stdlib(vm: &mut Vm) {
             })
         });
 
+        // Process functions
+        registry.register("Process.run", |_vm, args| {
+            wrap_binary(args, process::process_run)
+        });
+        registry.register("Process.runShell", |_vm, args| {
+            wrap_unary(args, process::process_run_shell)
+        });
+        registry.register("Process.env", |_vm, args| {
+            wrap_unary(args, process::process_env)
+        });
+        registry.register("Process.setEnv", |_vm, args| {
+            wrap_binary(args, process::process_set_env)
+        });
+        registry.register("Process.cwd", |_vm, args| {
+            wrap_unary(args, process::process_cwd)
+        });
+
+        // Config functions
+        registry.register("Config.define", config::config_define);
+        registry.register("Config.get", |_vm, args| {
+            wrap_unary(args, config::config_get)
+        });
+        registry.register("Config.getOr", |_vm, args| {
+            wrap_binary(args, config::config_get_or)
+        });
+        registry.register("Config.set", config::config_set);
+        registry.register("Config.has", |_vm, args| {
+            wrap_unary(args, config::config_has)
+        });
+        registry.register("Config.list", |_vm, args| {
+            wrap_unary(args, config::config_list)
+        });
+        registry.register("Config.reset", |_vm, args| {
+            wrap_unary(args, config::config_reset)
+        });
+
+        // Time functions
+        registry.register("Time.now", |_vm, args| {
+            wrap_unary(args, time::time_now)
+        });
+        registry.register("Time.nowSeconds", |_vm, args| {
+            wrap_unary(args, time::time_now_seconds)
+        });
+        registry.register("Time.format", |_vm, args| {
+            wrap_binary(args, time::time_format)
+        });
+        registry.register("Time.parse", |_vm, args| {
+            wrap_binary(args, time::time_parse)
+        });
+
+        // Url functions
+        registry.register("Url.parse", |_vm, args| {
+            wrap_unary(args, url::url_parse)
+        });
+        registry.register("Url.isValid", |_vm, args| {
+            wrap_unary(args, url::url_is_valid)
+        });
+        registry.register("Url.encode", |_vm, args| {
+            wrap_unary(args, url::url_encode)
+        });
+        registry.register("Url.decode", |_vm, args| {
+            wrap_unary(args, url::url_decode)
+        });
+
         // Json functions (if json feature is enabled)
         #[cfg(feature = "json")]
         {
@@ -487,6 +555,54 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Register Result constructors as globals
     vm.globals.insert("Ok".to_string(), native("Ok", 1));
     vm.globals.insert("Error".to_string(), native("Error", 1));
+
+    // Process Module
+    let mut process_fields = HashMap::new();
+    process_fields.insert("run".to_string(), native("Process.run", 2));
+    process_fields.insert("runShell".to_string(), native("Process.runShell", 1));
+    process_fields.insert("env".to_string(), native("Process.env", 1));
+    process_fields.insert("setEnv".to_string(), native("Process.setEnv", 2));
+    process_fields.insert("cwd".to_string(), native("Process.cwd", 1));
+    vm.globals.insert(
+        "Process".to_string(),
+        Value::Record(Arc::new(Mutex::new(process_fields))),
+    );
+
+    // Config Module
+    let mut config_fields = HashMap::new();
+    config_fields.insert("define".to_string(), native("Config.define", 1));
+    config_fields.insert("get".to_string(), native("Config.get", 1));
+    config_fields.insert("getOr".to_string(), native("Config.getOr", 2));
+    config_fields.insert("set".to_string(), native("Config.set", 2));
+    config_fields.insert("has".to_string(), native("Config.has", 1));
+    config_fields.insert("list".to_string(), native("Config.list", 1));
+    config_fields.insert("reset".to_string(), native("Config.reset", 1));
+    vm.globals.insert(
+        "Config".to_string(),
+        Value::Record(Arc::new(Mutex::new(config_fields))),
+    );
+
+    // Time Module
+    let mut time_fields = HashMap::new();
+    time_fields.insert("now".to_string(), native("Time.now", 1));
+    time_fields.insert("nowSeconds".to_string(), native("Time.nowSeconds", 1));
+    time_fields.insert("format".to_string(), native("Time.format", 2));
+    time_fields.insert("parse".to_string(), native("Time.parse", 2));
+    vm.globals.insert(
+        "Time".to_string(),
+        Value::Record(Arc::new(Mutex::new(time_fields))),
+    );
+
+    // Url Module
+    let mut url_fields = HashMap::new();
+    url_fields.insert("parse".to_string(), native("Url.parse", 1));
+    url_fields.insert("isValid".to_string(), native("Url.isValid", 1));
+    url_fields.insert("encode".to_string(), native("Url.encode", 1));
+    url_fields.insert("decode".to_string(), native("Url.decode", 1));
+    vm.globals.insert(
+        "Url".to_string(),
+        Value::Record(Arc::new(Mutex::new(url_fields))),
+    );
 
     // Json Module (if json feature is enabled)
     #[cfg(feature = "json")]

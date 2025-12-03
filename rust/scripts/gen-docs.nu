@@ -15,6 +15,10 @@ let modules = [
     { name: "Result", file: "result.rs", description: "Functions for error handling (Ok/Error)" }
     { name: "String", file: "string.rs", description: "Functions for string manipulation" }
     { name: "Math", file: "math.rs", description: "Mathematical constants and functions" }
+    { name: "Config", file: "config.rs", description: "Typed configuration with schema validation" }
+    { name: "Time", file: "time.rs", description: "Time and date functions" }
+    { name: "Url", file: "url.rs", description: "URL parsing and manipulation" }
+    { name: "Process", file: "process.rs", description: "Process execution and environment" }
     { name: "Json", file: "json.rs", description: "JSON parsing and serialization" }
     { name: "Print", file: "print.rs", description: "Output functions" }
 ]

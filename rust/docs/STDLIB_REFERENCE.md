@@ -13,6 +13,10 @@ This document provides a comprehensive reference for all functions in the Fusabi
 - [Result]
 - [String]
 - [Math]
+- [Config]
+- [Time]
+- [Url]
+- [Process]
 - [Json]
 - [Print]
 
@@ -148,6 +152,54 @@ Mathematical constants and functions
 | `Math.ceil : float -> float` | Returns the smallest integer greater than or equal to the number |
 | `Math.round : float -> float` | Returns the nearest integer, rounding half-way cases away from 0.0 |
 | `Math.truncate : float -> float` | Returns the integer part of a number, removing any fractional digits |
+
+## Config
+
+Typed configuration with schema validation
+
+| Function | Description |
+|----------|-------------|
+| `Config.define : ConfigSchema -> unit` | Register a configuration schema |
+| `Config.get : string -> ConfigValue` | Get a configuration value (throws if not found) |
+| `Config.getOr : string -> ConfigValue -> ConfigValue` | Get a configuration value with a fallback default |
+| `Config.set : string -> ConfigValue -> unit` | Set a configuration value (validates against schema) |
+| `Config.has : string -> bool` | Check if a configuration is defined |
+| `Config.list : unit -> (string * ConfigValue) list` | List all defined configurations with their current values |
+| `Config.reset : string -> unit` | Reset a configuration to its default value |
+
+## Time
+
+Time and date functions
+
+| Function | Description |
+|----------|-------------|
+| `Time.now : unit -> int` | Returns the current Unix timestamp in milliseconds since the epoch |
+| `Time.nowSeconds : unit -> int` | Returns the current Unix timestamp in seconds since the epoch |
+| `Time.format : string -> int -> string` | Formats a Unix timestamp (in milliseconds) according to a format string  Supported format specifiers: - %Y - Year (4 digits) - %m - Month (01-12) - %d - Day of month (01-31) - %H - Hour (00-23) - %M - Minute (00-59) - %S - Second (00-59) - %% - Literal '%'  Example: Time.format "%Y-%m-%d %H:%M:%S" timestamp |
+| `Time.parse : string -> string -> int option` | Parses a time string according to a format string, returning Some timestamp or None  Supported format specifiers: - %Y - Year (4 digits) - %m - Month (01-12) - %d - Day of month (01-31) - %H - Hour (00-23) - %M - Minute (00-59) - %S - Second (00-59)  Example: Time.parse "%Y-%m-%d" "2024-03-15" |
+
+## Url
+
+URL parsing and manipulation
+
+| Function | Description |
+|----------|-------------|
+| `Url.parse : string -> UrlInfo option` | Parses a URL string into its components Returns None if the URL is invalid |
+| `Url.isValid : string -> bool` | Check if a string is a valid URL |
+| `Url.encode : string -> string` | URL-encode a string (percent encoding) |
+| `Url.decode : string -> string option` | URL-decode a string (percent decoding) Returns None if the string contains invalid percent encoding |
+
+## Process
+
+Process execution and environment
+
+| Function | Description |
+|----------|-------------|
+| `Process.run : string -> string list -> ProcessResult` | Runs a command with the given arguments and returns the result. The command is executed directly (not through a shell).  Example:   Process.run "echo" ["hello"; "world"]   // Returns { exitCode = 0; stdout = "hello world\n"; stderr = "" } |
+| `Process.runShell : string -> ProcessResult` | Runs a shell command string and returns the result. The command is executed through the system shell (sh on Unix, cmd.exe on Windows).  Example:   Process.runShell "echo hello \| grep h"   // Returns { exitCode = 0; stdout = "hello\n"; stderr = "" } |
+| `Process.env : string -> string option` | Gets an environment variable value. Returns Some(value) if the variable exists, None otherwise.  Example:   Process.env "PATH"   // Returns Some("/usr/bin:/bin:...") |
+| `Process.setEnv : string -> string -> unit` | Sets an environment variable for the current process and child processes. Note: This only affects the current process and its children, not the parent process.  Example:   Process.setEnv "MY_VAR" "my_value"   // Returns () |
+| `Process.cwd : unit -> string` | Gets the current working directory.  Example:   Process.cwd ()   // Returns "/home/user/project" |
 
 ## Json
 
