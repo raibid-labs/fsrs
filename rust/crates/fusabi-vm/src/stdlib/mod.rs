@@ -2,6 +2,7 @@
 // Provides built-in functions for List, String, Map, Array, and Option operations
 
 pub mod array;
+pub mod commands;
 pub mod config;
 pub mod events;
 pub mod list;
@@ -12,6 +13,9 @@ pub mod result;
 pub mod print;
 pub mod string;
 pub mod process;
+pub mod terminal_control;
+pub mod terminal_info;
+pub mod ui_formatting;
 pub mod url;
 pub mod time;
 
@@ -421,6 +425,80 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Events.list", |_vm, args| {
             wrap_unary(args, events::events_list)
         });
+
+        // TerminalInfo functions
+        registry.register("TerminalInfo.getForegroundProcess", |_vm, args| {
+            wrap_unary(args, terminal_info::get_foreground_process)
+        });
+        registry.register("TerminalInfo.getCurrentWorkingDir", |_vm, args| {
+            wrap_unary(args, terminal_info::get_current_working_dir)
+        });
+        registry.register("TerminalInfo.getLine", |_vm, args| {
+            wrap_unary(args, terminal_info::get_line)
+        });
+        registry.register("TerminalInfo.getLines", |_vm, args| {
+            wrap_binary(args, terminal_info::get_lines)
+        });
+        registry.register("TerminalInfo.getWindowTitle", |_vm, args| {
+            wrap_unary(args, terminal_info::get_window_title)
+        });
+        registry.register("TerminalInfo.getTabTitle", |_vm, args| {
+            wrap_unary(args, terminal_info::get_tab_title)
+        });
+        registry.register("TerminalInfo.getTerminalSize", |_vm, args| {
+            wrap_unary(args, terminal_info::get_terminal_size)
+        });
+
+        // TerminalControl functions
+        registry.register("TerminalControl.sendText", |_vm, args| {
+            wrap_unary(args, terminal_control::send_text)
+        });
+        registry.register("TerminalControl.sendKeys", |_vm, args| {
+            wrap_unary(args, terminal_control::send_keys)
+        });
+        registry.register("TerminalControl.splitHorizontal", |_vm, args| {
+            wrap_unary(args, terminal_control::split_horizontal)
+        });
+        registry.register("TerminalControl.splitVertical", |_vm, args| {
+            wrap_unary(args, terminal_control::split_vertical)
+        });
+        registry.register("TerminalControl.closePane", |_vm, args| {
+            wrap_unary(args, terminal_control::close_pane)
+        });
+        registry.register("TerminalControl.focusPane", |_vm, args| {
+            wrap_unary(args, terminal_control::focus_pane)
+        });
+        registry.register("TerminalControl.createTab", |_vm, args| {
+            wrap_unary(args, terminal_control::create_tab)
+        });
+        registry.register("TerminalControl.closeTab", |_vm, args| {
+            wrap_unary(args, terminal_control::close_tab)
+        });
+        registry.register("TerminalControl.setTabTitle", |_vm, args| {
+            wrap_binary(args, terminal_control::set_tab_title)
+        });
+        registry.register("TerminalControl.showToast", |_vm, args| {
+            wrap_unary(args, terminal_control::show_toast)
+        });
+
+        // UIFormatting functions
+        registry.register("UIFormatting.onFormatTab", ui_formatting::on_format_tab);
+        registry.register("UIFormatting.onFormatStatusLeft", ui_formatting::on_format_status_left);
+        registry.register("UIFormatting.onFormatStatusRight", ui_formatting::on_format_status_right);
+        registry.register("UIFormatting.removeFormatter", |_vm, args| {
+            ui_formatting::remove_formatter(args)
+        });
+        registry.register("UIFormatting.clearFormatters", |_vm, args| {
+            ui_formatting::clear_formatters(args)
+        });
+
+        // Commands functions
+        registry.register("Commands.register", commands::commands_register);
+        registry.register("Commands.registerMany", commands::commands_register_many);
+        registry.register("Commands.unregister", commands::commands_unregister);
+        registry.register("Commands.list", commands::commands_list);
+        registry.register("Commands.getById", commands::commands_get_by_id);
+        registry.register("Commands.invoke", commands::commands_invoke);
     }
 
     // 2. Populate Globals with Module Records
@@ -668,6 +746,62 @@ pub fn register_stdlib(vm: &mut Vm) {
     vm.globals.insert(
         "Events".to_string(),
         Value::Record(Arc::new(Mutex::new(events_fields))),
+    );
+
+    // TerminalInfo Module
+    let mut terminal_info_fields = HashMap::new();
+    terminal_info_fields.insert("getForegroundProcess".to_string(), native("TerminalInfo.getForegroundProcess", 1));
+    terminal_info_fields.insert("getCurrentWorkingDir".to_string(), native("TerminalInfo.getCurrentWorkingDir", 1));
+    terminal_info_fields.insert("getLine".to_string(), native("TerminalInfo.getLine", 1));
+    terminal_info_fields.insert("getLines".to_string(), native("TerminalInfo.getLines", 2));
+    terminal_info_fields.insert("getWindowTitle".to_string(), native("TerminalInfo.getWindowTitle", 1));
+    terminal_info_fields.insert("getTabTitle".to_string(), native("TerminalInfo.getTabTitle", 1));
+    terminal_info_fields.insert("getTerminalSize".to_string(), native("TerminalInfo.getTerminalSize", 1));
+    vm.globals.insert(
+        "TerminalInfo".to_string(),
+        Value::Record(Arc::new(Mutex::new(terminal_info_fields))),
+    );
+
+    // TerminalControl Module
+    let mut terminal_control_fields = HashMap::new();
+    terminal_control_fields.insert("sendText".to_string(), native("TerminalControl.sendText", 1));
+    terminal_control_fields.insert("sendKeys".to_string(), native("TerminalControl.sendKeys", 1));
+    terminal_control_fields.insert("splitHorizontal".to_string(), native("TerminalControl.splitHorizontal", 1));
+    terminal_control_fields.insert("splitVertical".to_string(), native("TerminalControl.splitVertical", 1));
+    terminal_control_fields.insert("closePane".to_string(), native("TerminalControl.closePane", 1));
+    terminal_control_fields.insert("focusPane".to_string(), native("TerminalControl.focusPane", 1));
+    terminal_control_fields.insert("createTab".to_string(), native("TerminalControl.createTab", 1));
+    terminal_control_fields.insert("closeTab".to_string(), native("TerminalControl.closeTab", 1));
+    terminal_control_fields.insert("setTabTitle".to_string(), native("TerminalControl.setTabTitle", 2));
+    terminal_control_fields.insert("showToast".to_string(), native("TerminalControl.showToast", 1));
+    vm.globals.insert(
+        "TerminalControl".to_string(),
+        Value::Record(Arc::new(Mutex::new(terminal_control_fields))),
+    );
+
+    // UIFormatting Module
+    let mut ui_formatting_fields = HashMap::new();
+    ui_formatting_fields.insert("onFormatTab".to_string(), native("UIFormatting.onFormatTab", 1));
+    ui_formatting_fields.insert("onFormatStatusLeft".to_string(), native("UIFormatting.onFormatStatusLeft", 1));
+    ui_formatting_fields.insert("onFormatStatusRight".to_string(), native("UIFormatting.onFormatStatusRight", 1));
+    ui_formatting_fields.insert("removeFormatter".to_string(), native("UIFormatting.removeFormatter", 1));
+    ui_formatting_fields.insert("clearFormatters".to_string(), native("UIFormatting.clearFormatters", 1));
+    vm.globals.insert(
+        "UIFormatting".to_string(),
+        Value::Record(Arc::new(Mutex::new(ui_formatting_fields))),
+    );
+
+    // Commands Module
+    let mut commands_fields = HashMap::new();
+    commands_fields.insert("register".to_string(), native("Commands.register", 1));
+    commands_fields.insert("registerMany".to_string(), native("Commands.registerMany", 1));
+    commands_fields.insert("unregister".to_string(), native("Commands.unregister", 1));
+    commands_fields.insert("list".to_string(), native("Commands.list", 1));
+    commands_fields.insert("getById".to_string(), native("Commands.getById", 1));
+    commands_fields.insert("invoke".to_string(), native("Commands.invoke", 1));
+    vm.globals.insert(
+        "Commands".to_string(),
+        Value::Record(Arc::new(Mutex::new(commands_fields))),
     );
 }
 
