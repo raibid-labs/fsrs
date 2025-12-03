@@ -223,6 +223,29 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # Documentation freshness check
+  docs-freshness:
+    name: Documentation Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '*'
+
+      - name: Generate documentation
+        run: nu scripts/gen-docs.nu
+
+      - name: Check docs are up to date
+        run: |
+          if ! git diff --exit-code docs/STDLIB_REFERENCE.md; then
+            echo "::error::Documentation is stale! Run 'nu scripts/gen-docs.nu' and commit the changes."
+            exit 1
+          fi
+
   # Benchmark - ensure benchmarks compile (don't run them in CI)
   benchmark-check:
     name: Benchmark Check
@@ -248,7 +271,7 @@ jobs:
   # All checks passed
   ci-success:
     name: CI Success
-    needs: [check, test, build-release, coverage, security-audit, docs]
+    needs: [check, test, build-release, coverage, security-audit, docs, docs-freshness]
     runs-on: ubuntu-latest
     steps:
       - name: Mark CI as successful
