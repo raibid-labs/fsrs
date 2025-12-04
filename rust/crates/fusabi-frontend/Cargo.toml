@@ -1,13 +1,9 @@
 [package]
 name = "fusabi-frontend"
-version = "0.20.0"
+version = "0.21.0"
 edition = "2021"
-description = "Frontend (lexer, parser, compiler) for Fusabi scripting language"
-repository = "https://github.com/fusabi-lang/fusabi"
+description = "Frontend (parser, compiler) for Fusabi language"
 license = "MIT"
 
-[lib]
-path = "src/lib.rs"
-
 [dependencies]
-fusabi-vm = { path = "../fusabi-vm", version = "0.20.0" }
+fusabi-vm = { path = "../fusabi-vm", version = "0.21.0" }
