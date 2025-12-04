@@ -75,8 +75,8 @@
 //! assert!(ast.is_let());
 //! ```
 use crate::ast::{
-    BinOp, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern, Program,
-    TypeDefinition, TypeExpr, VariantDef,
+    BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem,
+    Pattern, Program, TypeDefinition, TypeExpr, VariantDef,
 };
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
@@ -1440,6 +1440,7 @@ impl Parser {
             Token::LBracketPipe => self.parse_array(),
             Token::LBracePipe => self.parse_anonymous_record_literal(),
             Token::LBrace => self.parse_record_literal(),
+            Token::Async => self.parse_computation_expr(),
             _ => {
                 let tok = self.current_token();
                 Err(ParseError::UnexpectedToken {
@@ -1602,6 +1603,112 @@ impl Parser {
     fn parse_simple_type(&mut self) -> Result<TypeExpr> {
         let name = self.expect_ident()?;
         Ok(TypeExpr::Named(name))
+    }
+
+    // ========================================================================
+    // Computation Expression Parsing
+    // ========================================================================
+
+    /// Parse computation expression: async { statements... }
+    ///
+    /// A computation expression is of the form:
+    ///   async { let! x = expr; do! expr; return expr }
+    ///
+    /// Future: could support other builders like "seq", "option", "result"
+    fn parse_computation_expr(&mut self) -> Result<Expr> {
+        // Get builder name from current token
+        let builder = match &self.current_token().token {
+            Token::Async => {
+                self.advance(); // consume 'async'
+                "async".to_string()
+            }
+            _ => {
+                let tok = self.current_token();
+                return Err(ParseError::UnexpectedToken {
+                    expected: "computation expression keyword".to_string(),
+                    found: tok.token.clone(),
+                    pos: tok.pos,
+                });
+            }
+        };
+
+        // Expect '{'
+        self.expect_token(Token::LBrace)?;
+
+        // Parse CE statements
+        let mut body = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            body.push(self.parse_ce_statement()?);
+            // Optional semicolons between statements
+            self.match_token(&Token::Semicolon);
+        }
+
+        // Expect '}'
+        self.expect_token(Token::RBrace)?;
+
+        Ok(Expr::ComputationExpr { builder, body })
+    }
+
+    /// Parse a single CE statement
+    ///
+    /// CE statements include:
+    /// - let! x = expr    (bind operation)
+    /// - let x = expr     (regular binding)
+    /// - do! expr         (bind with unit result)
+    /// - return expr      (return value)
+    /// - return! expr     (return from another CE)
+    /// - yield expr       (yield value for sequence)
+    /// - yield! expr      (yield from another sequence)
+    /// - expr             (plain expression)
+    fn parse_ce_statement(&mut self) -> Result<CEStatement> {
+        let tok = &self.current_token().token;
+
+        match tok {
+            Token::LetBang => {
+                self.advance(); // consume let!
+                let name = self.expect_ident()?;
+                self.expect_token(Token::Eq)?;
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::LetBang { name, value })
+            }
+            Token::Let => {
+                self.advance(); // consume let
+                let name = self.expect_ident()?;
+                self.expect_token(Token::Eq)?;
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::Let { name, value })
+            }
+            Token::DoBang => {
+                self.advance(); // consume do!
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::DoBang { value })
+            }
+            Token::Return => {
+                self.advance(); // consume return
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::Return { value })
+            }
+            Token::ReturnBang => {
+                self.advance(); // consume return!
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::ReturnBang { value })
+            }
+            Token::Yield => {
+                self.advance(); // consume yield
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::Yield { value })
+            }
+            Token::YieldBang => {
+                self.advance(); // consume yield!
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::YieldBang { value })
+            }
+            _ => {
+                // Plain expression
+                let value = Box::new(self.parse_expr()?);
+                Ok(CEStatement::Expr { value })
+            }
+        }
     }
 
     // ========================================================================
@@ -1846,5 +1953,326 @@ mod tests {
             }
             _ => panic!("Expected BinOp"),
         }
+    }
+
+    // ========================================================================
+    // Computation Expression Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_async_block_empty() {
+        let mut lexer = Lexer::new("async { }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        assert!(expr.is_computation_expr());
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 0);
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_async_block_return() {
+        let mut lexer = Lexer::new("async { return 42 }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        assert!(expr.is_computation_expr());
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    CEStatement::Return { value } => {
+                        assert!(matches!(**value, Expr::Lit(Literal::Int(42))));
+                    }
+                    _ => panic!("Expected Return statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_let_bang() {
+        let mut lexer = Lexer::new("async { let! x = op; return x }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        assert!(expr.is_computation_expr());
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 2);
+
+                // First statement: let! x = op
+                match &body[0] {
+                    CEStatement::LetBang { name, value } => {
+                        assert_eq!(name, "x");
+                        assert!(matches!(**value, Expr::Var(_)));
+                    }
+                    _ => panic!("Expected LetBang statement"),
+                }
+
+                // Second statement: return x
+                match &body[1] {
+                    CEStatement::Return { value } => {
+                        assert!(matches!(**value, Expr::Var(_)));
+                    }
+                    _ => panic!("Expected Return statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_do_bang() {
+        let mut lexer = Lexer::new("async { do! print 42 }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    CEStatement::DoBang { value } => {
+                        assert!(matches!(**value, Expr::App { .. }));
+                    }
+                    _ => panic!("Expected DoBang statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_regular_let_in_ce() {
+        let mut lexer = Lexer::new("async { let x = 42; return x }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 2);
+
+                // First statement: let x = 42
+                match &body[0] {
+                    CEStatement::Let { name, value } => {
+                        assert_eq!(name, "x");
+                        assert!(matches!(**value, Expr::Lit(Literal::Int(42))));
+                    }
+                    _ => panic!("Expected Let statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_return_bang() {
+        let mut lexer = Lexer::new("async { return! other }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    CEStatement::ReturnBang { value } => {
+                        assert!(matches!(**value, Expr::Var(_)));
+                    }
+                    _ => panic!("Expected ReturnBang statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_yield() {
+        let mut lexer = Lexer::new("async { yield 1; yield 2 }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 2);
+                match &body[0] {
+                    CEStatement::Yield { value } => {
+                        assert!(matches!(**value, Expr::Lit(Literal::Int(1))));
+                    }
+                    _ => panic!("Expected Yield statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_yield_bang() {
+        let mut lexer = Lexer::new("async { yield! sequence }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    CEStatement::YieldBang { value } => {
+                        assert!(matches!(**value, Expr::Var(_)));
+                    }
+                    _ => panic!("Expected YieldBang statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_plain_expr_in_ce() {
+        let mut lexer = Lexer::new("async { 1 + 2 }");
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    CEStatement::Expr { value } => {
+                        assert!(matches!(**value, Expr::BinOp { .. }));
+                    }
+                    _ => panic!("Expected Expr statement"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_complex_async_block() {
+        let input = r#"
+            async {
+                let! x = fetchData;
+                let y = x + 1;
+                do! printValue y;
+                return y
+            }
+        "#;
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 4);
+
+                // Verify statement types
+                assert!(matches!(body[0], CEStatement::LetBang { .. }));
+                assert!(matches!(body[1], CEStatement::Let { .. }));
+                assert!(matches!(body[2], CEStatement::DoBang { .. }));
+                assert!(matches!(body[3], CEStatement::Return { .. }));
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_async_blocks() {
+        let input = "async { let! x = async { return 42 }; return x }";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 2);
+
+                // First statement should have nested CE
+                match &body[0] {
+                    CEStatement::LetBang { value, .. } => {
+                        assert!(matches!(**value, Expr::ComputationExpr { .. }));
+                    }
+                    _ => panic!("Expected LetBang"),
+                }
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_async_with_optional_semicolons() {
+        // Test that semicolons are optional between statements
+        let input = "async { let x = 1 let y = 2 return x }";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 3);
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_async_with_trailing_semicolon() {
+        let input = "async { return 42; }";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        match expr {
+            Expr::ComputationExpr { builder, body } => {
+                assert_eq!(builder, "async");
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected ComputationExpr"),
+        }
+    }
+
+    #[test]
+    fn test_computation_expr_helpers() {
+        let expr = Expr::ComputationExpr {
+            builder: "async".to_string(),
+            body: vec![],
+        };
+
+        assert!(expr.is_computation_expr());
+        assert!(!expr.is_let());
+        assert!(!expr.is_if());
+
+        let result = expr.as_computation_expr();
+        assert!(result.is_some());
+        let (builder, body) = result.unwrap();
+        assert_eq!(builder, "async");
+        assert_eq!(body.len(), 0);
     }
 }
