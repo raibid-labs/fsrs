@@ -7,9 +7,7 @@
 // - Recursive loop implementation
 // - String manipulation for input parsing
 //
-// Note: Full Script.eval integration requires host-level support from the frontend crate.
-// This example shows the REPL structure and uses Script.evalToString which currently
-// returns an error message, but demonstrates how a complete REPL would work.
+// Note: Script.eval integration uses the host compiler to dynamically evaluate code.
 
 // ============================================================================
 // Configuration
@@ -72,7 +70,6 @@ let isCommand input =
     String.startsWith ":" trimmed
 
 // Evaluate user code using Script.evalToString
-// Note: Currently returns error message as Script.eval requires frontend integration
 let evalInput code =
     Console.writeLine ""
     let result = Script.evalToString code
