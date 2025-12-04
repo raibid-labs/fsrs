@@ -1,7 +1,10 @@
 //! Command-line interface for the Fusabi Package Manager (fpm).
 
 use clap::{Parser, Subcommand};
-use fusabi_pm::{Dependency, Manifest, Package};
+use fusabi_pm::{
+    install_dependencies, print_publish_instructions, publish_package, Dependency, Manifest,
+    Package, PackageBuilder,
+};
 use std::fs;
 
 #[derive(Parser)]
@@ -34,6 +37,10 @@ enum Commands {
         #[arg(long)]
         version: Option<String>,
     },
+    /// Install dependencies from fusabi.toml
+    Install,
+    /// Publish the package to the registry
+    Publish,
 }
 
 fn main() {
@@ -64,7 +71,34 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Commands::Install => {
+            if let Err(e) = run_install() {
+                eprintln!("Error installing dependencies: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Publish => {
+            if let Err(e) = run_publish() {
+                eprintln!("Error publishing package: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
+}
+
+/// Installs dependencies from fusabi.toml.
+fn run_install() -> Result<(), Box<dyn std::error::Error>> {
+    let current_dir = std::env::current_dir()?;
+    install_dependencies(&current_dir)?;
+    Ok(())
+}
+
+/// Publishes the package to the registry.
+fn run_publish() -> Result<(), Box<dyn std::error::Error>> {
+    let current_dir = std::env::current_dir()?;
+    let result = publish_package(&current_dir)?;
+    print_publish_instructions(&result);
+    Ok(())
 }
 
 /// Initializes a new Fusabi package in the current directory.
@@ -171,47 +205,11 @@ fn add_package(
 /// Builds the current Fusabi package.
 fn build_package() -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = std::env::current_dir()?;
-    let manifest_path = current_dir.join("fusabi.toml");
 
-    // Check if fusabi.toml exists
-    if !manifest_path.exists() {
-        return Err("fusabi.toml not found. Run 'fpm init' first.".into());
-    }
+    let builder = PackageBuilder::new(current_dir).verbose(true);
+    let result = builder.build()?;
 
-    // Load manifest
-    let manifest = Manifest::load(&manifest_path)?;
-    println!("Building {}...", manifest.package.name);
-
-    // Find main entry point
-    let main_path = current_dir.join("src").join("main.fsx");
-    if !main_path.exists() {
-        return Err("src/main.fsx not found".into());
-    }
-
-    // Read source code
-    let source = fs::read_to_string(&main_path)?;
-
-    // Compile to bytecode
-    match fusabi::compile_to_bytecode(&source) {
-        Ok(bytecode) => {
-            // Create target directory
-            let target_dir = current_dir.join("target");
-            if !target_dir.exists() {
-                fs::create_dir(&target_dir)?;
-            }
-
-            // Write bytecode to target directory
-            let output_path = target_dir.join(format!("{}.fzb", manifest.package.name));
-            fs::write(&output_path, bytecode)?;
-
-            println!("Build successful!");
-            println!("Output: {}", output_path.display());
-        }
-        Err(e) => {
-            eprintln!("Build failed: {}", e);
-            return Err(e.into());
-        }
-    }
+    println!("Output: {} ({} bytes)", result.output_path.display(), result.output_size);
 
     Ok(())
 }
