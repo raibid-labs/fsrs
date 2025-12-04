@@ -798,6 +798,11 @@ impl Vm {
                         .ok_or(VmError::StackUnderflow)?;
                     let receiver = &self.stack[receiver_idx];
 
+                    // DEBUG: Inspect receiver for CallMethod bug
+                    eprintln!("DEBUG: CallMethod method_name='{}', argc={}", method_name, argc);
+                    eprintln!("DEBUG: CallMethod receiver_idx={}", receiver_idx);
+                    eprintln!("DEBUG: CallMethod receiver={:?} (type: {})", receiver, receiver.type_name());
+
                     // Check receiver type and dispatch accordingly
                     match receiver {
                         Value::HostData(host_data) => {

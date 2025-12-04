@@ -11,6 +11,7 @@ toml = "0.8"
 thiserror = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 git2 = "0.20"
+dirs = "5.0"
 fusabi = { path = "../fusabi" }
 fusabi-vm = { path = "../fusabi-vm" }
 

@@ -1,0 +1,12 @@
+[package]
+name = "commander"
+version = "0.1.0"
+description = "A TUI file explorer for Fusabi"
+authors = ["Fusabi Community"]
+license = "MIT"
+repository = "https://github.com/fusabi-lang/commander"
+
+[dependencies]
+
+[scripts]
+run = "fus run main.fsx"

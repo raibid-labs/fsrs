@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use fusabi_pm::{
     install_dependencies, print_publish_instructions, publish_package, Dependency, Manifest,
-    Package, PackageBuilder,
+    Package, PackageBuilder, Registry,
 };
 use std::fs;
 
@@ -39,6 +39,13 @@ enum Commands {
     },
     /// Install dependencies from fusabi.toml
     Install,
+    /// Update the registry index
+    Update,
+    /// Search for packages in the registry
+    Search {
+        /// Search query
+        query: String,
+    },
     /// Publish the package to the registry
     Publish,
 }
@@ -77,6 +84,18 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Commands::Update => {
+            if let Err(e) = run_update() {
+                eprintln!("Error updating registry: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Search { query } => {
+            if let Err(e) = run_search(&query) {
+                eprintln!("Error searching registry: {}", e);
+                std::process::exit(1);
+            }
+        }
         Commands::Publish => {
             if let Err(e) = run_publish() {
                 eprintln!("Error publishing package: {}", e);
@@ -98,6 +117,42 @@ fn run_publish() -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = std::env::current_dir()?;
     let result = publish_package(&current_dir)?;
     print_publish_instructions(&result);
+    Ok(())
+}
+
+/// Updates the registry index by fetching the latest from fusabi-community.
+fn run_update() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = Registry::new();
+    registry.update()?;
+    Ok(())
+}
+
+/// Searches for packages in the registry.
+fn run_search(query: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Searching for '{}'...\n", query);
+    
+    let registry = Registry::new();
+    
+    match registry.search(query) {
+        Ok(matches) => {
+            if matches.is_empty() {
+                println!("No packages found matching '{}'", query);
+            } else {
+                println!("Found {} package(s):\n", matches.len());
+                for pkg in matches {
+                    println!("  {} v{}", pkg.name, pkg.version);
+                    if let Some(desc) = &pkg.description {
+                        println!("    {}", desc);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error searching registry: {}", e);
+            eprintln!("Try running 'fpm update' first.");
+        }
+    }
+    
     Ok(())
 }
 
