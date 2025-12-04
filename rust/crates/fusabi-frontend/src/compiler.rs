@@ -1376,25 +1376,14 @@ impl Compiler {
                     Ok(*value.clone())
                 } else {
                     // expr; rest...
-                    // -> builder.Combine(expr, builder.Delay(fun () -> desugar(rest)))
-
+                    // -> let _ = expr in desugar(rest)
+                    // Treat as synchronous sequence
                     let rest_expr = self.desugar_ce_statements(builder, rest)?;
 
-                    let delay_lambda = Expr::Lambda {
-                        param: "_".to_string(),
+                    Ok(Expr::Let {
+                        name: "_".to_string(),
+                        value: value.clone(),
                         body: Box::new(rest_expr),
-                    };
-
-                    let delay_expr = Expr::MethodCall {
-                        receiver: builder_expr.clone(),
-                        method_name: "Delay".to_string(),
-                        args: vec![delay_lambda],
-                    };
-
-                    Ok(Expr::MethodCall {
-                        receiver: builder_expr,
-                        method_name: "Combine".to_string(),
-                        args: vec![*value.clone(), delay_expr],
                     })
                 }
             }

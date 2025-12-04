@@ -1,50 +1,13 @@
-// Async Demo
-// Demonstrates the new Async Computation Expressions
-
-// Helper to print progress
+// Async Demo Debug 5
 let log msg =
-    let t = Time.format "%H:%M:%S" (Time.now()) in
-    printfn (sprintf "[%s] %s" t msg)
+    print msg
+    print "\n"
 
-// Simulating an async operation
-let sleep ms = async {
-    log (sprintf "Sleeping for %d ms..." ms)
-    // In a real implementation this would be non-blocking
-    // For now, we just spin/wait but structure it as async
-    let _ = Process.runShell (sprintf "sleep %f" (float ms / 1000.0))
-    log "Woke up!"
-    return ms
-}
-
-// Simulating data fetching
-let fetchData url = async {
-    log (sprintf "Fetching %s..." url)
-    do! sleep 500
-    return (sprintf "Content of %s" url)
-}
-
-// The main async workflow
 let main = async {
-    log "Starting workflow..."
-
-    // Sequential composition using let!
-    let! data1 = fetchData "http://example.com/1"
-    log (sprintf "Got: %s" data1)
-
-    let! data2 = fetchData "http://example.com/2"
-    log (sprintf "Got: %s" data2)
-
-    // Control flow
-    if String.length data1 > 10 then
-        log "Data1 is long, doing extra work..."
-        do! sleep 200
-    else
-        log "Data1 is short"
-
-    return "Done!"
+    log "Inside async"
+    return "Done"
 }
 
-// Execute the workflow
-log "--- RunSynchronously ---"
-let result = Async.RunSynchronously main
-log (sprintf "Final Result: %s" result)
+log "Calling RunSync"
+let _ = Async.RunSynchronously main
+log "Done"

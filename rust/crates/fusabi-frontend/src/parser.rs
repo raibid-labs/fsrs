@@ -1666,14 +1666,22 @@ impl Parser {
         match tok {
             Token::LetBang => {
                 self.advance(); // consume let!
-                let name = self.expect_ident()?;
+                let name = if self.match_token(&Token::Underscore) {
+                    "_".to_string()
+                } else {
+                    self.expect_ident()?
+                };
                 self.expect_token(Token::Eq)?;
                 let value = Box::new(self.parse_expr()?);
                 Ok(CEStatement::LetBang { name, value })
             }
             Token::Let => {
                 self.advance(); // consume let
-                let name = self.expect_ident()?;
+                let name = if self.match_token(&Token::Underscore) {
+                    "_".to_string()
+                } else {
+                    self.expect_ident()?
+                };
                 self.expect_token(Token::Eq)?;
                 let value = Box::new(self.parse_expr()?);
                 Ok(CEStatement::Let { name, value })

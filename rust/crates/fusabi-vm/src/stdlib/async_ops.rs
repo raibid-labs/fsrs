@@ -3,7 +3,6 @@
 
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
-use std::sync::Arc;
 
 // In this initial synchronous implementation:
 // Async<'a> is represented as a Closure (unit -> 'a)
@@ -11,7 +10,7 @@ use std::sync::Arc;
 
 /// Async.Return : 'a -> Async<'a>
 /// Creates an async computation that returns a value
-pub fn async_return(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_return(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
         return Err(VmError::Runtime(format!(
             "Async.Return expects 1 argument, got {}",
@@ -21,56 +20,6 @@ pub fn async_return(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 
     let value = args[0].clone();
 
-    // Create a thunk that returns the value
-    // For Phase 1, we can't easily create a Closure from Rust code without compiling.
-    // So we cheat: we'll use a special NativeFn that wraps the value?
-    // Or better: The compiler desugars `async { return 1 }` to `Async.Return 1`.
-    // The result of this call MUST be something that looks like an Async.
-    // If we use `unit -> 'a` functions, `Async.Return 1` must return a function.
-
-    // Problem: Creating a Fusabi function (Closure) from Rust is hard without compiling AST.
-    // Solution: Represents Async as a Variant `Async(Value)`?
-    // If we use a Variant `Async(NativeFn)` or `Async(Closure)`, we can distinguish it.
-
-    // Let's define Async<'a> as a Variant:
-    // Async.Thunk(closure) - a computation to be run
-    // Async.Value(val)     - a completed value (optimization)
-
-    // But `Bind` needs to compose them.
-    // If we use `Async.Thunk`, then `Bind` takes a Thunk and a function.
-    // `Bind` returns a NEW Thunk.
-    // Executing that new Thunk runs the first one, then the second.
-
-    // To make this work natively without compiling helper closures, we might need `Value::Async`.
-    // But we don't have that.
-    // Let's try to rely on the fact that the compiler can generate the lambdas.
-    // But `Async.Return` is a function called AT RUNTIME.
-
-    // Alternative: Since we are in `stdlib`, we can use `NativeFn` which holds a Rust closure.
-    // So `Async.Return(x)` returns `Value::NativeFn` which when called returns `x`.
-
-    // Let's define a helper to create a native thunk.
-    let thunk = Value::NativeFn {
-        name: "async_thunk".to_string(),
-        arity: 1, // Takes unit
-        args: vec![value], // Store the return value in partial application args
-    };
-    // Wait, NativeFn logic in VM usually executes a Rust function.
-    // We can register a generic "return_thunk" function and return a NativeFn pointing to it,
-    // with the value partially applied.
-
-    // Register "Async.impl_return" as a helper?
-    // Or just return a Variant wrapping the value, and `RunSynchronously` handles it.
-    // Let's go with the Variant approach for inspecting structure, but a Function is more idiomatic for "computation".
-
-    // Let's try the Variant approach for the *Async Data Type*:
-    // type Async<'a> =
-    //   | Pure of 'a
-    //   | Bind of Async<'b> * ('b -> Async<'a>)
-    //   | Delay of (unit -> Async<'a>)
-
-    // This is a "Free Monad" structure. It allows the runtime (RunSynchronously) to evaluate it loop-free (trampoline).
-
     Ok(Value::Variant {
         type_name: "Async".to_string(),
         variant_name: "Pure".to_string(),
@@ -79,7 +28,7 @@ pub fn async_return(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 }
 
 /// Async.Bind : Async<'a> -> ('a -> Async<'b>) -> Async<'b>
-pub fn async_bind(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_bind(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
         return Err(VmError::Runtime("Async.Bind expects 2 arguments".to_string()));
     }
@@ -95,7 +44,7 @@ pub fn async_bind(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 }
 
 /// Async.Delay : (unit -> Async<'a>) -> Async<'a>
-pub fn async_delay(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_delay(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
         return Err(VmError::Runtime("Async.Delay expects 1 argument".to_string()));
     }
@@ -109,8 +58,17 @@ pub fn async_delay(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     })
 }
 
+    let generator = args[0].clone();
+
+    Ok(Value::Variant {
+        type_name: "Async".to_string(),
+        variant_name: "Delay".to_string(),
+        fields: vec![generator],
+    })
+}
+
 /// Async.ReturnFrom : Async<'a> -> Async<'a>
-pub fn async_return_from(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_return_from(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
         return Err(VmError::Runtime("Async.ReturnFrom expects 1 argument".to_string()));
     }
@@ -118,7 +76,7 @@ pub fn async_return_from(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> 
 }
 
 /// Async.Zero : unit -> Async<unit>
-pub fn async_zero(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_zero(_vm: &mut Vm, _args: &[Value]) -> Result<Value, VmError> {
     Ok(Value::Variant {
         type_name: "Async".to_string(),
         variant_name: "Pure".to_string(),
@@ -128,7 +86,7 @@ pub fn async_zero(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 
 /// Async.Combine : Async<unit> -> Async<'a> -> Async<'a>
 /// Used for sequencing: do! a; b
-pub fn async_combine(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_combine(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
         return Err(VmError::Runtime("Async.Combine expects 2 arguments".to_string()));
     }
@@ -171,13 +129,6 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
                         if let Some(continuation) = continuations.pop() {
                             // We have a continuation (function) waiting for this result
                             // Execute continuation(result) -> returns new Async
-                            // Note: If continuation was from Combine, it might ignore the result (unit)
-                            // But Combine is stored as [async1, async2].
-                            // Wait, if we use Bind variant for everything, we need consistent handling.
-
-                            // If we use standard Bind: fields = [computation, binder]
-                            // We are currently processing "computation". We finished it and got "result".
-                            // Now we call binder(result) -> next_computation
                             current = vm.call_value(continuation, &[result])?;
                         } else {
                             // No more continuations, this is the final result
@@ -273,7 +224,7 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
 /// Helper function for Combine
 /// Async.Internal.CombineHelper : Async<'a> -> 'b -> Async<'a>
 /// Returns the first argument (the next computation), ignoring the second (the result of previous).
-pub fn async_combine_helper(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
+pub fn async_combine_helper(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
         return Err(VmError::Runtime("CombineHelper expects 2 arguments".to_string()));
     }

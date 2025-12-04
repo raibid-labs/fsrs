@@ -879,6 +879,12 @@ pub fn register_stdlib(vm: &mut Vm) {
         "Async".to_string(),
         Value::Record(Arc::new(Mutex::new(async_fields))),
     );
+
+    // Register 'async' builder alias (lowercase) to point to Async module
+    // This is required because 'async { ... }' desugars to 'async.Bind', etc.
+    if let Some(async_val) = vm.globals.get("Async") {
+        vm.globals.insert("async".to_string(), async_val.clone());
+    }
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>
