@@ -798,7 +798,7 @@ impl Vm {
                         .ok_or(VmError::StackUnderflow)?;
                     let receiver = &self.stack[receiver_idx];
 
-                    // Check if receiver is HostData
+                    // Check receiver type and dispatch accordingly
                     match receiver {
                         Value::HostData(host_data) => {
                             let type_id = host_data.type_id();
@@ -831,6 +831,77 @@ impl Vm {
                             let result = method_fn(self, &args)?;
 
                             self.push(result);
+                        }
+                        Value::Record(_) => {
+                            // For records, get the field (which should be a closure/function)
+                            // and call it with the arguments
+                            let record = receiver.clone();
+                            
+                            // Get the method/field from the record
+                            let method_value = record
+                                .record_get(&method_name)
+                                .map_err(|e| VmError::Runtime(format!("Method not found on record: {} ({})", method_name, e)))?;
+                            
+                            // Pop arguments from stack (in reverse order)
+                            let mut args = Vec::with_capacity(argc as usize);
+                            for _ in 0..argc {
+                                args.push(self.pop()?);
+                            }
+                            args.reverse();
+                            
+                            // Pop the receiver from stack
+                            self.pop()?;
+                            
+                            // Now call the method value based on its type
+                            match method_value {
+                                Value::Closure(closure) => {
+                                    // Push arguments onto stack for the call
+                                    for arg in args {
+                                        self.push(arg);
+                                    }
+                                    
+                                    // Create new frame for closure
+                                    let base = self.stack.len() - closure.arity as usize;
+                                    let frame = Frame::new(closure, base);
+                                    
+                                    if self.frames.len() >= 1000 {
+                                        return Err(VmError::CallStackOverflow);
+                                    }
+                                    self.frames.push(frame);
+                                }
+                                Value::NativeFn { name, arity, args: partial_args } => {
+                                    // Combine partial args with new args
+                                    let mut all_args = partial_args.clone();
+                                    all_args.extend(args);
+                                    
+                                    // Check if we have enough args
+                                    if all_args.len() < arity as usize {
+                                        // Partial application - return a new NativeFn with more args
+                                        self.push(Value::NativeFn {
+                                            name: name.clone(),
+                                            arity,
+                                            args: all_args,
+                                        });
+                                    } else {
+                                        // Full application - call the host function
+                                        let host_fn = {
+                                            let registry = self.host_registry.lock().unwrap();
+                                            registry.get(&name).ok_or_else(|| {
+                                                VmError::Runtime(format!("Host function not found: {}", name))
+                                            })?
+                                        };
+                                        let result = host_fn(self, &all_args)?;
+                                        self.push(result);
+                                    }
+                                }
+                                _ => {
+                                    return Err(VmError::Runtime(format!(
+                                        "Record field '{}' is not callable: {}",
+                                        method_name,
+                                        method_value.type_name()
+                                    )))
+                                }
+                            }
                         }
                         _ => {
                             return Err(VmError::Runtime(format!(
@@ -2700,5 +2771,61 @@ mod tests {
 
         // Collection should have occurred
         assert!(vm.gc_stats().collections > 0);
+    }
+
+    // ========== CallMethod on Record Tests ==========
+
+    #[test]
+    fn test_vm_call_method_on_record_with_native_fn() {
+        use crate::stdlib;
+        
+        let mut vm = Vm::new();
+        stdlib::register_stdlib(&mut vm);
+        
+        // Create a record with a NativeFn field (simulating a module like List)
+        let mut fields = HashMap::new();
+        fields.insert("len".to_string(), Value::NativeFn {
+            name: "List.length".to_string(),
+            arity: 1,
+            args: vec![],
+        });
+        let module = Value::Record(Arc::new(Mutex::new(fields)));
+        
+        // Create a list [1, 2, 3]
+        let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        
+        // Build bytecode: module.len([1,2,3]) should return 3
+        let chunk = ChunkBuilder::new()
+            .constant(module)
+            .constant(Value::Str("len".to_string()))
+            .constant(list)
+            .instruction(Instruction::LoadConst(0))  // Load module record
+            .instruction(Instruction::LoadConst(2))  // Load list argument
+            .instruction(Instruction::CallMethod(1, 1))  // Call "len" with 1 arg
+            .instruction(Instruction::Return)
+            .build();
+        
+        let result = vm.execute(chunk).unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_vm_call_method_on_record_field_not_found() {
+        let mut vm = Vm::new();
+        
+        // Create an empty record
+        let module = Value::Record(Arc::new(Mutex::new(HashMap::new())));
+        
+        // Try to call a non-existent method
+        let chunk = ChunkBuilder::new()
+            .constant(module)
+            .constant(Value::Str("nonexistent".to_string()))
+            .instruction(Instruction::LoadConst(0))
+            .instruction(Instruction::CallMethod(1, 0))
+            .instruction(Instruction::Return)
+            .build();
+        
+        let result = vm.execute(chunk);
+        assert!(matches!(result, Err(VmError::Runtime(msg)) if msg.contains("Method not found")));
     }
 }
