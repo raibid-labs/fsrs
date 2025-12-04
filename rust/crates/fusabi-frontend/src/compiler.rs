@@ -1201,17 +1201,204 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a computation expression (stub implementation)
+    /// Compile a computation expression
     fn compile_computation_expr(
         &mut self,
-        _builder: &str,
-        _body: &[crate::ast::CEStatement],
+        builder: &str,
+        body: &[crate::ast::CEStatement],
     ) -> CompileResult<()> {
-        // TODO: Implement computation expression compilation
-        // This is a stub to allow the AST to compile
-        Err(CompileError::CodeGenError(
-            "Computation expressions are not yet implemented".to_string(),
-        ))
+        // Desugar the computation expression
+        let desugared = self.desugar_ce_statements(builder, body)?;
+
+        // Compile the desugared expression
+        self.compile_expr(&desugared)
+    }
+
+    /// Desugar computation expression statements into builder calls
+    fn desugar_ce_statements(
+        &self,
+        builder: &str,
+        statements: &[crate::ast::CEStatement],
+    ) -> CompileResult<Expr> {
+        if statements.is_empty() {
+            // Empty block: return unit
+            // builder.Return(())
+            let builder_expr = Box::new(Expr::Var(builder.to_string()));
+            let unit_expr = Expr::Lit(Literal::Unit);
+
+            return Ok(Expr::MethodCall {
+                receiver: builder_expr,
+                method_name: "Return".to_string(),
+                args: vec![unit_expr],
+            });
+        }
+
+        let first = &statements[0];
+        let rest = &statements[1..];
+        let builder_expr = Box::new(Expr::Var(builder.to_string()));
+
+        match first {
+            crate::ast::CEStatement::Let { name, value } => {
+                // let x = expr; rest...
+                // -> let x = expr in desugar(rest)
+                // Implicitly handle rest being empty (though unlikely to be useful without return)
+                let rest_expr = self.desugar_ce_statements(builder, rest)?;
+                Ok(Expr::Let {
+                    name: name.clone(),
+                    value: value.clone(),
+                    body: Box::new(rest_expr),
+                })
+            }
+            crate::ast::CEStatement::LetBang { name, value } => {
+                // let! x = expr; rest...
+                // -> builder.Bind(expr, fun x -> desugar(rest))
+
+                // If rest is empty, Bind needs a continuation (implicit Return(()))
+                let rest_expr = self.desugar_ce_statements(builder, rest)?;
+
+                let continuation = Expr::Lambda {
+                    param: name.clone(),
+                    body: Box::new(rest_expr),
+                };
+
+                Ok(Expr::MethodCall {
+                    receiver: builder_expr,
+                    method_name: "Bind".to_string(),
+                    args: vec![*value.clone(), continuation],
+                })
+            }
+            crate::ast::CEStatement::DoBang { value } => {
+                // do! expr; rest...
+                // -> builder.Bind(expr, fun () -> desugar(rest))
+
+                let rest_expr = self.desugar_ce_statements(builder, rest)?;
+
+                // Use wildcard/dummy param for unit
+                let continuation = Expr::Lambda {
+                    param: "_".to_string(),
+                    body: Box::new(rest_expr),
+                };
+
+                Ok(Expr::MethodCall {
+                    receiver: builder_expr,
+                    method_name: "Bind".to_string(),
+                    args: vec![*value.clone(), continuation],
+                })
+            }
+            crate::ast::CEStatement::Return { value } => {
+                // return expr
+                // -> builder.Return(expr)
+                // Ignores rest (dead code)
+                Ok(Expr::MethodCall {
+                    receiver: builder_expr,
+                    method_name: "Return".to_string(),
+                    args: vec![*value.clone()],
+                })
+            }
+            crate::ast::CEStatement::ReturnBang { value } => {
+                // return! expr
+                // -> builder.ReturnFrom(expr)
+                Ok(Expr::MethodCall {
+                    receiver: builder_expr,
+                    method_name: "ReturnFrom".to_string(),
+                    args: vec![*value.clone()],
+                })
+            }
+            crate::ast::CEStatement::Yield { value } => {
+                // yield expr
+                // -> builder.Yield(expr)
+                let yield_expr = Expr::MethodCall {
+                    receiver: builder_expr.clone(),
+                    method_name: "Yield".to_string(),
+                    args: vec![*value.clone()],
+                };
+
+                if rest.is_empty() {
+                    Ok(yield_expr)
+                } else {
+                    // builder.Combine(yield_expr, builder.Delay(fun () -> desugar(rest)))
+                    let rest_expr = self.desugar_ce_statements(builder, rest)?;
+
+                    let delay_lambda = Expr::Lambda {
+                        param: "_".to_string(),
+                        body: Box::new(rest_expr),
+                    };
+
+                    let delay_expr = Expr::MethodCall {
+                        receiver: builder_expr.clone(),
+                        method_name: "Delay".to_string(),
+                        args: vec![delay_lambda],
+                    };
+
+                    Ok(Expr::MethodCall {
+                        receiver: builder_expr,
+                        method_name: "Combine".to_string(),
+                        args: vec![yield_expr, delay_expr],
+                    })
+                }
+            }
+            crate::ast::CEStatement::YieldBang { value } => {
+                // yield! expr
+                // -> builder.YieldFrom(expr)
+                let yield_from_expr = Expr::MethodCall {
+                    receiver: builder_expr.clone(),
+                    method_name: "YieldFrom".to_string(),
+                    args: vec![*value.clone()],
+                };
+
+                if rest.is_empty() {
+                    Ok(yield_from_expr)
+                } else {
+                    let rest_expr = self.desugar_ce_statements(builder, rest)?;
+
+                    let delay_lambda = Expr::Lambda {
+                        param: "_".to_string(),
+                        body: Box::new(rest_expr),
+                    };
+
+                    let delay_expr = Expr::MethodCall {
+                        receiver: builder_expr.clone(),
+                        method_name: "Delay".to_string(),
+                        args: vec![delay_lambda],
+                    };
+
+                    Ok(Expr::MethodCall {
+                        receiver: builder_expr,
+                        method_name: "Combine".to_string(),
+                        args: vec![yield_from_expr, delay_expr],
+                    })
+                }
+            }
+            crate::ast::CEStatement::Expr { value } => {
+                // expr; rest...
+                if rest.is_empty() {
+                    // Last expression in block - just return it
+                    Ok(*value.clone())
+                } else {
+                    // expr; rest...
+                    // -> builder.Combine(expr, builder.Delay(fun () -> desugar(rest)))
+
+                    let rest_expr = self.desugar_ce_statements(builder, rest)?;
+
+                    let delay_lambda = Expr::Lambda {
+                        param: "_".to_string(),
+                        body: Box::new(rest_expr),
+                    };
+
+                    let delay_expr = Expr::MethodCall {
+                        receiver: builder_expr.clone(),
+                        method_name: "Delay".to_string(),
+                        args: vec![delay_lambda],
+                    };
+
+                    Ok(Expr::MethodCall {
+                        receiver: builder_expr,
+                        method_name: "Combine".to_string(),
+                        args: vec![*value.clone(), delay_expr],
+                    })
+                }
+            }
+        }
     }
 
     /// Compile a match expression with full pattern matching support
