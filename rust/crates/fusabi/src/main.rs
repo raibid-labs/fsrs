@@ -17,8 +17,11 @@
 //! # Evaluate an expression directly
 //! fus run -e "let x = 42 in x + 1"
 //!
-//! # Package manager (coming soon)
-//! fus root install some-package
+//! # Package manager commands (delegates to fpm)
+//! fus pm init              # Initialize a new package
+//! fus pm build             # Build the package
+//! fus pm run               # Run the package
+//! fus pm add <package>     # Add a dependency
 //!
 //! # Show help
 //! fus --help
@@ -64,8 +67,8 @@ fn print_help() {
         "grind".truecolor(153, 204, 51)
     );
     println!(
-        "    {}                Package manager (coming soon)",
-        "root".truecolor(153, 204, 51)
+        "    {}                  Package manager (delegates to fpm)",
+        "pm".truecolor(153, 204, 51)
     );
     println!();
     println!("{}", "OPTIONS:".bold());
@@ -106,11 +109,13 @@ fn print_help() {
     println!();
     println!(
         "    {}",
-        "# Package manager (placeholder)"
+        "# Package manager (init, build, run, add)"
             .italic()
             .truecolor(128, 128, 128)
     );
-    println!("    fus root install some-package");
+    println!("    fus pm init");
+    println!("    fus pm build");
+    println!("    fus pm run");
     println!();
     println!(
         "For more information, see: {}",
@@ -127,7 +132,7 @@ enum Mode {
     RunFile(String),
     Eval(String),
     Grind(String),
-    Root(Vec<String>),
+    Pm(Vec<String>),
     Help,
     Version,
 }
@@ -193,10 +198,10 @@ fn parse_args() -> Result<Config, String> {
                 }
                 mode = Some(Mode::Grind(args[i].clone()));
             }
-            "root" => {
+            "pm" => {
                 i += 1;
                 let subcommands: Vec<String> = args[i..].to_vec();
-                mode = Some(Mode::Root(subcommands));
+                mode = Some(Mode::Pm(subcommands));
             }
             arg if arg.starts_with('-') => {
                 return Err(format!("Unknown option: {}", arg));
@@ -249,34 +254,8 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             grind_command(&path);
             Ok(())
         }
-        Mode::Root(subcommands) => {
-            println!("{}", "Fusabi Package Manager - Coming Soon".yellow().bold());
-            if !subcommands.is_empty() {
-                println!(
-                    "{} fus root {}",
-                    "Requested:".italic().truecolor(128, 128, 128),
-                    subcommands.join(" ")
-                );
-            }
-            println!();
-            println!("{}", "Planned features:".bold());
-            println!(
-                "  - fus root install <package>  {}",
-                "# Install package".italic().truecolor(128, 128, 128)
-            );
-            println!(
-                "  - fus root search <query>     {}",
-                "# Search packages".italic().truecolor(128, 128, 128)
-            );
-            println!(
-                "  - fus root update             {}",
-                "# Update packages".italic().truecolor(128, 128, 128)
-            );
-            println!(
-                "  - fus root init               {}",
-                "# Initialize project".italic().truecolor(128, 128, 128)
-            );
-            Ok(())
+        Mode::Pm(subcommands) => {
+            pm_command(subcommands)
         }
     }
 }
@@ -351,6 +330,98 @@ fn grind_command(file_path: &str) {
         bytes.len(),
         output_path
     );
+}
+
+/// Delegates to fpm (Fusabi Package Manager) subprocess.
+fn pm_command(subcommands: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+
+    // Show help if no subcommand provided
+    if subcommands.is_empty() {
+        println!("{}", "Fusabi Package Manager".truecolor(153, 204, 51).bold());
+        println!();
+        println!("{}", "USAGE:".bold());
+        println!("    fus pm <COMMAND> [OPTIONS]");
+        println!();
+        println!("{}", "COMMANDS:".bold());
+        println!(
+            "    {}             Initialize a new Fusabi package",
+            "init".truecolor(153, 204, 51)
+        );
+        println!(
+            "    {}            Build the current package",
+            "build".truecolor(153, 204, 51)
+        );
+        println!(
+            "    {}              Run the current package",
+            "run".truecolor(153, 204, 51)
+        );
+        println!(
+            "    {}              Add a dependency",
+            "add".truecolor(153, 204, 51)
+        );
+        println!();
+        println!("{}", "EXAMPLES:".bold());
+        println!(
+            "    {}",
+            "# Initialize a new package".italic().truecolor(128, 128, 128)
+        );
+        println!("    fus pm init");
+        println!();
+        println!(
+            "    {}",
+            "# Build and run the package".italic().truecolor(128, 128, 128)
+        );
+        println!("    fus pm build && fus pm run");
+        println!();
+        println!(
+            "    {}",
+            "# Add a dependency".italic().truecolor(128, 128, 128)
+        );
+        println!("    fus pm add json --version 1.0.0");
+        println!();
+        println!(
+            "{} You can also use '{}' directly for additional options.",
+            "Tip:".italic().truecolor(128, 128, 128),
+            "fpm".truecolor(153, 204, 51)
+        );
+        return Ok(());
+    }
+
+    // Try to execute fpm with the subcommands
+    let status = Command::new("fpm")
+        .args(&subcommands)
+        .status();
+
+    match status {
+        Ok(exit_status) => {
+            if !exit_status.success() {
+                process::exit(exit_status.code().unwrap_or(1));
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "{} fpm (Fusabi Package Manager) not found in PATH",
+                "Error:".truecolor(183, 65, 14).bold()
+            );
+            eprintln!();
+            eprintln!(
+                "{} Install fpm with: {}",
+                "Hint:".italic().truecolor(128, 128, 128),
+                "cargo install --path rust/crates/fusabi-pm".cyan()
+            );
+            process::exit(1);
+        }
+        Err(e) => {
+            eprintln!(
+                "{} Failed to execute fpm: {}",
+                "Error:".truecolor(183, 65, 14).bold(),
+                e
+            );
+            process::exit(1);
+        }
+    }
 }
 
 fn main() {
