@@ -2,6 +2,7 @@
 // Provides built-in functions for List, String, Map, Array, and Option operations
 
 pub mod array;
+pub mod async_ops;
 pub mod commands;
 pub mod config;
 pub mod console;
@@ -68,6 +69,17 @@ pub fn register_stdlib(vm: &mut Vm) {
             wrap_binary(args, list::list_nth)
         });
         registry.register("List.mapi", list::list_mapi);
+
+        // Async functions
+        registry.register("Async.Return", async_ops::async_return);
+        registry.register("Async.ReturnFrom", async_ops::async_return_from);
+        registry.register("Async.Bind", async_ops::async_bind);
+        registry.register("Async.Delay", async_ops::async_delay);
+        registry.register("Async.Zero", async_ops::async_zero);
+        registry.register("Async.Combine", async_ops::async_combine);
+        registry.register("Async.RunSynchronously", async_ops::async_run_synchronously);
+        // Internal helper
+        registry.register("Async.Internal.CombineHelper", async_ops::async_combine_helper);
 
         // Array functions
         registry.register("Array.length", |_vm, args| {
@@ -852,6 +864,20 @@ pub fn register_stdlib(vm: &mut Vm) {
     vm.globals.insert(
         "Script".to_string(),
         Value::Record(Arc::new(Mutex::new(script_fields))),
+    );
+
+    // Async Module
+    let mut async_fields = HashMap::new();
+    async_fields.insert("Return".to_string(), native("Async.Return", 1));
+    async_fields.insert("ReturnFrom".to_string(), native("Async.ReturnFrom", 1));
+    async_fields.insert("Bind".to_string(), native("Async.Bind", 2));
+    async_fields.insert("Delay".to_string(), native("Async.Delay", 1));
+    async_fields.insert("Zero".to_string(), native("Async.Zero", 0));
+    async_fields.insert("Combine".to_string(), native("Async.Combine", 2));
+    async_fields.insert("RunSynchronously".to_string(), native("Async.RunSynchronously", 1));
+    vm.globals.insert(
+        "Async".to_string(),
+        Value::Record(Arc::new(Mutex::new(async_fields))),
     );
 }
 
