@@ -47,12 +47,16 @@ fn main() {
             }
         }
         Commands::Build => {
-            println!("Build functionality not yet implemented");
-            std::process::exit(1);
+            if let Err(e) = build_package() {
+                eprintln!("Error building package: {}", e);
+                std::process::exit(1);
+            }
         }
         Commands::Run => {
-            println!("Run functionality not yet implemented");
-            std::process::exit(1);
+            if let Err(e) = run_package() {
+                eprintln!("Error running package: {}", e);
+                std::process::exit(1);
+            }
         }
         Commands::Add { package, version } => {
             if let Err(e) = add_package(package, version) {
@@ -162,6 +166,92 @@ fn add_package(
     println!("Updated fusabi.toml");
 
     Ok(())
+}
+
+/// Builds the current Fusabi package.
+fn build_package() -> Result<(), Box<dyn std::error::Error>> {
+    let current_dir = std::env::current_dir()?;
+    let manifest_path = current_dir.join("fusabi.toml");
+
+    // Check if fusabi.toml exists
+    if !manifest_path.exists() {
+        return Err("fusabi.toml not found. Run 'fpm init' first.".into());
+    }
+
+    // Load manifest
+    let manifest = Manifest::load(&manifest_path)?;
+    println!("Building {}...", manifest.package.name);
+
+    // Find main entry point
+    let main_path = current_dir.join("src").join("main.fsx");
+    if !main_path.exists() {
+        return Err("src/main.fsx not found".into());
+    }
+
+    // Read source code
+    let source = fs::read_to_string(&main_path)?;
+
+    // Compile to bytecode
+    match fusabi::compile_to_bytecode(&source) {
+        Ok(bytecode) => {
+            // Create target directory
+            let target_dir = current_dir.join("target");
+            if !target_dir.exists() {
+                fs::create_dir(&target_dir)?;
+            }
+
+            // Write bytecode to target directory
+            let output_path = target_dir.join(format!("{}.fzb", manifest.package.name));
+            fs::write(&output_path, bytecode)?;
+
+            println!("Build successful!");
+            println!("Output: {}", output_path.display());
+        }
+        Err(e) => {
+            eprintln!("Build failed: {}", e);
+            return Err(e.into());
+        }
+    }
+
+    Ok(())
+}
+
+/// Runs the current Fusabi package.
+fn run_package() -> Result<(), Box<dyn std::error::Error>> {
+    let current_dir = std::env::current_dir()?;
+    let manifest_path = current_dir.join("fusabi.toml");
+
+    // Check if fusabi.toml exists
+    if !manifest_path.exists() {
+        return Err("fusabi.toml not found. Run 'fpm init' first.".into());
+    }
+
+    // Load manifest
+    let manifest = Manifest::load(&manifest_path)?;
+    println!("Running {}...", manifest.package.name);
+
+    // Find main entry point
+    let main_path = current_dir.join("src").join("main.fsx");
+    if !main_path.exists() {
+        return Err("src/main.fsx not found".into());
+    }
+
+    // Read and execute source code
+    let source = fs::read_to_string(&main_path)?;
+
+    match fusabi::run_source(&source) {
+        Ok(result) => {
+            // Print result if not Unit
+            if !matches!(result, fusabi_vm::Value::Unit) {
+                println!("{}", result);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Runtime error: {}", e);
+            Err(e.into())
+        }
+    }
 }
 
 #[cfg(test)]
