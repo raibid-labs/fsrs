@@ -22,6 +22,7 @@ pub mod terminal_info;
 pub mod ui_formatting;
 pub mod url;
 pub mod time;
+pub mod navigation;
 
 #[cfg(feature = "json")]
 pub mod json;
@@ -587,6 +588,22 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("File.appendLine", |_vm, args| {
             wrap_binary(args, file::file_append_line)
         });
+
+        // Navigation functions (for Scarab integration)
+        registry.register("Nav.getKeymap", navigation::nav_get_keymap);
+        registry.register("Nav.setKeymap", navigation::nav_set_keymap);
+        registry.register("Nav.registerFocusable", navigation::nav_register_focusable);
+        registry.register("Nav.unregisterFocusable", navigation::nav_unregister_focusable);
+        registry.register("Nav.clearFocusables", navigation::nav_clear_focusables);
+        registry.register("Nav.getFocusableCount", navigation::nav_get_focusable_count);
+        registry.register("Nav.enterHintMode", navigation::nav_enter_hint_mode);
+        registry.register("Nav.exitHintMode", navigation::nav_exit_hint_mode);
+        registry.register("Nav.isHintModeActive", navigation::nav_is_hint_mode_active);
+        registry.register("Nav.jumpToAnchor", navigation::nav_jump_to_anchor);
+        registry.register("Nav.getCurrentAnchor", navigation::nav_get_current_anchor);
+        registry.register("Nav.getLimits", navigation::nav_get_limits);
+        registry.register("Nav.setLimits", navigation::nav_set_limits);
+        registry.register("Nav.listFocusables", navigation::nav_list_focusables);
     }
 
     // 2. Populate Globals with Module Records
@@ -971,6 +988,27 @@ pub fn register_stdlib(vm: &mut Vm) {
     if let Some(async_val) = vm.globals.get("Async") {
         vm.globals.insert("async".to_string(), async_val.clone());
     }
+
+    // Nav Module (Navigation/Keymap for Scarab integration)
+    let mut nav_fields = HashMap::new();
+    nav_fields.insert("getKeymap".to_string(), native("Nav.getKeymap", 0));
+    nav_fields.insert("setKeymap".to_string(), native("Nav.setKeymap", 1));
+    nav_fields.insert("registerFocusable".to_string(), native("Nav.registerFocusable", 2));
+    nav_fields.insert("unregisterFocusable".to_string(), native("Nav.unregisterFocusable", 1));
+    nav_fields.insert("clearFocusables".to_string(), native("Nav.clearFocusables", 0));
+    nav_fields.insert("getFocusableCount".to_string(), native("Nav.getFocusableCount", 0));
+    nav_fields.insert("enterHintMode".to_string(), native("Nav.enterHintMode", 0));
+    nav_fields.insert("exitHintMode".to_string(), native("Nav.exitHintMode", 0));
+    nav_fields.insert("isHintModeActive".to_string(), native("Nav.isHintModeActive", 0));
+    nav_fields.insert("jumpToAnchor".to_string(), native("Nav.jumpToAnchor", 1));
+    nav_fields.insert("getCurrentAnchor".to_string(), native("Nav.getCurrentAnchor", 0));
+    nav_fields.insert("getLimits".to_string(), native("Nav.getLimits", 0));
+    nav_fields.insert("setLimits".to_string(), native("Nav.setLimits", 2));
+    nav_fields.insert("listFocusables".to_string(), native("Nav.listFocusables", 0));
+    vm.globals.insert(
+        "Nav".to_string(),
+        Value::Record(Arc::new(Mutex::new(nav_fields))),
+    );
 }
 
 fn wrap_unary<F>(args: &[Value], f: F) -> Result<Value, VmError>

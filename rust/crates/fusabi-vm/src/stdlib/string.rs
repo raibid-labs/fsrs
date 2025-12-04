@@ -166,10 +166,12 @@ pub fn string_ends_with(suffix: &Value, s: &Value) -> Result<Value, VmError> {
 /// Supported specifiers: %s (string), %d (int), %f (float), %.Nf (float with precision), %% (literal %)
 /// Example: String.format "%s version %d.%d" ["MyApp"; 1; 0] returns "MyApp version 1.0"
 pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError> {
+    eprintln!("DEBUG: string_format called. format_str={:?} (type: {}), args={:?}", format_str, format_str.type_name(), args);
     // Extract the format string
     let fmt = match format_str {
         Value::Str(s) => s,
         _ => {
+            eprintln!("ERROR: string_format - format_str is not a string!");
             return Err(VmError::TypeMismatch {
                 expected: "string",
                 got: format_str.type_name(),
@@ -180,6 +182,7 @@ pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError>
     // Convert the list to a Vec for easier indexing
     let mut arg_vec = Vec::new();
     let mut current = args.clone();
+    eprintln!("DEBUG: string_format - processing args list");
     loop {
         match current {
             Value::Nil => break,
@@ -188,6 +191,7 @@ pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError>
                 current = (*tail).clone();
             }
             _ => {
+                eprintln!("ERROR: string_format - args is not a list!");
                 return Err(VmError::TypeMismatch {
                     expected: "list",
                     got: current.type_name(),
@@ -195,6 +199,7 @@ pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError>
             }
         }
     }
+    eprintln!("DEBUG: string_format - arg_vec: {:?}", arg_vec);
 
     // Process the format string
     let mut result = String::new();
@@ -218,19 +223,8 @@ pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError>
                                 "Not enough arguments for format string".to_string(),
                             ));
                         }
-                        let arg_str = match &arg_vec[arg_index] {
-                            Value::Str(s) => s.clone(),
-                            Value::Int(n) => n.to_string(),
-                            Value::Float(f) => f.to_string(),
-                            Value::Bool(b) => b.to_string(),
-                            _ => {
-                                return Err(VmError::Runtime(format!(
-                                    "Cannot format {} as string with %s",
-                                    arg_vec[arg_index].type_name()
-                                )))
-                            }
-                        };
-                        result.push_str(&arg_str);
+                        let arg_to_str = arg_vec[arg_index].to_string(); // Convert any value to string using Display
+                        result.push_str(&arg_to_str);
                         arg_index += 1;
                     }
                     'd' => {
