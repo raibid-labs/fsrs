@@ -7,6 +7,7 @@ pub mod commands;
 pub mod config;
 pub mod console;
 pub mod events;
+pub mod file;
 pub mod list;
 pub mod map;
 pub mod option;
@@ -27,6 +28,12 @@ pub mod json;
 
 #[cfg(feature = "osc")]
 pub mod net;
+
+#[cfg(feature = "http")]
+pub mod http;
+
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
@@ -423,6 +430,37 @@ pub fn register_stdlib(vm: &mut Vm) {
             registry.register("Osc.send", net::osc::osc_send);
         }
 
+        // Http functions (if http feature is enabled)
+        #[cfg(feature = "http")]
+        {
+            registry.register("Http.get", |_vm, args| {
+                wrap_unary(args, http::http_get)
+            });
+            registry.register("Http.post", |_vm, args| {
+                wrap_binary(args, http::http_post)
+            });
+            registry.register("Http.getJson", |_vm, args| {
+                wrap_unary(args, http::http_get_json)
+            });
+        }
+
+        // Sqlite functions (if sqlite feature is enabled)
+        #[cfg(feature = "sqlite")]
+        {
+            registry.register("Sqlite.open", |_vm, args| {
+                wrap_unary(args, sqlite::sqlite_open)
+            });
+            registry.register("Sqlite.execute", |_vm, args| {
+                wrap_binary(args, sqlite::sqlite_execute)
+            });
+            registry.register("Sqlite.query", |_vm, args| {
+                wrap_binary(args, sqlite::sqlite_query)
+            });
+            registry.register("Sqlite.close", |_vm, args| {
+                wrap_unary(args, sqlite::sqlite_close)
+            });
+        }
+
         // Events functions
         registry.register("Events.on", events::events_on);
         registry.register("Events.off", |_vm, args| {
@@ -537,6 +575,17 @@ pub fn register_stdlib(vm: &mut Vm) {
         });
         registry.register("Console.clear", |_vm, args| {
             wrap_unary(args, console::console_clear)
+        });
+
+        // File functions
+        registry.register("File.readLines", |_vm, args| {
+            wrap_unary(args, file::file_read_lines)
+        });
+        registry.register("File.writeLines", |_vm, args| {
+            wrap_binary(args, file::file_write_lines)
+        });
+        registry.register("File.appendLine", |_vm, args| {
+            wrap_binary(args, file::file_append_line)
         });
     }
 
@@ -773,6 +822,33 @@ pub fn register_stdlib(vm: &mut Vm) {
         );
     }
 
+    // Http Module (if http feature is enabled)
+    #[cfg(feature = "http")]
+    {
+        let mut http_fields = HashMap::new();
+        http_fields.insert("get".to_string(), native("Http.get", 1));
+        http_fields.insert("post".to_string(), native("Http.post", 2));
+        http_fields.insert("getJson".to_string(), native("Http.getJson", 1));
+        vm.globals.insert(
+            "Http".to_string(),
+            Value::Record(Arc::new(Mutex::new(http_fields))),
+        );
+    }
+
+    // Sqlite Module (if sqlite feature is enabled)
+    #[cfg(feature = "sqlite")]
+    {
+        let mut sqlite_fields = HashMap::new();
+        sqlite_fields.insert("open".to_string(), native("Sqlite.open", 1));
+        sqlite_fields.insert("execute".to_string(), native("Sqlite.execute", 2));
+        sqlite_fields.insert("query".to_string(), native("Sqlite.query", 2));
+        sqlite_fields.insert("close".to_string(), native("Sqlite.close", 1));
+        vm.globals.insert(
+            "Sqlite".to_string(),
+            Value::Record(Arc::new(Mutex::new(sqlite_fields))),
+        );
+    }
+
     // Events Module
     let mut events_fields = HashMap::new();
     events_fields.insert("on".to_string(), native("Events.on", 2));
@@ -855,6 +931,16 @@ pub fn register_stdlib(vm: &mut Vm) {
     vm.globals.insert(
         "Console".to_string(),
         Value::Record(Arc::new(Mutex::new(console_fields))),
+    );
+
+    // File Module
+    let mut file_fields = HashMap::new();
+    file_fields.insert("readLines".to_string(), native("File.readLines", 1));
+    file_fields.insert("writeLines".to_string(), native("File.writeLines", 2));
+    file_fields.insert("appendLine".to_string(), native("File.appendLine", 2));
+    vm.globals.insert(
+        "File".to_string(),
+        Value::Record(Arc::new(Mutex::new(file_fields))),
     );
 
     // Script Module
