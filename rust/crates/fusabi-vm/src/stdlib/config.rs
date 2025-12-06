@@ -6,10 +6,13 @@ use crate::vm::{Vm, VmError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+type ConfigEntry = (ConfigSchema, Option<Value>);
+type ConfigRegistryType = Arc<Mutex<HashMap<String, ConfigEntry>>>;
+
 lazy_static::lazy_static! {
     /// Global registry for configuration schemas and values
     /// Key: config name, Value: (schema, current value)
-    static ref CONFIG_REGISTRY: Arc<Mutex<HashMap<String, (ConfigSchema, Option<Value>)>>> =
+    static ref CONFIG_REGISTRY: ConfigRegistryType =
         Arc::new(Mutex::new(HashMap::new()));
 }
 
@@ -36,7 +39,7 @@ impl ConfigSchema {
             .get("name")
             .ok_or_else(|| VmError::Runtime("ConfigSchema missing 'name' field".to_string()))?
             .as_str()
-            .ok_or_else(|| VmError::TypeMismatch {
+            .ok_or(VmError::TypeMismatch {
                 expected: "string",
                 got: "other",
             })?
@@ -46,7 +49,7 @@ impl ConfigSchema {
             .get("configType")
             .ok_or_else(|| VmError::Runtime("ConfigSchema missing 'configType' field".to_string()))?
             .as_str()
-            .ok_or_else(|| VmError::TypeMismatch {
+            .ok_or(VmError::TypeMismatch {
                 expected: "string",
                 got: "other",
             })?
@@ -180,7 +183,7 @@ pub fn config_define(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 
         // Run validator function if provided
         if let Some(ref validator) = schema.validator {
-            let result = vm.call_value(validator.clone(), &[value.clone()])?;
+            let result = vm.call_value(validator.clone(), std::slice::from_ref(value))?;
             match result {
                 Value::Bool(true) => {}
                 Value::Bool(false) => {
@@ -270,7 +273,7 @@ pub fn config_set(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 
     // Run validator function if provided
     if let Some(ref validator) = schema.validator {
-        let result = vm.call_value(validator.clone(), &[value.clone()])?;
+        let result = vm.call_value(validator.clone(), std::slice::from_ref(value))?;
         match result {
             Value::Bool(true) => {}
             Value::Bool(false) => {

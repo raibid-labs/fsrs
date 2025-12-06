@@ -97,8 +97,8 @@ impl RateLimiter {
     }
 }
 
-/// Global navigation state (thread-safe)
 lazy_static::lazy_static! {
+    /// Global navigation state (thread-safe)
     static ref NAV_STATE: RwLock<NavigationState> = RwLock::new(NavigationState::new());
 }
 

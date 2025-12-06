@@ -1305,6 +1305,7 @@ impl Vm {
     }
 
     /// Pop an integer from the stack
+    #[allow(dead_code)]
     fn pop_int(&mut self) -> Result<i64, VmError> {
         let value = self.pop()?;
         value.as_int().ok_or(VmError::TypeMismatch {
