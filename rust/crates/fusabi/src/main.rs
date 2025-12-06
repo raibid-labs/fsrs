@@ -254,9 +254,7 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             grind_command(&path);
             Ok(())
         }
-        Mode::Pm(subcommands) => {
-            pm_command(subcommands)
-        }
+        Mode::Pm(subcommands) => pm_command(subcommands),
     }
 }
 
@@ -338,7 +336,10 @@ fn pm_command(subcommands: Vec<String>) -> Result<(), Box<dyn std::error::Error>
 
     // Show help if no subcommand provided
     if subcommands.is_empty() {
-        println!("{}", "Fusabi Package Manager".truecolor(153, 204, 51).bold());
+        println!(
+            "{}",
+            "Fusabi Package Manager".truecolor(153, 204, 51).bold()
+        );
         println!();
         println!("{}", "USAGE:".bold());
         println!("    fus pm <COMMAND> [OPTIONS]");
@@ -364,13 +365,17 @@ fn pm_command(subcommands: Vec<String>) -> Result<(), Box<dyn std::error::Error>
         println!("{}", "EXAMPLES:".bold());
         println!(
             "    {}",
-            "# Initialize a new package".italic().truecolor(128, 128, 128)
+            "# Initialize a new package"
+                .italic()
+                .truecolor(128, 128, 128)
         );
         println!("    fus pm init");
         println!();
         println!(
             "    {}",
-            "# Build and run the package".italic().truecolor(128, 128, 128)
+            "# Build and run the package"
+                .italic()
+                .truecolor(128, 128, 128)
         );
         println!("    fus pm build && fus pm run");
         println!();
@@ -389,9 +394,7 @@ fn pm_command(subcommands: Vec<String>) -> Result<(), Box<dyn std::error::Error>
     }
 
     // Try to execute fpm with the subcommands
-    let status = Command::new("fpm")
-        .args(&subcommands)
-        .status();
+    let status = Command::new("fpm").args(&subcommands).status();
 
     match status {
         Ok(exit_status) => {

@@ -24,13 +24,12 @@ pub fn http_get(url: &Value) -> Result<Value, VmError> {
         }
     };
 
-    let response = reqwest::blocking::get(url_str).map_err(|e| {
-        VmError::Runtime(format!("HTTP GET error: {}", e))
-    })?;
+    let response = reqwest::blocking::get(url_str)
+        .map_err(|e| VmError::Runtime(format!("HTTP GET error: {}", e)))?;
 
-    let body = response.text().map_err(|e| {
-        VmError::Runtime(format!("Failed to read response body: {}", e))
-    })?;
+    let body = response
+        .text()
+        .map_err(|e| VmError::Runtime(format!("Failed to read response body: {}", e)))?;
 
     Ok(Value::Str(body))
 }
@@ -66,9 +65,9 @@ pub fn http_post(url: &Value, body: &Value) -> Result<Value, VmError> {
         .send()
         .map_err(|e| VmError::Runtime(format!("HTTP POST error: {}", e)))?;
 
-    let response_body = response.text().map_err(|e| {
-        VmError::Runtime(format!("Failed to read response body: {}", e))
-    })?;
+    let response_body = response
+        .text()
+        .map_err(|e| VmError::Runtime(format!("Failed to read response body: {}", e)))?;
 
     Ok(Value::Str(response_body))
 }
@@ -87,13 +86,12 @@ pub fn http_get_json(url: &Value) -> Result<Value, VmError> {
         }
     };
 
-    let response = reqwest::blocking::get(url_str).map_err(|e| {
-        VmError::Runtime(format!("HTTP GET error: {}", e))
-    })?;
+    let response = reqwest::blocking::get(url_str)
+        .map_err(|e| VmError::Runtime(format!("HTTP GET error: {}", e)))?;
 
-    let json: serde_json::Value = response.json().map_err(|e| {
-        VmError::Runtime(format!("Failed to parse JSON response: {}", e))
-    })?;
+    let json: serde_json::Value = response
+        .json()
+        .map_err(|e| VmError::Runtime(format!("Failed to parse JSON response: {}", e)))?;
 
     json_value_to_fusabi(&json)
 }
@@ -149,7 +147,10 @@ mod tests {
 
     #[test]
     fn test_http_post_type_error_body() {
-        let result = http_post(&Value::Str("http://example.com".to_string()), &Value::Int(42));
+        let result = http_post(
+            &Value::Str("http://example.com".to_string()),
+            &Value::Int(42),
+        );
         assert!(result.is_err());
     }
 

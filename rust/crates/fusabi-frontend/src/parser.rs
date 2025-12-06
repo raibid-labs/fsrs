@@ -75,8 +75,8 @@
 //! assert!(ast.is_let());
 //! ```
 use crate::ast::{
-    BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem,
-    Pattern, Program, TypeDefinition, TypeExpr, VariantDef,
+    BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern,
+    Program, TypeDefinition, TypeExpr, VariantDef,
 };
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
@@ -1106,7 +1106,8 @@ impl Parser {
                         // Check if the base expression is a module (uppercase identifier)
                         // If so, use record access (for F#-style Module.function calls)
                         // not method call syntax
-                        let is_module = matches!(&expr, Expr::Var(name) if Self::is_uppercase_ident(name));
+                        let is_module =
+                            matches!(&expr, Expr::Var(name) if Self::is_uppercase_ident(name));
 
                         // Check if followed by '(' to distinguish method call from field access
                         // But don't use method call for module access (List.map, Array.ofList, etc.)
@@ -1934,11 +1935,7 @@ mod tests {
         let expr = parse_str(r#""a" ++ "b" ++ "c""#).unwrap();
         // Should parse as left-associative: ("a" ++ "b") ++ "c"
         match expr {
-            Expr::BinOp {
-                op,
-                left,
-                right: _,
-            } => {
+            Expr::BinOp { op, left, right: _ } => {
                 assert_eq!(op, BinOp::Concat);
                 match *left {
                     Expr::BinOp { op, .. } => {

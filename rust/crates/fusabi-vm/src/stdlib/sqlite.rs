@@ -32,9 +32,8 @@ pub fn sqlite_open(path: &Value) -> Result<Value, VmError> {
         }
     };
 
-    let conn = Connection::open(path_str).map_err(|e| {
-        VmError::Runtime(format!("Failed to open database '{}': {}", path_str, e))
-    })?;
+    let conn = Connection::open(path_str)
+        .map_err(|e| VmError::Runtime(format!("Failed to open database '{}': {}", path_str, e)))?;
 
     let mut next_id = NEXT_CONN_ID.lock().unwrap();
     let conn_id = *next_id;
@@ -70,13 +69,12 @@ pub fn sqlite_execute(conn_id: &Value, sql: &Value) -> Result<Value, VmError> {
     };
 
     let conns = CONNECTIONS.lock().unwrap();
-    let conn = conns.get(&id).ok_or_else(|| {
-        VmError::Runtime(format!("Invalid connection handle: {}", id))
-    })?;
+    let conn = conns
+        .get(&id)
+        .ok_or_else(|| VmError::Runtime(format!("Invalid connection handle: {}", id)))?;
 
-    conn.execute(sql_str, []).map_err(|e| {
-        VmError::Runtime(format!("SQL execute error: {}", e))
-    })?;
+    conn.execute(sql_str, [])
+        .map_err(|e| VmError::Runtime(format!("SQL execute error: {}", e)))?;
 
     Ok(Value::Unit)
 }
@@ -106,13 +104,13 @@ pub fn sqlite_query(conn_id: &Value, sql: &Value) -> Result<Value, VmError> {
     };
 
     let conns = CONNECTIONS.lock().unwrap();
-    let conn = conns.get(&id).ok_or_else(|| {
-        VmError::Runtime(format!("Invalid connection handle: {}", id))
-    })?;
+    let conn = conns
+        .get(&id)
+        .ok_or_else(|| VmError::Runtime(format!("Invalid connection handle: {}", id)))?;
 
-    let mut stmt = conn.prepare(sql_str).map_err(|e| {
-        VmError::Runtime(format!("SQL prepare error: {}", e))
-    })?;
+    let mut stmt = conn
+        .prepare(sql_str)
+        .map_err(|e| VmError::Runtime(format!("SQL prepare error: {}", e)))?;
 
     let column_count = stmt.column_count();
     let column_names: Vec<String> = stmt
@@ -258,10 +256,7 @@ mod tests {
 
     #[test]
     fn test_invalid_connection() {
-        let result = sqlite_execute(
-            &Value::Int(99999),
-            &Value::Str("SELECT 1".to_string()),
-        );
+        let result = sqlite_execute(&Value::Int(99999), &Value::Str("SELECT 1".to_string()));
         assert!(result.is_err());
     }
 
@@ -270,7 +265,10 @@ mod tests {
         let result = sqlite_open(&Value::Int(42));
         assert!(result.is_err());
 
-        let result = sqlite_execute(&Value::Str("not an id".to_string()), &Value::Str("SELECT 1".to_string()));
+        let result = sqlite_execute(
+            &Value::Str("not an id".to_string()),
+            &Value::Str("SELECT 1".to_string()),
+        );
         assert!(result.is_err());
     }
 }

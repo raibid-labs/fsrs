@@ -5,11 +5,7 @@ use crate::vm::VmError;
 use std::fmt::Write;
 
 /// Format a runtime error with source context
-pub fn format_error(
-    error: &VmError,
-    chunk: &Chunk,
-    instruction_offset: usize,
-) -> String {
+pub fn format_error(error: &VmError, chunk: &Chunk, instruction_offset: usize) -> String {
     let mut output = String::new();
 
     // Get span for the faulting instruction
@@ -53,7 +49,13 @@ fn format_source_snippet(source: &str, span: SourceSpan) -> Option<String> {
     let _ = writeln!(output, "{:width$} |", "", width = line_num_width);
 
     // Source line
-    let _ = writeln!(output, "{:width$} | {}", line_num, line, width = line_num_width);
+    let _ = writeln!(
+        output,
+        "{:width$} | {}",
+        line_num,
+        line,
+        width = line_num_width
+    );
 
     // Caret line
     let col = span.column.saturating_sub(1) as usize;

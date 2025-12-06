@@ -290,9 +290,11 @@ pub fn string_format(format_str: &Value, args: &Value) -> Result<Value, VmError>
                                 Value::Float(f) => {
                                     result.push_str(&format!("{:.prec$}", f, prec = precision))
                                 }
-                                Value::Int(n) => {
-                                    result.push_str(&format!("{:.prec$}", *n as f64, prec = precision))
-                                }
+                                Value::Int(n) => result.push_str(&format!(
+                                    "{:.prec$}",
+                                    *n as f64,
+                                    prec = precision
+                                )),
                                 _ => {
                                     return Err(VmError::Runtime(format!(
                                         "Expected float for %.{}f, got {}",
@@ -577,7 +579,10 @@ mod tests {
             Value::Float(12.99),
         ]);
         let result = string_format(&fmt, &args).unwrap();
-        assert_eq!(result, Value::Str("Product: 5 items at $12.99 each".to_string()));
+        assert_eq!(
+            result,
+            Value::Str("Product: 5 items at $12.99 each".to_string())
+        );
     }
 
     #[test]

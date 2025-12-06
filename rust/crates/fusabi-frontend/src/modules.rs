@@ -83,9 +83,8 @@ impl ModuleRegistry {
     /// imports without errors.
     fn register_stdlib_modules(&mut self) {
         // Helper function to create a placeholder variable that will be resolved at runtime
-        let make_global_ref = |qualified_name: &str| -> Expr {
-            Expr::Var(qualified_name.to_string())
-        };
+        let make_global_ref =
+            |qualified_name: &str| -> Expr { Expr::Var(qualified_name.to_string()) };
 
         // List module
         let mut list_bindings = HashMap::new();
@@ -108,7 +107,10 @@ impl ModuleRegistry {
         string_bindings.insert("split".to_string(), make_global_ref("String.split"));
         string_bindings.insert("concat".to_string(), make_global_ref("String.concat"));
         string_bindings.insert("contains".to_string(), make_global_ref("String.contains"));
-        string_bindings.insert("startsWith".to_string(), make_global_ref("String.startsWith"));
+        string_bindings.insert(
+            "startsWith".to_string(),
+            make_global_ref("String.startsWith"),
+        );
         string_bindings.insert("endsWith".to_string(), make_global_ref("String.endsWith"));
         self.register_module("String".to_string(), string_bindings, HashMap::new());
 
@@ -119,7 +121,10 @@ impl ModuleRegistry {
         map_bindings.insert("remove".to_string(), make_global_ref("Map.remove"));
         map_bindings.insert("find".to_string(), make_global_ref("Map.find"));
         map_bindings.insert("tryFind".to_string(), make_global_ref("Map.tryFind"));
-        map_bindings.insert("containsKey".to_string(), make_global_ref("Map.containsKey"));
+        map_bindings.insert(
+            "containsKey".to_string(),
+            make_global_ref("Map.containsKey"),
+        );
         map_bindings.insert("isEmpty".to_string(), make_global_ref("Map.isEmpty"));
         map_bindings.insert("count".to_string(), make_global_ref("Map.count"));
         map_bindings.insert("ofList".to_string(), make_global_ref("Map.ofList"));
@@ -130,8 +135,14 @@ impl ModuleRegistry {
         let mut option_bindings = HashMap::new();
         option_bindings.insert("isSome".to_string(), make_global_ref("Option.isSome"));
         option_bindings.insert("isNone".to_string(), make_global_ref("Option.isNone"));
-        option_bindings.insert("defaultValue".to_string(), make_global_ref("Option.defaultValue"));
-        option_bindings.insert("defaultWith".to_string(), make_global_ref("Option.defaultWith"));
+        option_bindings.insert(
+            "defaultValue".to_string(),
+            make_global_ref("Option.defaultValue"),
+        );
+        option_bindings.insert(
+            "defaultWith".to_string(),
+            make_global_ref("Option.defaultWith"),
+        );
         option_bindings.insert("map".to_string(), make_global_ref("Option.map"));
         option_bindings.insert("bind".to_string(), make_global_ref("Option.bind"));
         option_bindings.insert("iter".to_string(), make_global_ref("Option.iter"));
@@ -144,17 +155,32 @@ impl ModuleRegistry {
         let mut system_collections_generic_bindings = HashMap::new();
         // Map common .NET collection types to Fusabi equivalents
         system_collections_generic_bindings.insert("List".to_string(), make_global_ref("List"));
-        system_collections_generic_bindings.insert("Dictionary".to_string(), make_global_ref("Map"));
-        self.register_module("System.Collections.Generic".to_string(), system_collections_generic_bindings, HashMap::new());
+        system_collections_generic_bindings
+            .insert("Dictionary".to_string(), make_global_ref("Map"));
+        self.register_module(
+            "System.Collections.Generic".to_string(),
+            system_collections_generic_bindings,
+            HashMap::new(),
+        );
 
         // Support for System.Collections as well
         let mut system_collections_bindings = HashMap::new();
-        system_collections_bindings.insert("Generic".to_string(), make_global_ref("System.Collections.Generic"));
-        self.register_module("System.Collections".to_string(), system_collections_bindings, HashMap::new());
+        system_collections_bindings.insert(
+            "Generic".to_string(),
+            make_global_ref("System.Collections.Generic"),
+        );
+        self.register_module(
+            "System.Collections".to_string(),
+            system_collections_bindings,
+            HashMap::new(),
+        );
 
         // System module (parent of System.Collections)
         let mut system_bindings = HashMap::new();
-        system_bindings.insert("Collections".to_string(), make_global_ref("System.Collections"));
+        system_bindings.insert(
+            "Collections".to_string(),
+            make_global_ref("System.Collections"),
+        );
         self.register_module("System".to_string(), system_bindings, HashMap::new());
     }
 

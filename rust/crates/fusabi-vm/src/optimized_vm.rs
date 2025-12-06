@@ -118,7 +118,11 @@ impl FastVm {
             // Get instruction pointer and instructions reference
             let (ip, _instructions, closure) = {
                 let frame = self.frames.last().ok_or(VmError::NoActiveFrame)?;
-                (frame.ip, &frame.closure.chunk.instructions, frame.closure.clone())
+                (
+                    frame.ip,
+                    &frame.closure.chunk.instructions,
+                    frame.closure.clone(),
+                )
             };
 
             // Bounds check with early return
@@ -186,9 +190,10 @@ impl FastVm {
                             })
                         }
                     };
-                    let value = self.globals.get(&name).cloned().ok_or_else(|| {
-                        VmError::Runtime(format!("Undefined global: {}", name))
-                    })?;
+                    let value =
+                        self.globals.get(&name).cloned().ok_or_else(|| {
+                            VmError::Runtime(format!("Undefined global: {}", name))
+                        })?;
                     self.push_fast(value);
                 }
 
@@ -570,7 +575,9 @@ impl FastVm {
                             expected: "string",
                             got: field_name.type_name(),
                         })?;
-                    let field_value = record.record_get(field_name_str).map_err(VmError::Runtime)?;
+                    let field_value = record
+                        .record_get(field_name_str)
+                        .map_err(VmError::Runtime)?;
                     self.push_fast(field_value);
                 }
 
@@ -927,7 +934,11 @@ impl FastVm {
     }
 
     /// Call a closure from Rust code (re-entrant)
-    pub fn call_closure(&mut self, closure: Arc<Closure>, args: &[Value]) -> Result<Value, VmError> {
+    pub fn call_closure(
+        &mut self,
+        closure: Arc<Closure>,
+        args: &[Value],
+    ) -> Result<Value, VmError> {
         if closure.arity as usize != args.len() {
             return Err(VmError::Runtime(format!(
                 "Arity mismatch: expected {}, got {}",

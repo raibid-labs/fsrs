@@ -19,15 +19,13 @@ pub fn file_read_lines(path: &Value) -> Result<Value, VmError> {
         }
     };
 
-    let file = fs::File::open(path_str).map_err(|e| {
-        VmError::Runtime(format!("Failed to open file '{}': {}", path_str, e))
-    })?;
+    let file = fs::File::open(path_str)
+        .map_err(|e| VmError::Runtime(format!("Failed to open file '{}': {}", path_str, e)))?;
 
     let reader = BufReader::new(file);
     let lines: Result<Vec<String>, _> = reader.lines().collect();
-    let lines = lines.map_err(|e| {
-        VmError::Runtime(format!("Failed to read file '{}': {}", path_str, e))
-    })?;
+    let lines = lines
+        .map_err(|e| VmError::Runtime(format!("Failed to read file '{}': {}", path_str, e)))?;
 
     let mut result = Value::Nil;
     for line in lines.into_iter().rev() {
@@ -79,9 +77,8 @@ pub fn file_write_lines(path: &Value, lines: &Value) -> Result<Value, VmError> {
         }
     }
 
-    let mut file = fs::File::create(path_str).map_err(|e| {
-        VmError::Runtime(format!("Failed to create file '{}': {}", path_str, e))
-    })?;
+    let mut file = fs::File::create(path_str)
+        .map_err(|e| VmError::Runtime(format!("Failed to create file '{}': {}", path_str, e)))?;
 
     for line in line_vec {
         writeln!(file, "{}", line).map_err(|e| {
@@ -120,12 +117,14 @@ pub fn file_append_line(path: &Value, line: &Value) -> Result<Value, VmError> {
         .append(true)
         .open(path_str)
         .map_err(|e| {
-            VmError::Runtime(format!("Failed to open file '{}' for append: {}", path_str, e))
+            VmError::Runtime(format!(
+                "Failed to open file '{}' for append: {}",
+                path_str, e
+            ))
         })?;
 
-    writeln!(file, "{}", line_str).map_err(|e| {
-        VmError::Runtime(format!("Failed to append to file '{}': {}", path_str, e))
-    })?;
+    writeln!(file, "{}", line_str)
+        .map_err(|e| VmError::Runtime(format!("Failed to append to file '{}': {}", path_str, e)))?;
 
     Ok(Value::Unit)
 }
@@ -151,14 +150,14 @@ mod tests {
     fn test_file_read_lines() {
         let path = create_temp_file("read_lines.txt", "line1\nline2\nline3\n");
         let result = file_read_lines(&Value::Str(path.clone())).unwrap();
-        
+
         let expected = Value::vec_to_cons(vec![
             Value::Str("line1".to_string()),
             Value::Str("line2".to_string()),
             Value::Str("line3".to_string()),
         ]);
         assert_eq!(result, expected);
-        
+
         cleanup_temp_file(&path);
     }
 
@@ -189,13 +188,13 @@ mod tests {
             Value::Str("hello".to_string()),
             Value::Str("world".to_string()),
         ]);
-        
+
         let result = file_write_lines(&Value::Str(path.clone()), &lines).unwrap();
         assert_eq!(result, Value::Unit);
-        
+
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content, "hello\nworld\n");
-        
+
         cleanup_temp_file(&path);
     }
 
@@ -204,10 +203,10 @@ mod tests {
         let path = "/tmp/fusabi_test_write_lines_empty.txt".to_string();
         let result = file_write_lines(&Value::Str(path.clone()), &Value::Nil).unwrap();
         assert_eq!(result, Value::Unit);
-        
+
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content, "");
-        
+
         cleanup_temp_file(&path);
     }
 
@@ -229,13 +228,13 @@ mod tests {
     fn test_file_append_line() {
         let path = "/tmp/fusabi_test_append_line.txt".to_string();
         let _ = fs::remove_file(&path);
-        
+
         file_append_line(&Value::Str(path.clone()), &Value::Str("first".to_string())).unwrap();
         file_append_line(&Value::Str(path.clone()), &Value::Str("second".to_string())).unwrap();
-        
+
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content, "first\nsecond\n");
-        
+
         cleanup_temp_file(&path);
     }
 
@@ -243,13 +242,16 @@ mod tests {
     fn test_file_append_line_creates_file() {
         let path = "/tmp/fusabi_test_append_create.txt".to_string();
         let _ = fs::remove_file(&path);
-        
-        let result = file_append_line(&Value::Str(path.clone()), &Value::Str("new line".to_string()));
+
+        let result = file_append_line(
+            &Value::Str(path.clone()),
+            &Value::Str("new line".to_string()),
+        );
         assert!(result.is_ok());
-        
+
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content, "new line\n");
-        
+
         cleanup_temp_file(&path);
     }
 

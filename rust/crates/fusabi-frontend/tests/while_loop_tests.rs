@@ -32,9 +32,15 @@ fn test_while_loop_basic() {
     assert!(chunk.constants.contains(&Value::Unit));
 
     // Check for JumpIfFalse instruction
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::JumpIfFalse(_))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::JumpIfFalse(_))));
     // Check for backward Jump
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::Jump(offset) if *offset < 0)));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::Jump(offset) if *offset < 0)));
 }
 
 #[test]
@@ -44,8 +50,14 @@ fn test_while_loop_with_condition() {
     let chunk = compile_source(source).unwrap();
 
     // Should have necessary instructions for condition evaluation
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::Gt)));
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::JumpIfFalse(_))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::Gt)));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::JumpIfFalse(_))));
 }
 
 #[test]
@@ -54,7 +66,9 @@ fn test_while_loop_returns_unit() {
     let chunk = compile_source("while false do 42").unwrap();
 
     // The last constant loaded should be Unit (return value of while)
-    let last_load_const = chunk.instructions.iter()
+    let last_load_const = chunk
+        .instructions
+        .iter()
         .filter_map(|i| match i {
             Instruction::LoadConst(idx) => Some(*idx),
             _ => None,
@@ -73,7 +87,9 @@ fn test_break_statement() {
     let chunk = compile_source("while true do break").unwrap();
 
     // Should have two jumps: JumpIfFalse for condition and Jump for break
-    let jump_count = chunk.instructions.iter()
+    let jump_count = chunk
+        .instructions
+        .iter()
         .filter(|i| matches!(i, Instruction::Jump(_) | Instruction::JumpIfFalse(_)))
         .count();
 
@@ -87,7 +103,9 @@ fn test_continue_statement() {
     let chunk = compile_source("while true do continue").unwrap();
 
     // Should have jumps: JumpIfFalse for condition, Jump for continue, and backward Jump for loop
-    let jump_count = chunk.instructions.iter()
+    let jump_count = chunk
+        .instructions
+        .iter()
         .filter(|i| matches!(i, Instruction::Jump(_) | Instruction::JumpIfFalse(_)))
         .count();
 
@@ -117,14 +135,18 @@ fn test_nested_while_loops() {
     let chunk = compile_source(source).unwrap();
 
     // Should have multiple JumpIfFalse instructions (one per loop)
-    let jump_if_false_count = chunk.instructions.iter()
+    let jump_if_false_count = chunk
+        .instructions
+        .iter()
         .filter(|i| matches!(i, Instruction::JumpIfFalse(_)))
         .count();
 
     assert!(jump_if_false_count >= 2);
 
     // Should have backward jumps (one per loop)
-    let backward_jump_count = chunk.instructions.iter()
+    let backward_jump_count = chunk
+        .instructions
+        .iter()
         .filter(|i| matches!(i, Instruction::Jump(offset) if *offset < 0))
         .count();
 
@@ -158,9 +180,18 @@ fn test_while_with_if_and_break() {
     let chunk = compile_source(source).unwrap();
 
     // Should have both while and if control flow
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::JumpIfFalse(_))));
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::Jump(_))));
-    assert!(chunk.instructions.iter().any(|i| matches!(i, Instruction::Eq)));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::JumpIfFalse(_))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::Jump(_))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::Eq)));
 }
 
 #[test]

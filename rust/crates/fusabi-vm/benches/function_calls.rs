@@ -11,10 +11,7 @@ fn bench_native_function_calls(c: &mut Criterion) {
             let mut vm = Vm::new();
 
             // Register a simple native function
-            vm.register_host_fn(
-                "test_fn",
-                HostFn::new(|_args| Ok(Value::Int(42))),
-            );
+            vm.register_host_fn("test_fn", HostFn::new(|_args| Ok(Value::Int(42))));
 
             let mut builder = ChunkBuilder::new("native_call_benchmark");
 
@@ -47,9 +44,7 @@ fn bench_native_function_with_args(c: &mut Criterion) {
                 "add",
                 HostFn::new(|args| {
                     if args.len() != 2 {
-                        return Err(fusabi_vm::VmError::Runtime(
-                            "Expected 2 arguments".into(),
-                        ));
+                        return Err(fusabi_vm::VmError::Runtime("Expected 2 arguments".into()));
                     }
                     let a = args[0].as_int().unwrap_or(0);
                     let b = args[1].as_int().unwrap_or(0);

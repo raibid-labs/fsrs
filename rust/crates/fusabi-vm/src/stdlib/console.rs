@@ -25,7 +25,9 @@ pub fn console_read_line(input: &Value) -> Result<Value, VmError> {
     }
 
     let mut buffer = String::new();
-    io::stdout().flush().map_err(|e| VmError::Runtime(e.to_string()))?;
+    io::stdout()
+        .flush()
+        .map_err(|e| VmError::Runtime(e.to_string()))?;
     io::stdin()
         .lock()
         .read_line(&mut buffer)
@@ -92,7 +94,9 @@ pub fn console_write(text: &Value) -> Result<Value, VmError> {
     match text {
         Value::Str(s) => {
             print!("{}", s);
-            io::stdout().flush().map_err(|e| VmError::Runtime(e.to_string()))?;
+            io::stdout()
+                .flush()
+                .map_err(|e| VmError::Runtime(e.to_string()))?;
             Ok(Value::Unit)
         }
         other => Err(VmError::TypeMismatch {
@@ -138,7 +142,9 @@ pub fn console_clear(input: &Value) -> Result<Value, VmError> {
 
     // ANSI escape code to clear screen and move cursor to top-left
     print!("\x1b[2J\x1b[H");
-    io::stdout().flush().map_err(|e| VmError::Runtime(e.to_string()))?;
+    io::stdout()
+        .flush()
+        .map_err(|e| VmError::Runtime(e.to_string()))?;
     Ok(Value::Unit)
 }
 

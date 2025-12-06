@@ -1,7 +1,6 @@
 // Fusabi Net Module
 // Provides networking capabilities including OSC and HTTP
 
-
 // OSC (Open Sound Control) client implementation for Fusabi
 // Enables communication with OSC-compatible applications like Ardour
 
@@ -189,7 +188,9 @@ pub fn osc_send(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmErro
 /// Deprecated: Use Osc.send instead
 pub fn osc_send_int(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
     // Implementation kept for reference but not registered
-    Err(VmError::Runtime("Osc.sendInt is deprecated, use Osc.send".to_string()))
+    Err(VmError::Runtime(
+        "Osc.sendInt is deprecated, use Osc.send".to_string(),
+    ))
 }
 
 #[cfg(feature = "osc")]
@@ -197,7 +198,9 @@ pub fn osc_send_int(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, Vm
 /// Deprecated: Use Osc.send instead
 pub fn osc_send_float(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
     // Implementation kept for reference but not registered
-    Err(VmError::Runtime("Osc.sendFloat is deprecated, use Osc.send".to_string()))
+    Err(VmError::Runtime(
+        "Osc.sendFloat is deprecated, use Osc.send".to_string(),
+    ))
 }
 
 #[cfg(feature = "osc")]
@@ -205,7 +208,9 @@ pub fn osc_send_float(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, 
 /// Deprecated: Use Osc.send instead
 pub fn osc_send_string(_vm: &mut crate::vm::Vm, args: &[Value]) -> Result<Value, VmError> {
     // Implementation kept for reference but not registered
-    Err(VmError::Runtime("Osc.sendString is deprecated, use Osc.send".to_string()))
+    Err(VmError::Runtime(
+        "Osc.sendString is deprecated, use Osc.send".to_string(),
+    ))
 }
 
 #[cfg(test)]
@@ -237,11 +242,17 @@ mod tests {
         let client = osc_client(&mut vm, &client_args).unwrap();
 
         // Test send with wrong type
-        let result = osc_send(&mut vm, &[Value::Int(42), Value::Str("/test".to_string()), Value::Nil]);
+        let result = osc_send(
+            &mut vm,
+            &[Value::Int(42), Value::Str("/test".to_string()), Value::Nil],
+        );
         assert!(result.is_err());
 
         // Test send with correct types (empty list)
-        let result = osc_send(&mut vm, &[client.clone(), Value::Str("/test".to_string()), Value::Nil]);
+        let result = osc_send(
+            &mut vm,
+            &[client.clone(), Value::Str("/test".to_string()), Value::Nil],
+        );
         // May succeed or fail depending on network availability, but should not panic
         let _ = result;
     }

@@ -6,11 +6,11 @@ use crate::value::Value;
 #[cfg(feature = "json")]
 use crate::vm::VmError;
 #[cfg(feature = "json")]
-use std::sync::Mutex;
-#[cfg(feature = "json")]
 use std::collections::HashMap;
 #[cfg(feature = "json")]
 use std::sync::Arc;
+#[cfg(feature = "json")]
+use std::sync::Mutex;
 
 #[cfg(feature = "json")]
 /// Json.parse : string -> 'a
@@ -18,9 +18,8 @@ use std::sync::Arc;
 pub fn json_parse(arg: &Value) -> Result<Value, VmError> {
     match arg {
         Value::Str(json_str) => {
-            let parsed: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-                VmError::Runtime(format!("JSON parse error: {}", e))
-            })?;
+            let parsed: serde_json::Value = serde_json::from_str(json_str)
+                .map_err(|e| VmError::Runtime(format!("JSON parse error: {}", e)))?;
 
             json_value_to_fusabi(&parsed)
         }
@@ -69,9 +68,8 @@ fn json_value_to_fusabi(json: &serde_json::Value) -> Result<Value, VmError> {
 /// Converts a Fusabi value to a JSON string
 pub fn json_stringify(arg: &Value) -> Result<Value, VmError> {
     let json_value = fusabi_value_to_json(arg)?;
-    let json_str = serde_json::to_string(&json_value).map_err(|e| {
-        VmError::Runtime(format!("JSON stringify error: {}", e))
-    })?;
+    let json_str = serde_json::to_string(&json_value)
+        .map_err(|e| VmError::Runtime(format!("JSON stringify error: {}", e)))?;
     Ok(Value::Str(json_str))
 }
 
@@ -82,11 +80,9 @@ fn fusabi_value_to_json(value: &Value) -> Result<serde_json::Value, VmError> {
         Value::Unit => Ok(serde_json::Value::Null),
         Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Int(i) => Ok(serde_json::Value::Number((*i).into())),
-        Value::Float(f) => {
-            serde_json::Number::from_f64(*f)
-                .map(serde_json::Value::Number)
-                .ok_or_else(|| VmError::Runtime("Invalid float value for JSON".to_string()))
-        }
+        Value::Float(f) => serde_json::Number::from_f64(*f)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| VmError::Runtime("Invalid float value for JSON".to_string())),
         Value::Str(s) => Ok(serde_json::Value::String(s.clone())),
         Value::Array(arr) => {
             let borrowed = arr.lock().unwrap();
@@ -155,9 +151,8 @@ fn cons_to_vec(value: &Value) -> Result<Vec<Value>, VmError> {
 /// Converts a Fusabi value to a pretty-printed JSON string
 pub fn json_stringify_pretty(arg: &Value) -> Result<Value, VmError> {
     let json_value = fusabi_value_to_json(arg)?;
-    let json_str = serde_json::to_string_pretty(&json_value).map_err(|e| {
-        VmError::Runtime(format!("JSON stringify error: {}", e))
-    })?;
+    let json_str = serde_json::to_string_pretty(&json_value)
+        .map_err(|e| VmError::Runtime(format!("JSON stringify error: {}", e)))?;
     Ok(Value::Str(json_str))
 }
 
@@ -213,7 +208,8 @@ mod tests {
 
     #[test]
     fn test_parse_object() {
-        let result = json_parse(&Value::Str(r#"{"name": "Alice", "age": 30}"#.to_string())).unwrap();
+        let result =
+            json_parse(&Value::Str(r#"{"name": "Alice", "age": 30}"#.to_string())).unwrap();
         match result {
             Value::Record(rec) => {
                 let borrowed = rec.lock().unwrap();

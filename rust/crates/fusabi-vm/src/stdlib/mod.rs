@@ -10,19 +10,19 @@ pub mod events;
 pub mod file;
 pub mod list;
 pub mod map;
-pub mod option;
 pub mod math;
-pub mod result;
+pub mod navigation;
+pub mod option;
 pub mod print;
+pub mod process;
+pub mod result;
 pub mod script;
 pub mod string;
-pub mod process;
 pub mod terminal_control;
 pub mod terminal_info;
+pub mod time;
 pub mod ui_formatting;
 pub mod url;
-pub mod time;
-pub mod navigation;
 
 #[cfg(feature = "json")]
 pub mod json;
@@ -38,9 +38,9 @@ pub mod sqlite;
 
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
-use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Register all standard library functions into the VM
 pub fn register_stdlib(vm: &mut Vm) {
@@ -73,9 +73,7 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("List.exists", list::list_exists);
         registry.register("List.find", list::list_find);
         registry.register("List.tryFind", list::list_try_find);
-        registry.register("List.nth", |_vm, args| {
-            wrap_binary(args, list::list_nth)
-        });
+        registry.register("List.nth", |_vm, args| wrap_binary(args, list::list_nth));
         registry.register("List.mapi", list::list_mapi);
 
         // Async functions
@@ -87,7 +85,10 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Async.Combine", async_ops::async_combine);
         registry.register("Async.RunSynchronously", async_ops::async_run_synchronously);
         // Internal helper
-        registry.register("Async.Internal.CombineHelper", async_ops::async_combine_helper);
+        registry.register(
+            "Async.Internal.CombineHelper",
+            async_ops::async_combine_helper,
+        );
 
         // Array functions
         registry.register("Array.length", |_vm, args| {
@@ -96,9 +97,7 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Array.isEmpty", |_vm, args| {
             wrap_unary(args, array::array_is_empty)
         });
-        registry.register("Array.get", |_vm, args| {
-            wrap_binary(args, array::array_get)
-        });
+        registry.register("Array.get", |_vm, args| wrap_binary(args, array::array_get));
         registry.register("Array.set", |_vm, args| {
             wrap_ternary(args, array::array_set)
         });
@@ -149,91 +148,43 @@ pub fn register_stdlib(vm: &mut Vm) {
         });
 
         // Print functions (global functions, not in a module)
-        registry.register("print", |_vm, args| {
-            wrap_unary(args, print::print_value)
-        });
+        registry.register("print", |_vm, args| wrap_unary(args, print::print_value));
         registry.register("printfn", |_vm, args| {
             wrap_unary(args, print::printfn_value)
         });
 
         // Math functions
-        registry.register("Math.pi", |_vm, args| {
-            wrap_unary(args, math::math_pi)
-        });
-        registry.register("Math.e", |_vm, args| {
-            wrap_unary(args, math::math_e)
-        });
-        registry.register("Math.abs", |_vm, args| {
-            wrap_unary(args, math::math_abs)
-        });
-        registry.register("Math.sqrt", |_vm, args| {
-            wrap_unary(args, math::math_sqrt)
-        });
-        registry.register("Math.pow", |_vm, args| {
-            wrap_binary(args, math::math_pow)
-        });
-        registry.register("Math.max", |_vm, args| {
-            wrap_binary(args, math::math_max)
-        });
-        registry.register("Math.min", |_vm, args| {
-            wrap_binary(args, math::math_min)
-        });
-        registry.register("Math.sin", |_vm, args| {
-            wrap_unary(args, math::math_sin)
-        });
-        registry.register("Math.cos", |_vm, args| {
-            wrap_unary(args, math::math_cos)
-        });
-        registry.register("Math.tan", |_vm, args| {
-            wrap_unary(args, math::math_tan)
-        });
-        registry.register("Math.asin", |_vm, args| {
-            wrap_unary(args, math::math_asin)
-        });
-        registry.register("Math.acos", |_vm, args| {
-            wrap_unary(args, math::math_acos)
-        });
-        registry.register("Math.atan", |_vm, args| {
-            wrap_unary(args, math::math_atan)
-        });
+        registry.register("Math.pi", |_vm, args| wrap_unary(args, math::math_pi));
+        registry.register("Math.e", |_vm, args| wrap_unary(args, math::math_e));
+        registry.register("Math.abs", |_vm, args| wrap_unary(args, math::math_abs));
+        registry.register("Math.sqrt", |_vm, args| wrap_unary(args, math::math_sqrt));
+        registry.register("Math.pow", |_vm, args| wrap_binary(args, math::math_pow));
+        registry.register("Math.max", |_vm, args| wrap_binary(args, math::math_max));
+        registry.register("Math.min", |_vm, args| wrap_binary(args, math::math_min));
+        registry.register("Math.sin", |_vm, args| wrap_unary(args, math::math_sin));
+        registry.register("Math.cos", |_vm, args| wrap_unary(args, math::math_cos));
+        registry.register("Math.tan", |_vm, args| wrap_unary(args, math::math_tan));
+        registry.register("Math.asin", |_vm, args| wrap_unary(args, math::math_asin));
+        registry.register("Math.acos", |_vm, args| wrap_unary(args, math::math_acos));
+        registry.register("Math.atan", |_vm, args| wrap_unary(args, math::math_atan));
         registry.register("Math.atan2", |_vm, args| {
             wrap_binary(args, math::math_atan2)
         });
-        registry.register("Math.log", |_vm, args| {
-            wrap_unary(args, math::math_log)
-        });
-        registry.register("Math.log10", |_vm, args| {
-            wrap_unary(args, math::math_log10)
-        });
-        registry.register("Math.exp", |_vm, args| {
-            wrap_unary(args, math::math_exp)
-        });
-        registry.register("Math.floor", |_vm, args| {
-            wrap_unary(args, math::math_floor)
-        });
-        registry.register("Math.ceil", |_vm, args| {
-            wrap_unary(args, math::math_ceil)
-        });
-        registry.register("Math.round", |_vm, args| {
-            wrap_unary(args, math::math_round)
-        });
+        registry.register("Math.log", |_vm, args| wrap_unary(args, math::math_log));
+        registry.register("Math.log10", |_vm, args| wrap_unary(args, math::math_log10));
+        registry.register("Math.exp", |_vm, args| wrap_unary(args, math::math_exp));
+        registry.register("Math.floor", |_vm, args| wrap_unary(args, math::math_floor));
+        registry.register("Math.ceil", |_vm, args| wrap_unary(args, math::math_ceil));
+        registry.register("Math.round", |_vm, args| wrap_unary(args, math::math_round));
         registry.register("Math.truncate", |_vm, args| {
             wrap_unary(args, math::math_truncate)
         });
 
         // Map functions
-        registry.register("Map.empty", |_vm, args| {
-            wrap_unary(args, map::map_empty)
-        });
-        registry.register("Map.add", |_vm, args| {
-            wrap_ternary(args, map::map_add)
-        });
-        registry.register("Map.remove", |_vm, args| {
-            wrap_binary(args, map::map_remove)
-        });
-        registry.register("Map.find", |_vm, args| {
-            wrap_binary(args, map::map_find)
-        });
+        registry.register("Map.empty", |_vm, args| wrap_unary(args, map::map_empty));
+        registry.register("Map.add", |_vm, args| wrap_ternary(args, map::map_add));
+        registry.register("Map.remove", |_vm, args| wrap_binary(args, map::map_remove));
+        registry.register("Map.find", |_vm, args| wrap_binary(args, map::map_find));
         registry.register("Map.tryFind", |_vm, args| {
             wrap_binary(args, map::map_try_find)
         });
@@ -243,15 +194,9 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Map.isEmpty", |_vm, args| {
             wrap_unary(args, map::map_is_empty)
         });
-        registry.register("Map.count", |_vm, args| {
-            wrap_unary(args, map::map_count)
-        });
-        registry.register("Map.ofList", |_vm, args| {
-            wrap_unary(args, map::map_of_list)
-        });
-        registry.register("Map.toList", |_vm, args| {
-            wrap_unary(args, map::map_to_list)
-        });
+        registry.register("Map.count", |_vm, args| wrap_unary(args, map::map_count));
+        registry.register("Map.ofList", |_vm, args| wrap_unary(args, map::map_of_list));
+        registry.register("Map.toList", |_vm, args| wrap_unary(args, map::map_to_list));
         registry.register("Map.map", map::map_map);
         registry.register("Map.iter", map::map_iter);
 
@@ -383,9 +328,7 @@ pub fn register_stdlib(vm: &mut Vm) {
         });
 
         // Time functions
-        registry.register("Time.now", |_vm, args| {
-            wrap_unary(args, time::time_now)
-        });
+        registry.register("Time.now", |_vm, args| wrap_unary(args, time::time_now));
         registry.register("Time.nowSeconds", |_vm, args| {
             wrap_unary(args, time::time_now_seconds)
         });
@@ -397,25 +340,17 @@ pub fn register_stdlib(vm: &mut Vm) {
         });
 
         // Url functions
-        registry.register("Url.parse", |_vm, args| {
-            wrap_unary(args, url::url_parse)
-        });
+        registry.register("Url.parse", |_vm, args| wrap_unary(args, url::url_parse));
         registry.register("Url.isValid", |_vm, args| {
             wrap_unary(args, url::url_is_valid)
         });
-        registry.register("Url.encode", |_vm, args| {
-            wrap_unary(args, url::url_encode)
-        });
-        registry.register("Url.decode", |_vm, args| {
-            wrap_unary(args, url::url_decode)
-        });
+        registry.register("Url.encode", |_vm, args| wrap_unary(args, url::url_encode));
+        registry.register("Url.decode", |_vm, args| wrap_unary(args, url::url_decode));
 
         // Json functions (if json feature is enabled)
         #[cfg(feature = "json")]
         {
-            registry.register("Json.parse", |_vm, args| {
-                wrap_unary(args, json::json_parse)
-            });
+            registry.register("Json.parse", |_vm, args| wrap_unary(args, json::json_parse));
             registry.register("Json.stringify", |_vm, args| {
                 wrap_unary(args, json::json_stringify)
             });
@@ -434,12 +369,8 @@ pub fn register_stdlib(vm: &mut Vm) {
         // Http functions (if http feature is enabled)
         #[cfg(feature = "http")]
         {
-            registry.register("Http.get", |_vm, args| {
-                wrap_unary(args, http::http_get)
-            });
-            registry.register("Http.post", |_vm, args| {
-                wrap_binary(args, http::http_post)
-            });
+            registry.register("Http.get", |_vm, args| wrap_unary(args, http::http_get));
+            registry.register("Http.post", |_vm, args| wrap_binary(args, http::http_post));
             registry.register("Http.getJson", |_vm, args| {
                 wrap_unary(args, http::http_get_json)
             });
@@ -540,8 +471,14 @@ pub fn register_stdlib(vm: &mut Vm) {
 
         // UIFormatting functions
         registry.register("UIFormatting.onFormatTab", ui_formatting::on_format_tab);
-        registry.register("UIFormatting.onFormatStatusLeft", ui_formatting::on_format_status_left);
-        registry.register("UIFormatting.onFormatStatusRight", ui_formatting::on_format_status_right);
+        registry.register(
+            "UIFormatting.onFormatStatusLeft",
+            ui_formatting::on_format_status_left,
+        );
+        registry.register(
+            "UIFormatting.onFormatStatusRight",
+            ui_formatting::on_format_status_right,
+        );
         registry.register("UIFormatting.removeFormatter", |_vm, args| {
             ui_formatting::remove_formatter(args)
         });
@@ -593,7 +530,10 @@ pub fn register_stdlib(vm: &mut Vm) {
         registry.register("Nav.getKeymap", navigation::nav_get_keymap);
         registry.register("Nav.setKeymap", navigation::nav_set_keymap);
         registry.register("Nav.registerFocusable", navigation::nav_register_focusable);
-        registry.register("Nav.unregisterFocusable", navigation::nav_unregister_focusable);
+        registry.register(
+            "Nav.unregisterFocusable",
+            navigation::nav_unregister_focusable,
+        );
         registry.register("Nav.clearFocusables", navigation::nav_clear_focusables);
         registry.register("Nav.getFocusableCount", navigation::nav_get_focusable_count);
         registry.register("Nav.enterHintMode", navigation::nav_enter_hint_mode);
@@ -656,11 +596,13 @@ pub fn register_stdlib(vm: &mut Vm) {
     );
 
     // Register sprintf as a global alias for String.format
-    vm.globals.insert("sprintf".to_string(), native("sprintf", 2));
+    vm.globals
+        .insert("sprintf".to_string(), native("sprintf", 2));
 
     // Register print functions as globals
     vm.globals.insert("print".to_string(), native("print", 1));
-    vm.globals.insert("printfn".to_string(), native("printfn", 1));
+    vm.globals
+        .insert("printfn".to_string(), native("printfn", 1));
 
     // Math Module
     let mut math_fields = HashMap::new();
@@ -884,13 +826,28 @@ pub fn register_stdlib(vm: &mut Vm) {
 
     // TerminalInfo Module
     let mut terminal_info_fields = HashMap::new();
-    terminal_info_fields.insert("getForegroundProcess".to_string(), native("TerminalInfo.getForegroundProcess", 1));
-    terminal_info_fields.insert("getCurrentWorkingDir".to_string(), native("TerminalInfo.getCurrentWorkingDir", 1));
+    terminal_info_fields.insert(
+        "getForegroundProcess".to_string(),
+        native("TerminalInfo.getForegroundProcess", 1),
+    );
+    terminal_info_fields.insert(
+        "getCurrentWorkingDir".to_string(),
+        native("TerminalInfo.getCurrentWorkingDir", 1),
+    );
     terminal_info_fields.insert("getLine".to_string(), native("TerminalInfo.getLine", 1));
     terminal_info_fields.insert("getLines".to_string(), native("TerminalInfo.getLines", 2));
-    terminal_info_fields.insert("getWindowTitle".to_string(), native("TerminalInfo.getWindowTitle", 1));
-    terminal_info_fields.insert("getTabTitle".to_string(), native("TerminalInfo.getTabTitle", 1));
-    terminal_info_fields.insert("getTerminalSize".to_string(), native("TerminalInfo.getTerminalSize", 1));
+    terminal_info_fields.insert(
+        "getWindowTitle".to_string(),
+        native("TerminalInfo.getWindowTitle", 1),
+    );
+    terminal_info_fields.insert(
+        "getTabTitle".to_string(),
+        native("TerminalInfo.getTabTitle", 1),
+    );
+    terminal_info_fields.insert(
+        "getTerminalSize".to_string(),
+        native("TerminalInfo.getTerminalSize", 1),
+    );
     vm.globals.insert(
         "TerminalInfo".to_string(),
         Value::Record(Arc::new(Mutex::new(terminal_info_fields))),
@@ -898,16 +855,46 @@ pub fn register_stdlib(vm: &mut Vm) {
 
     // TerminalControl Module
     let mut terminal_control_fields = HashMap::new();
-    terminal_control_fields.insert("sendText".to_string(), native("TerminalControl.sendText", 1));
-    terminal_control_fields.insert("sendKeys".to_string(), native("TerminalControl.sendKeys", 1));
-    terminal_control_fields.insert("splitHorizontal".to_string(), native("TerminalControl.splitHorizontal", 1));
-    terminal_control_fields.insert("splitVertical".to_string(), native("TerminalControl.splitVertical", 1));
-    terminal_control_fields.insert("closePane".to_string(), native("TerminalControl.closePane", 1));
-    terminal_control_fields.insert("focusPane".to_string(), native("TerminalControl.focusPane", 1));
-    terminal_control_fields.insert("createTab".to_string(), native("TerminalControl.createTab", 1));
-    terminal_control_fields.insert("closeTab".to_string(), native("TerminalControl.closeTab", 1));
-    terminal_control_fields.insert("setTabTitle".to_string(), native("TerminalControl.setTabTitle", 2));
-    terminal_control_fields.insert("showToast".to_string(), native("TerminalControl.showToast", 1));
+    terminal_control_fields.insert(
+        "sendText".to_string(),
+        native("TerminalControl.sendText", 1),
+    );
+    terminal_control_fields.insert(
+        "sendKeys".to_string(),
+        native("TerminalControl.sendKeys", 1),
+    );
+    terminal_control_fields.insert(
+        "splitHorizontal".to_string(),
+        native("TerminalControl.splitHorizontal", 1),
+    );
+    terminal_control_fields.insert(
+        "splitVertical".to_string(),
+        native("TerminalControl.splitVertical", 1),
+    );
+    terminal_control_fields.insert(
+        "closePane".to_string(),
+        native("TerminalControl.closePane", 1),
+    );
+    terminal_control_fields.insert(
+        "focusPane".to_string(),
+        native("TerminalControl.focusPane", 1),
+    );
+    terminal_control_fields.insert(
+        "createTab".to_string(),
+        native("TerminalControl.createTab", 1),
+    );
+    terminal_control_fields.insert(
+        "closeTab".to_string(),
+        native("TerminalControl.closeTab", 1),
+    );
+    terminal_control_fields.insert(
+        "setTabTitle".to_string(),
+        native("TerminalControl.setTabTitle", 2),
+    );
+    terminal_control_fields.insert(
+        "showToast".to_string(),
+        native("TerminalControl.showToast", 1),
+    );
     vm.globals.insert(
         "TerminalControl".to_string(),
         Value::Record(Arc::new(Mutex::new(terminal_control_fields))),
@@ -915,11 +902,26 @@ pub fn register_stdlib(vm: &mut Vm) {
 
     // UIFormatting Module
     let mut ui_formatting_fields = HashMap::new();
-    ui_formatting_fields.insert("onFormatTab".to_string(), native("UIFormatting.onFormatTab", 1));
-    ui_formatting_fields.insert("onFormatStatusLeft".to_string(), native("UIFormatting.onFormatStatusLeft", 1));
-    ui_formatting_fields.insert("onFormatStatusRight".to_string(), native("UIFormatting.onFormatStatusRight", 1));
-    ui_formatting_fields.insert("removeFormatter".to_string(), native("UIFormatting.removeFormatter", 1));
-    ui_formatting_fields.insert("clearFormatters".to_string(), native("UIFormatting.clearFormatters", 1));
+    ui_formatting_fields.insert(
+        "onFormatTab".to_string(),
+        native("UIFormatting.onFormatTab", 1),
+    );
+    ui_formatting_fields.insert(
+        "onFormatStatusLeft".to_string(),
+        native("UIFormatting.onFormatStatusLeft", 1),
+    );
+    ui_formatting_fields.insert(
+        "onFormatStatusRight".to_string(),
+        native("UIFormatting.onFormatStatusRight", 1),
+    );
+    ui_formatting_fields.insert(
+        "removeFormatter".to_string(),
+        native("UIFormatting.removeFormatter", 1),
+    );
+    ui_formatting_fields.insert(
+        "clearFormatters".to_string(),
+        native("UIFormatting.clearFormatters", 1),
+    );
     vm.globals.insert(
         "UIFormatting".to_string(),
         Value::Record(Arc::new(Mutex::new(ui_formatting_fields))),
@@ -928,7 +930,10 @@ pub fn register_stdlib(vm: &mut Vm) {
     // Commands Module
     let mut commands_fields = HashMap::new();
     commands_fields.insert("register".to_string(), native("Commands.register", 1));
-    commands_fields.insert("registerMany".to_string(), native("Commands.registerMany", 1));
+    commands_fields.insert(
+        "registerMany".to_string(),
+        native("Commands.registerMany", 1),
+    );
     commands_fields.insert("unregister".to_string(), native("Commands.unregister", 1));
     commands_fields.insert("list".to_string(), native("Commands.list", 1));
     commands_fields.insert("getById".to_string(), native("Commands.getById", 1));
@@ -977,7 +982,10 @@ pub fn register_stdlib(vm: &mut Vm) {
     async_fields.insert("Delay".to_string(), native("Async.Delay", 1));
     async_fields.insert("Zero".to_string(), native("Async.Zero", 0));
     async_fields.insert("Combine".to_string(), native("Async.Combine", 2));
-    async_fields.insert("RunSynchronously".to_string(), native("Async.RunSynchronously", 1));
+    async_fields.insert(
+        "RunSynchronously".to_string(),
+        native("Async.RunSynchronously", 1),
+    );
     vm.globals.insert(
         "Async".to_string(),
         Value::Record(Arc::new(Mutex::new(async_fields))),
@@ -993,18 +1001,39 @@ pub fn register_stdlib(vm: &mut Vm) {
     let mut nav_fields = HashMap::new();
     nav_fields.insert("getKeymap".to_string(), native("Nav.getKeymap", 0));
     nav_fields.insert("setKeymap".to_string(), native("Nav.setKeymap", 1));
-    nav_fields.insert("registerFocusable".to_string(), native("Nav.registerFocusable", 2));
-    nav_fields.insert("unregisterFocusable".to_string(), native("Nav.unregisterFocusable", 1));
-    nav_fields.insert("clearFocusables".to_string(), native("Nav.clearFocusables", 0));
-    nav_fields.insert("getFocusableCount".to_string(), native("Nav.getFocusableCount", 0));
+    nav_fields.insert(
+        "registerFocusable".to_string(),
+        native("Nav.registerFocusable", 2),
+    );
+    nav_fields.insert(
+        "unregisterFocusable".to_string(),
+        native("Nav.unregisterFocusable", 1),
+    );
+    nav_fields.insert(
+        "clearFocusables".to_string(),
+        native("Nav.clearFocusables", 0),
+    );
+    nav_fields.insert(
+        "getFocusableCount".to_string(),
+        native("Nav.getFocusableCount", 0),
+    );
     nav_fields.insert("enterHintMode".to_string(), native("Nav.enterHintMode", 0));
     nav_fields.insert("exitHintMode".to_string(), native("Nav.exitHintMode", 0));
-    nav_fields.insert("isHintModeActive".to_string(), native("Nav.isHintModeActive", 0));
+    nav_fields.insert(
+        "isHintModeActive".to_string(),
+        native("Nav.isHintModeActive", 0),
+    );
     nav_fields.insert("jumpToAnchor".to_string(), native("Nav.jumpToAnchor", 1));
-    nav_fields.insert("getCurrentAnchor".to_string(), native("Nav.getCurrentAnchor", 0));
+    nav_fields.insert(
+        "getCurrentAnchor".to_string(),
+        native("Nav.getCurrentAnchor", 0),
+    );
     nav_fields.insert("getLimits".to_string(), native("Nav.getLimits", 0));
     nav_fields.insert("setLimits".to_string(), native("Nav.setLimits", 2));
-    nav_fields.insert("listFocusables".to_string(), native("Nav.listFocusables", 0));
+    nav_fields.insert(
+        "listFocusables".to_string(),
+        native("Nav.listFocusables", 0),
+    );
     vm.globals.insert(
         "Nav".to_string(),
         Value::Record(Arc::new(Mutex::new(nav_fields))),
@@ -1077,15 +1106,35 @@ mod tests {
         register_stdlib(&mut vm);
 
         // Check all Option functions are registered
-        assert!(vm.host_registry.lock().unwrap().has_function("Option.isSome"));
-        assert!(vm.host_registry.lock().unwrap().has_function("Option.isNone"));
-        assert!(vm.host_registry.lock().unwrap().has_function("Option.defaultValue"));
-        assert!(vm.host_registry.lock().unwrap().has_function("Option.defaultWith"));
+        assert!(vm
+            .host_registry
+            .lock()
+            .unwrap()
+            .has_function("Option.isSome"));
+        assert!(vm
+            .host_registry
+            .lock()
+            .unwrap()
+            .has_function("Option.isNone"));
+        assert!(vm
+            .host_registry
+            .lock()
+            .unwrap()
+            .has_function("Option.defaultValue"));
+        assert!(vm
+            .host_registry
+            .lock()
+            .unwrap()
+            .has_function("Option.defaultWith"));
         assert!(vm.host_registry.lock().unwrap().has_function("Option.map"));
         assert!(vm.host_registry.lock().unwrap().has_function("Option.bind"));
         assert!(vm.host_registry.lock().unwrap().has_function("Option.iter"));
         assert!(vm.host_registry.lock().unwrap().has_function("Option.map2"));
-        assert!(vm.host_registry.lock().unwrap().has_function("Option.orElse"));
+        assert!(vm
+            .host_registry
+            .lock()
+            .unwrap()
+            .has_function("Option.orElse"));
 
         // Check constructors
         assert!(vm.host_registry.lock().unwrap().has_function("Some"));

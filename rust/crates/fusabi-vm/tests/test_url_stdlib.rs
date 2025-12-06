@@ -1,9 +1,9 @@
 // Integration tests for Url stdlib module
 
-use fusabi_vm::vm::Vm;
 use fusabi_vm::stdlib::register_stdlib;
-use fusabi_vm::stdlib::url::{url_parse, url_is_valid, url_encode, url_decode};
+use fusabi_vm::stdlib::url::{url_decode, url_encode, url_is_valid, url_parse};
 use fusabi_vm::value::Value;
+use fusabi_vm::vm::Vm;
 
 #[test]
 fn test_url_parse_integration() {
@@ -40,7 +40,11 @@ fn test_url_parse_call() {
 
     // Should return Some(UrlInfo)
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields.len(), 1);
 
@@ -52,19 +56,34 @@ fn test_url_parse_call() {
                 assert_eq!(r.get("path"), Some(&Value::Str("/path".to_string())));
 
                 // Check port is Some(8080)
-                if let Some(Value::Variant { variant_name, fields, .. }) = r.get("port") {
+                if let Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) = r.get("port")
+                {
                     assert_eq!(variant_name, "Some");
                     assert_eq!(fields[0], Value::Int(8080));
                 }
 
                 // Check query is Some("query=value")
-                if let Some(Value::Variant { variant_name, fields, .. }) = r.get("query") {
+                if let Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) = r.get("query")
+                {
                     assert_eq!(variant_name, "Some");
                     assert_eq!(fields[0], Value::Str("query=value".to_string()));
                 }
 
                 // Check fragment is Some("fragment")
-                if let Some(Value::Variant { variant_name, fields, .. }) = r.get("fragment") {
+                if let Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) = r.get("fragment")
+                {
                     assert_eq!(variant_name, "Some");
                     assert_eq!(fields[0], Value::Str("fragment".to_string()));
                 }
@@ -103,7 +122,11 @@ fn test_url_decode_call() {
 
     // Should return Some("hello world")
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Str("hello world".to_string()));
         }

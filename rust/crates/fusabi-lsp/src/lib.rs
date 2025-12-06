@@ -38,12 +38,16 @@ impl FusabiLanguageServer {
             Ok(tokens) => tokens,
             Err(e) => {
                 let (line, col, msg) = match &e {
-                    fusabi_frontend::LexError::UnexpectedChar(ch, pos) => {
-                        (pos.line, pos.column, format!("Unexpected character: '{}'", ch))
-                    }
-                    fusabi_frontend::LexError::UnterminatedString(pos) => {
-                        (pos.line, pos.column, "Unterminated string literal".to_string())
-                    }
+                    fusabi_frontend::LexError::UnexpectedChar(ch, pos) => (
+                        pos.line,
+                        pos.column,
+                        format!("Unexpected character: '{}'", ch),
+                    ),
+                    fusabi_frontend::LexError::UnterminatedString(pos) => (
+                        pos.line,
+                        pos.column,
+                        "Unterminated string literal".to_string(),
+                    ),
                     fusabi_frontend::LexError::InvalidNumber(s, pos) => {
                         (pos.line, pos.column, format!("Invalid number: '{}'", s))
                     }
@@ -87,7 +91,11 @@ impl FusabiLanguageServer {
                     let lines: Vec<&str> = text.lines().collect();
                     let last_line = lines.len().max(1);
                     let last_col = lines.last().map(|l| l.len()).unwrap_or(0);
-                    (last_line, last_col, format!("Unexpected end of file, expected {}", expected))
+                    (
+                        last_line,
+                        last_col,
+                        format!("Unexpected end of file, expected {}", expected),
+                    )
                 }
                 fusabi_frontend::ParseError::InvalidExpr { message, pos } => {
                     (pos.line, pos.column, message.clone())
@@ -117,7 +125,7 @@ impl FusabiLanguageServer {
     fn get_hover_info(&self, text: &str, position: Position) -> Option<String> {
         let lines: Vec<&str> = text.lines().collect();
         let line = lines.get(position.line as usize)?;
-        
+
         let char_pos = position.character as usize;
         if char_pos >= line.len() {
             return None;
@@ -183,7 +191,11 @@ impl FusabiLanguageServer {
             ("else", "If false branch", CompletionItemKind::KEYWORD),
             ("fun", "Lambda function", CompletionItemKind::KEYWORD),
             ("match", "Pattern matching", CompletionItemKind::KEYWORD),
-            ("with", "Match arms / record update", CompletionItemKind::KEYWORD),
+            (
+                "with",
+                "Match arms / record update",
+                CompletionItemKind::KEYWORD,
+            ),
             ("type", "Type definition", CompletionItemKind::KEYWORD),
             ("module", "Module definition", CompletionItemKind::KEYWORD),
             ("open", "Import module", CompletionItemKind::KEYWORD),
@@ -199,7 +211,11 @@ impl FusabiLanguageServer {
         ];
 
         let builtins = vec![
-            ("printfn", "Print formatted line", CompletionItemKind::FUNCTION),
+            (
+                "printfn",
+                "Print formatted line",
+                CompletionItemKind::FUNCTION,
+            ),
             ("printf", "Print formatted", CompletionItemKind::FUNCTION),
             ("List.map", "Map over list", CompletionItemKind::FUNCTION),
             ("List.filter", "Filter list", CompletionItemKind::FUNCTION),
@@ -208,8 +224,16 @@ impl FusabiLanguageServer {
             ("List.tail", "Rest of list", CompletionItemKind::FUNCTION),
             ("List.length", "List length", CompletionItemKind::FUNCTION),
             ("Array.length", "Array length", CompletionItemKind::FUNCTION),
-            ("Array.get", "Get array element", CompletionItemKind::FUNCTION),
-            ("Array.set", "Set array element", CompletionItemKind::FUNCTION),
+            (
+                "Array.get",
+                "Get array element",
+                CompletionItemKind::FUNCTION,
+            ),
+            (
+                "Array.set",
+                "Set array element",
+                CompletionItemKind::FUNCTION,
+            ),
         ];
 
         keywords
@@ -264,12 +288,12 @@ impl LanguageServer for FusabiLanguageServer {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
-        
+
         {
             let mut docs = self.documents.write().unwrap();
             docs.insert(uri.clone(), text.clone());
         }
-        
+
         self.publish_diagnostics(uri, &text).await;
     }
 
@@ -277,12 +301,12 @@ impl LanguageServer for FusabiLanguageServer {
         let uri = params.text_document.uri;
         if let Some(change) = params.content_changes.into_iter().last() {
             let text = change.text;
-            
+
             {
                 let mut docs = self.documents.write().unwrap();
                 docs.insert(uri.clone(), text.clone());
             }
-            
+
             self.publish_diagnostics(uri, &text).await;
         }
     }
@@ -295,7 +319,7 @@ impl LanguageServer for FusabiLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        
+
         let docs = self.documents.read().unwrap();
         let text = match docs.get(uri) {
             Some(t) => t.clone(),
@@ -304,7 +328,7 @@ impl LanguageServer for FusabiLanguageServer {
         drop(docs);
 
         let info = self.get_hover_info(&text, position);
-        
+
         Ok(info.map(|content| Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

@@ -16,7 +16,11 @@ fn test_some_constructor() {
     "#;
     let result = run_source(source).expect("Should compile and run");
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(42));
         }
@@ -41,7 +45,11 @@ fn test_some_with_string() {
     let source = r#"Some "hello""#;
     let result = run_source(source).expect("Should compile and run");
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Str("hello".to_string()));
         }
@@ -396,7 +404,11 @@ fn test_option_without_parens() {
     let source = "Some 42";
     let result = run_source(source).expect("Should compile and run");
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(42));
         }
@@ -409,7 +421,11 @@ fn test_option_with_parens() {
     let source = "Some(42)";
     let result = run_source(source).expect("Should compile and run");
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(42));
         }

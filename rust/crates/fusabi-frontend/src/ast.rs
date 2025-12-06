@@ -522,7 +522,6 @@ impl MatchArm {
     }
 }
 
-
 /// Statement within a computation expression
 #[derive(Debug, Clone, PartialEq)]
 pub enum CEStatement {
@@ -828,7 +827,6 @@ impl Expr {
     pub fn is_continue(&self) -> bool {
         matches!(self, Expr::Continue)
     }
-
 
     /// Returns true if this expression is a computation expression.
     pub fn is_computation_expr(&self) -> bool {

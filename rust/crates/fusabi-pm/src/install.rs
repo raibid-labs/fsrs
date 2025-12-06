@@ -48,12 +48,7 @@ pub fn install_dependencies(project_dir: &Path) -> Result<(), InstallError> {
         match dependency {
             Dependency::Detailed(detailed) => {
                 if let Some(git_url) = &detailed.git {
-                    install_git_dependency(
-                        name,
-                        git_url,
-                        detailed.rev.as_deref(),
-                        &packages_dir,
-                    )?;
+                    install_git_dependency(name, git_url, detailed.rev.as_deref(), &packages_dir)?;
                 } else if detailed.path.is_some() {
                     println!("Skipping local path dependency '{}'", name);
                 } else if let Some(version) = &detailed.version {

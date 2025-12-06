@@ -102,15 +102,19 @@ pub use fusabi_frontend::CompileOptions;
 /// access to the compiler.
 fn script_eval_impl(vm: &mut Vm, args: &[fusabi_vm::Value]) -> Result<fusabi_vm::Value, VmError> {
     if args.is_empty() {
-        return Err(VmError::Runtime("Script.eval requires 1 argument".to_string()));
+        return Err(VmError::Runtime(
+            "Script.eval requires 1 argument".to_string(),
+        ));
     }
 
     let code = match &args[0] {
         fusabi_vm::Value::Str(s) => s.clone(),
-        other => return Err(VmError::TypeMismatch {
-            expected: "string",
-            got: other.type_name(),
-        }),
+        other => {
+            return Err(VmError::TypeMismatch {
+                expected: "string",
+                got: other.type_name(),
+            })
+        }
     };
 
     // Compile the code using the full compilation pipeline
@@ -137,7 +141,10 @@ fn script_eval_impl(vm: &mut Vm, args: &[fusabi_vm::Value]) -> Result<fusabi_vm:
 
 /// Implementation of Script.evalToString
 /// Evaluates code and returns result as string, or error message with "Error: " prefix
-fn script_eval_to_string_impl(vm: &mut Vm, args: &[fusabi_vm::Value]) -> Result<fusabi_vm::Value, VmError> {
+fn script_eval_to_string_impl(
+    vm: &mut Vm,
+    args: &[fusabi_vm::Value],
+) -> Result<fusabi_vm::Value, VmError> {
     match script_eval_impl(vm, args) {
         Ok(result) => Ok(fusabi_vm::Value::Str(format!("{}", result))),
         Err(e) => Ok(fusabi_vm::Value::Str(format!("Error: {}", e))),
@@ -147,8 +154,14 @@ fn script_eval_to_string_impl(vm: &mut Vm, args: &[fusabi_vm::Value]) -> Result<
 /// Register real Script.eval implementations that override the stubs
 /// This should be called after stdlib registration to override the stub versions
 pub(crate) fn register_script_eval_override(vm: &mut Vm) {
-    vm.host_registry.lock().unwrap().register("Script.eval", script_eval_impl);
-    vm.host_registry.lock().unwrap().register("Script.evalToString", script_eval_to_string_impl);
+    vm.host_registry
+        .lock()
+        .unwrap()
+        .register("Script.eval", script_eval_impl);
+    vm.host_registry
+        .lock()
+        .unwrap()
+        .register("Script.evalToString", script_eval_to_string_impl);
 }
 
 /// Unified error type for the Fusabi pipeline

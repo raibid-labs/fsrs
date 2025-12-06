@@ -25,7 +25,10 @@ fn test_issue_125_comma_syntax() {
                     match *value {
                         Expr::List(elements) => {
                             assert_eq!(elements.len(), 3);
-                            println!("SUCCESS: Parsed list with {} elements using comma syntax", elements.len());
+                            println!(
+                                "SUCCESS: Parsed list with {} elements using comma syntax",
+                                elements.len()
+                            );
                         }
                         _ => panic!("Expected List in value"),
                     }

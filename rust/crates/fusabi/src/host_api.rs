@@ -5,10 +5,10 @@ use fusabi_frontend::compiler::CompileOptions;
 use fusabi_frontend::{Compiler, Lexer, Parser};
 use fusabi_vm::{HostData, HostRegistry, Value, Vm, VmError};
 use std::any::Any;
-use std::sync::Mutex;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Type alias for a raw host function
 pub type HostFunction = Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, VmError> + Send + Sync>;
@@ -277,7 +277,8 @@ impl FusabiEngine {
     {
         // Wrap the closure to ignore the VM argument, maintaining backward compatibility
         self.host_registry
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .register(name, move |_vm, args| f(args));
     }
 
@@ -295,7 +296,8 @@ impl FusabiEngine {
         F: Fn() -> Result<Value, VmError> + Send + Sync + 'static,
     {
         self.host_registry
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .register_fn0(name, move |_vm| f());
     }
 
@@ -305,7 +307,8 @@ impl FusabiEngine {
         F: Fn(Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
         self.host_registry
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .register_fn1(name, move |_vm, arg| f(arg));
     }
 
@@ -315,7 +318,8 @@ impl FusabiEngine {
         F: Fn(Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
         self.host_registry
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .register_fn2(name, move |_vm, arg1, arg2| f(arg1, arg2));
     }
 
@@ -325,7 +329,8 @@ impl FusabiEngine {
         F: Fn(Value, Value, Value) -> Result<Value, VmError> + Send + Sync + 'static,
     {
         self.host_registry
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .register_fn3(name, move |_vm, arg1, arg2, arg3| f(arg1, arg2, arg3));
     }
 

@@ -349,7 +349,11 @@ mod tests {
 
         // Should be Some(UrlInfo)
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
 
@@ -380,7 +384,11 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
@@ -389,7 +397,12 @@ mod tests {
                     assert_eq!(r.get("host"), Some(&Value::Str("localhost".to_string())));
 
                     // port should be Some(8080)
-                    if let Some(Value::Variant { variant_name, fields, .. }) = r.get("port") {
+                    if let Some(Value::Variant {
+                        variant_name,
+                        fields,
+                        ..
+                    }) = r.get("port")
+                    {
                         assert_eq!(variant_name, "Some");
                         assert_eq!(fields.len(), 1);
                         assert_eq!(fields[0], Value::Int(8080));
@@ -408,12 +421,19 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
                     let r = record.lock().unwrap();
-                    assert_eq!(r.get("path"), Some(&Value::Str("/api/v1/users".to_string())));
+                    assert_eq!(
+                        r.get("path"),
+                        Some(&Value::Str("/api/v1/users".to_string()))
+                    );
                 }
             }
             _ => panic!("Expected Some variant"),
@@ -426,14 +446,23 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
                     let r = record.lock().unwrap();
 
                     // query should be Some("q=fusabi&lang=en")
-                    if let Some(Value::Variant { variant_name, fields, .. }) = r.get("query") {
+                    if let Some(Value::Variant {
+                        variant_name,
+                        fields,
+                        ..
+                    }) = r.get("query")
+                    {
                         assert_eq!(variant_name, "Some");
                         assert_eq!(fields.len(), 1);
                         assert_eq!(fields[0], Value::Str("q=fusabi&lang=en".to_string()));
@@ -452,14 +481,23 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
                     let r = record.lock().unwrap();
 
                     // fragment should be Some("section")
-                    if let Some(Value::Variant { variant_name, fields, .. }) = r.get("fragment") {
+                    if let Some(Value::Variant {
+                        variant_name,
+                        fields,
+                        ..
+                    }) = r.get("fragment")
+                    {
                         assert_eq!(variant_name, "Some");
                         assert_eq!(fields.len(), 1);
                         assert_eq!(fields[0], Value::Str("section".to_string()));
@@ -474,19 +512,31 @@ mod tests {
 
     #[test]
     fn test_url_parse_complex() {
-        let url = Value::Str("https://user:pass@example.com:8443/path/to/resource?key=value#anchor".to_string());
+        let url = Value::Str(
+            "https://user:pass@example.com:8443/path/to/resource?key=value#anchor".to_string(),
+        );
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
                     let r = record.lock().unwrap();
                     assert_eq!(r.get("scheme"), Some(&Value::Str("https".to_string())));
                     // Note: our simple parser doesn't separate user:pass from host
-                    assert_eq!(r.get("host"), Some(&Value::Str("user:pass@example.com".to_string())));
-                    assert_eq!(r.get("path"), Some(&Value::Str("/path/to/resource".to_string())));
+                    assert_eq!(
+                        r.get("host"),
+                        Some(&Value::Str("user:pass@example.com".to_string()))
+                    );
+                    assert_eq!(
+                        r.get("path"),
+                        Some(&Value::Str("/path/to/resource".to_string()))
+                    );
                 }
             }
             _ => panic!("Expected Some variant"),
@@ -574,7 +624,11 @@ mod tests {
         let input = Value::Str("hello%20world".to_string());
         let result = url_decode(&input).unwrap();
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields[0], Value::Str("hello world".to_string()));
             }
@@ -584,7 +638,11 @@ mod tests {
         let input = Value::Str("test%40example.com".to_string());
         let result = url_decode(&input).unwrap();
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields[0], Value::Str("test@example.com".to_string()));
             }
@@ -620,7 +678,11 @@ mod tests {
         let decoded = url_decode(&encoded).unwrap();
 
         match decoded {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields[0], Value::Str(original.to_string()));
             }
@@ -634,15 +696,27 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {
                     let r = record.lock().unwrap();
-                    assert_eq!(r.get("host"), Some(&Value::Str("[2001:db8::1]".to_string())));
+                    assert_eq!(
+                        r.get("host"),
+                        Some(&Value::Str("[2001:db8::1]".to_string()))
+                    );
 
                     // port should be Some(8080)
-                    if let Some(Value::Variant { variant_name, fields, .. }) = r.get("port") {
+                    if let Some(Value::Variant {
+                        variant_name,
+                        fields,
+                        ..
+                    }) = r.get("port")
+                    {
                         assert_eq!(variant_name, "Some");
                         assert_eq!(fields[0], Value::Int(8080));
                     } else {
@@ -663,7 +737,11 @@ mod tests {
             let result = url_parse(&url).unwrap();
 
             match result {
-                Value::Variant { variant_name, fields, .. } => {
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } => {
                     assert_eq!(variant_name, "Some");
 
                     if let Value::Record(record) = &fields[0] {
@@ -726,7 +804,11 @@ mod tests {
         let result = url_parse(&url).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
 
                 if let Value::Record(record) = &fields[0] {

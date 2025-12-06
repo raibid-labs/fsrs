@@ -82,7 +82,11 @@ version = "{}"
     }
 
     if !package.authors.is_empty() {
-        let authors: Vec<String> = package.authors.iter().map(|a| format!("\"{}\"", a)).collect();
+        let authors: Vec<String> = package
+            .authors
+            .iter()
+            .map(|a| format!("\"{}\"", a))
+            .collect();
         entry.push_str(&format!("authors = [{}]\n", authors.join(", ")));
     }
 
@@ -118,7 +122,10 @@ pub fn publish_package<P: AsRef<Path>>(project_dir: P) -> Result<PublishResult, 
 
 /// Prints instructions for creating a PR to the registry.
 pub fn print_publish_instructions(result: &PublishResult) {
-    println!("📦 Preparing to publish {} v{}", result.package_name, result.version);
+    println!(
+        "📦 Preparing to publish {} v{}",
+        result.package_name, result.version
+    );
     println!();
     println!("Registry entry to add to {}:", REGISTRY_FILE);
     println!("─────────────────────────────────────────");
@@ -132,8 +139,10 @@ pub fn print_publish_instructions(result: &PublishResult) {
         println!("  1. Fork and clone https://github.com/{}", REGISTRY_REPO);
         println!("  2. Add the above entry to {}", REGISTRY_FILE);
         println!("  3. Create a PR:");
-        println!("     gh pr create --title \"Add {} v{}\" --body \"Adds {} package to the registry\"",
-            result.package_name, result.version, result.package_name);
+        println!(
+            "     gh pr create --title \"Add {} v{}\" --body \"Adds {} package to the registry\"",
+            result.package_name, result.version, result.package_name
+        );
     } else {
         println!("To publish your package:");
         println!();

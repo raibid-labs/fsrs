@@ -233,7 +233,13 @@ fn days_in_month(month: u32, leap_year: bool) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
-        2 => if leap_year { 29 } else { 28 },
+        2 => {
+            if leap_year {
+                29
+            } else {
+                28
+            }
+        }
         _ => 0,
     }
 }
@@ -523,7 +529,11 @@ mod tests {
         let result = time_parse(&fmt, &input).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 // 2024-03-15 00:00:00 UTC = 1710460800000 ms
@@ -541,7 +551,11 @@ mod tests {
         let result = time_parse(&fmt, &input).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 // 2024-03-15 14:30:45 UTC = 1710513045000 ms
@@ -559,7 +573,11 @@ mod tests {
         let result = time_parse(&fmt, &input).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 assert_eq!(fields[0], Value::Int(0));
@@ -676,7 +694,11 @@ mod tests {
         let parsed = time_parse(&fmt, &formatted).unwrap();
 
         match parsed {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields[0], timestamp);
             }

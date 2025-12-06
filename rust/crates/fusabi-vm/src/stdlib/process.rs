@@ -34,7 +34,11 @@ pub fn process_run(cmd: &Value, args: &Value) -> Result<Value, VmError> {
         .map_err(|e| VmError::Runtime(format!("Failed to execute command '{}': {}", cmd_str, e)))?;
 
     // Build ProcessResult record
-    create_process_result(output.status.code().unwrap_or(-1), output.stdout, output.stderr)
+    create_process_result(
+        output.status.code().unwrap_or(-1),
+        output.stdout,
+        output.stderr,
+    )
 }
 
 /// Process.runShell : string -> ProcessResult
@@ -66,7 +70,11 @@ pub fn process_run_shell(cmd: &Value) -> Result<Value, VmError> {
         .map_err(|e| VmError::Runtime(format!("Failed to execute shell command: {}", e)))?;
 
     // Build ProcessResult record
-    create_process_result(output.status.code().unwrap_or(-1), output.stdout, output.stderr)
+    create_process_result(
+        output.status.code().unwrap_or(-1),
+        output.stdout,
+        output.stderr,
+    )
 }
 
 /// Process.env : string -> string option
@@ -77,12 +85,10 @@ pub fn process_run_shell(cmd: &Value) -> Result<Value, VmError> {
 ///   Process.env "PATH"
 ///   // Returns Some("/usr/bin:/bin:...")
 pub fn process_env(var_name: &Value) -> Result<Value, VmError> {
-    let var_name_str = var_name
-        .as_str()
-        .ok_or_else(|| VmError::TypeMismatch {
-            expected: "string",
-            got: var_name.type_name(),
-        })?;
+    let var_name_str = var_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+        expected: "string",
+        got: var_name.type_name(),
+    })?;
 
     match std::env::var(var_name_str) {
         Ok(value) => Ok(Value::Variant {
@@ -106,12 +112,10 @@ pub fn process_env(var_name: &Value) -> Result<Value, VmError> {
 ///   Process.setEnv "MY_VAR" "my_value"
 ///   // Returns ()
 pub fn process_set_env(var_name: &Value, value: &Value) -> Result<Value, VmError> {
-    let var_name_str = var_name
-        .as_str()
-        .ok_or_else(|| VmError::TypeMismatch {
-            expected: "string",
-            got: var_name.type_name(),
-        })?;
+    let var_name_str = var_name.as_str().ok_or_else(|| VmError::TypeMismatch {
+        expected: "string",
+        got: var_name.type_name(),
+    })?;
 
     let value_str = value.as_str().ok_or_else(|| VmError::TypeMismatch {
         expected: "string",
@@ -170,7 +174,11 @@ fn list_to_string_vec(list: &Value) -> Result<Vec<String>, VmError> {
 }
 
 /// Create a ProcessResult record from exit code and output
-fn create_process_result(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Result<Value, VmError> {
+fn create_process_result(
+    exit_code: i32,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+) -> Result<Value, VmError> {
     let stdout_str = String::from_utf8(stdout).unwrap_or_else(|e| {
         // If stdout is not valid UTF-8, replace invalid sequences
         String::from_utf8_lossy(&e.into_bytes()).to_string()
@@ -488,11 +496,7 @@ mod tests {
         let result = list_to_string_vec(&list).unwrap();
         assert_eq!(
             result,
-            vec![
-                "one".to_string(),
-                "two".to_string(),
-                "three".to_string()
-            ]
+            vec!["one".to_string(), "two".to_string(), "three".to_string()]
         );
     }
 

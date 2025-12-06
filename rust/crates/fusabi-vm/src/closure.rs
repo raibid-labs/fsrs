@@ -3,9 +3,9 @@
 
 use crate::chunk::Chunk;
 use crate::value::Value;
-use std::sync::Mutex;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

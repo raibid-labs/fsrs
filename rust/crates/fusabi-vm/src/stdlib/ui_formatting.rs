@@ -207,12 +207,7 @@ pub fn clear_formatters(args: &[Value]) -> Result<Value, VmError> {
 
 /// Create a TabInfo record from individual components
 /// TabInfo: { index: int, title: string, active: bool, hasActivity: bool }
-pub fn create_tab_info(
-    index: i64,
-    title: String,
-    active: bool,
-    has_activity: bool,
-) -> Value {
+pub fn create_tab_info(index: i64, title: String, active: bool, has_activity: bool) -> Value {
     let mut fields = HashMap::new();
     fields.insert("index".to_string(), Value::Int(index));
     fields.insert("title".to_string(), Value::Str(title));
@@ -294,10 +289,7 @@ pub fn extract_status_segment(
 
 /// Invoke all registered tab formatters and collect results
 /// Returns a list of segment lists, one for each formatter
-pub fn invoke_tab_formatters(
-    vm: &mut Vm,
-    tab_info: Value,
-) -> Result<Vec<Vec<Value>>, VmError> {
+pub fn invoke_tab_formatters(vm: &mut Vm, tab_info: Value) -> Result<Vec<Vec<Value>>, VmError> {
     ensure_formatters_initialized();
     let formatters = FORMATTERS.lock().unwrap();
 
@@ -310,9 +302,9 @@ pub fn invoke_tab_formatters(
             // Convert result (list) to vector
             let segments = match &result {
                 Value::Nil => vec![],
-                Value::Cons { .. } => result
-                    .list_to_vec()
-                    .ok_or(VmError::Runtime("Malformed list returned from formatter".into()))?,
+                Value::Cons { .. } => result.list_to_vec().ok_or(VmError::Runtime(
+                    "Malformed list returned from formatter".into(),
+                ))?,
                 _ => {
                     return Err(VmError::Runtime(
                         "Tab formatter must return a list of StatusSegments".to_string(),
@@ -344,9 +336,9 @@ pub fn invoke_status_left_formatters(
             // Convert result (list) to vector
             let segments = match &result {
                 Value::Nil => vec![],
-                Value::Cons { .. } => result
-                    .list_to_vec()
-                    .ok_or(VmError::Runtime("Malformed list returned from formatter".into()))?,
+                Value::Cons { .. } => result.list_to_vec().ok_or(VmError::Runtime(
+                    "Malformed list returned from formatter".into(),
+                ))?,
                 _ => {
                     return Err(VmError::Runtime(
                         "Status left formatter must return a list of StatusSegments".to_string(),
@@ -378,9 +370,9 @@ pub fn invoke_status_right_formatters(
             // Convert result (list) to vector
             let segments = match &result {
                 Value::Nil => vec![],
-                Value::Cons { .. } => result
-                    .list_to_vec()
-                    .ok_or(VmError::Runtime("Malformed list returned from formatter".into()))?,
+                Value::Cons { .. } => result.list_to_vec().ok_or(VmError::Runtime(
+                    "Malformed list returned from formatter".into(),
+                ))?,
                 _ => {
                     return Err(VmError::Runtime(
                         "Status right formatter must return a list of StatusSegments".to_string(),

@@ -100,12 +100,10 @@ fn fold_boolean(chunk: &mut Chunk) -> bool {
 
     while i + 1 < chunk.instructions.len() {
         let folded = match (&chunk.instructions[i], &chunk.instructions[i + 1]) {
-            (Instruction::LoadConst(idx), Instruction::Not) => {
-                match chunk.constant_at(*idx) {
-                    Some(Value::Bool(b)) => Some(Value::Bool(!b)),
-                    _ => None,
-                }
-            }
+            (Instruction::LoadConst(idx), Instruction::Not) => match chunk.constant_at(*idx) {
+                Some(Value::Bool(b)) => Some(Value::Bool(!b)),
+                _ => None,
+            },
             _ => None,
         };
 

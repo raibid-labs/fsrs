@@ -203,8 +203,16 @@ fn test_register_stdlib_functions_and_globals() {
 
     // Verify HostRegistry
     assert!(vm.host_registry.lock().unwrap().has_function("List.length"));
-    assert!(vm.host_registry.lock().unwrap().has_function("String.length"));
-    assert!(vm.host_registry.lock().unwrap().has_function("Option.isSome"));
+    assert!(vm
+        .host_registry
+        .lock()
+        .unwrap()
+        .has_function("String.length"));
+    assert!(vm
+        .host_registry
+        .lock()
+        .unwrap()
+        .has_function("Option.isSome"));
 
     // Verify Globals (Module Records)
     assert!(vm.globals.contains_key("List"));
@@ -241,7 +249,8 @@ fn call_stdlib_function(vm: &mut Vm, name: &str, args: &[Value]) -> Result<Value
             .ok_or_else(|| VmError::Runtime(format!("Undefined module: {}", module)))?;
         if let Value::Record(r) = module_val {
             let func = r
-                .lock().unwrap()
+                .lock()
+                .unwrap()
                 .get(func_name)
                 .cloned()
                 .ok_or_else(|| VmError::Runtime(format!("Undefined function: {}", name)))?;
@@ -345,7 +354,11 @@ fn test_some_constructor_through_vm() {
     let result = call_stdlib_function(&mut vm, "Some", &[Value::Int(42)]).unwrap();
 
     match result {
-        Value::Variant { type_name, variant_name, fields } => {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
             assert_eq!(type_name, "Option");
             assert_eq!(variant_name, "Some");
             assert_eq!(fields.len(), 1);
@@ -361,7 +374,11 @@ fn test_none_constructor_through_vm() {
     let result = call_stdlib_function(&mut vm, "None", &[]).unwrap();
 
     match result {
-        Value::Variant { type_name, variant_name, fields } => {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
             assert_eq!(type_name, "Option");
             assert_eq!(variant_name, "None");
             assert_eq!(fields.len(), 0);
@@ -387,10 +404,19 @@ fn test_option_map_through_vm() {
         .build();
     let double_closure = Arc::new(fusabi_vm::closure::Closure::with_arity(double_chunk, 1));
 
-    let result = call_stdlib_function(&mut vm, "Option.map", &[Value::Closure(double_closure), some_val]).unwrap();
+    let result = call_stdlib_function(
+        &mut vm,
+        "Option.map",
+        &[Value::Closure(double_closure), some_val],
+    )
+    .unwrap();
 
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(10));
         }
@@ -405,8 +431,10 @@ fn test_option_default_value_through_vm() {
     let some_val = call_stdlib_function(&mut vm, "Some", &[Value::Int(42)]).unwrap();
     let none_val = call_stdlib_function(&mut vm, "None", &[]).unwrap();
 
-    let result_some = call_stdlib_function(&mut vm, "Option.defaultValue", &[Value::Int(0), some_val]).unwrap();
-    let result_none = call_stdlib_function(&mut vm, "Option.defaultValue", &[Value::Int(0), none_val]).unwrap();
+    let result_some =
+        call_stdlib_function(&mut vm, "Option.defaultValue", &[Value::Int(0), some_val]).unwrap();
+    let result_none =
+        call_stdlib_function(&mut vm, "Option.defaultValue", &[Value::Int(0), none_val]).unwrap();
 
     assert_eq!(result_some, Value::Int(42));
     assert_eq!(result_none, Value::Int(0));
@@ -453,10 +481,19 @@ fn test_option_map_none_through_vm() {
         .build();
     let func_closure = Arc::new(fusabi_vm::closure::Closure::with_arity(func_chunk, 1));
 
-    let result = call_stdlib_function(&mut vm, "Option.map", &[Value::Closure(func_closure), none_val]).unwrap();
+    let result = call_stdlib_function(
+        &mut vm,
+        "Option.map",
+        &[Value::Closure(func_closure), none_val],
+    )
+    .unwrap();
 
     match result {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "None");
             assert_eq!(fields.len(), 0);
         }
@@ -473,9 +510,14 @@ fn test_option_or_else_through_vm() {
     let backup_val = call_stdlib_function(&mut vm, "Some", &[Value::Int(99)]).unwrap();
 
     // Some orElse backup = Some
-    let result1 = call_stdlib_function(&mut vm, "Option.orElse", &[some_val, backup_val.clone()]).unwrap();
+    let result1 =
+        call_stdlib_function(&mut vm, "Option.orElse", &[some_val, backup_val.clone()]).unwrap();
     match result1 {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(42));
         }
@@ -485,7 +527,11 @@ fn test_option_or_else_through_vm() {
     // None orElse backup = backup
     let result2 = call_stdlib_function(&mut vm, "Option.orElse", &[none_val, backup_val]).unwrap();
     match result2 {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(99));
         }
@@ -511,9 +557,18 @@ fn test_option_map2_through_vm() {
     let add_closure = Arc::new(fusabi_vm::closure::Closure::with_arity(add_chunk, 2));
 
     // Some(3) + Some(4) = Some(7)
-    let result1 = call_stdlib_function(&mut vm, "Option.map2", &[Value::Closure(add_closure.clone()), some1, some2]).unwrap();
+    let result1 = call_stdlib_function(
+        &mut vm,
+        "Option.map2",
+        &[Value::Closure(add_closure.clone()), some1, some2],
+    )
+    .unwrap();
     match result1 {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "Some");
             assert_eq!(fields[0], Value::Int(7));
         }
@@ -522,9 +577,18 @@ fn test_option_map2_through_vm() {
 
     // Some(3) + None = None
     let some3 = call_stdlib_function(&mut vm, "Some", &[Value::Int(3)]).unwrap();
-    let result2 = call_stdlib_function(&mut vm, "Option.map2", &[Value::Closure(add_closure), some3, none_val]).unwrap();
+    let result2 = call_stdlib_function(
+        &mut vm,
+        "Option.map2",
+        &[Value::Closure(add_closure), some3, none_val],
+    )
+    .unwrap();
     match result2 {
-        Value::Variant { variant_name, fields, .. } => {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
             assert_eq!(variant_name, "None");
             assert_eq!(fields.len(), 0);
         }
@@ -546,7 +610,12 @@ fn test_option_iter_through_vm() {
         .build();
     let func_closure = Arc::new(fusabi_vm::closure::Closure::with_arity(func_chunk, 1));
 
-    let result = call_stdlib_function(&mut vm, "Option.iter", &[Value::Closure(func_closure), some_val]).unwrap();
+    let result = call_stdlib_function(
+        &mut vm,
+        "Option.iter",
+        &[Value::Closure(func_closure), some_val],
+    )
+    .unwrap();
     assert_eq!(result, Value::Unit);
 }
 
@@ -567,7 +636,8 @@ fn test_print_returns_unit() {
     let result_print = call_stdlib_function(&mut vm, "print", &[Value::Int(42)]).unwrap();
     assert_eq!(result_print, Value::Unit);
 
-    let result_printfn = call_stdlib_function(&mut vm, "printfn", &[Value::Str("test".to_string())]).unwrap();
+    let result_printfn =
+        call_stdlib_function(&mut vm, "printfn", &[Value::Str("test".to_string())]).unwrap();
     assert_eq!(result_printfn, Value::Unit);
 }
 
@@ -576,17 +646,38 @@ fn test_print_various_types() {
     let mut vm = get_test_vm();
 
     // Test with different types - all should return Unit without error
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Int(42)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Float(3.14)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Bool(true)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Str("hello".to_string())]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[Value::Unit]).unwrap(), Value::Unit);
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[Value::Int(42)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[Value::Float(3.14)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[Value::Bool(true)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[Value::Str("hello".to_string())]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[Value::Unit]).unwrap(),
+        Value::Unit
+    );
 
     let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[list]).unwrap(), Value::Unit);
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[list]).unwrap(),
+        Value::Unit
+    );
 
     let tuple = Value::Tuple(vec![Value::Int(1), Value::Str("test".to_string())]);
-    assert_eq!(call_stdlib_function(&mut vm, "print", &[tuple]).unwrap(), Value::Unit);
+    assert_eq!(
+        call_stdlib_function(&mut vm, "print", &[tuple]).unwrap(),
+        Value::Unit
+    );
 }
 
 #[test]
@@ -594,11 +685,26 @@ fn test_printfn_various_types() {
     let mut vm = get_test_vm();
 
     // Test with different types - all should return Unit without error
-    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Int(42)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Float(3.14)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Bool(false)]).unwrap(), Value::Unit);
-    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[Value::Str("world".to_string())]).unwrap(), Value::Unit);
+    assert_eq!(
+        call_stdlib_function(&mut vm, "printfn", &[Value::Int(42)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "printfn", &[Value::Float(3.14)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "printfn", &[Value::Bool(false)]).unwrap(),
+        Value::Unit
+    );
+    assert_eq!(
+        call_stdlib_function(&mut vm, "printfn", &[Value::Str("world".to_string())]).unwrap(),
+        Value::Unit
+    );
 
     let list = Value::vec_to_cons(vec![Value::Int(10), Value::Int(20)]);
-    assert_eq!(call_stdlib_function(&mut vm, "printfn", &[list]).unwrap(), Value::Unit);
+    assert_eq!(
+        call_stdlib_function(&mut vm, "printfn", &[list]).unwrap(),
+        Value::Unit
+    );
 }

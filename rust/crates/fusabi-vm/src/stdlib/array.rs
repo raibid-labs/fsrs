@@ -58,7 +58,8 @@ pub fn array_get(index: &Value, arr: &Value) -> Result<Value, VmError> {
             if idx_usize >= vec.len() {
                 return Err(VmError::Runtime(format!(
                     "Array index out of bounds: index {} >= length {}",
-                    idx, vec.len()
+                    idx,
+                    vec.len()
                 )));
             }
 
@@ -95,7 +96,8 @@ pub fn array_set(index: &Value, value: &Value, arr: &Value) -> Result<Value, VmE
             if idx_usize >= vec.len() {
                 return Err(VmError::Runtime(format!(
                     "Array index out of bounds: index {} >= length {}",
-                    idx, vec.len()
+                    idx,
+                    vec.len()
                 )));
             }
 
@@ -535,7 +537,10 @@ mod tests {
 
         assert_eq!(array_length(&arr).unwrap(), Value::Int(4));
         assert_eq!(array_get(&Value::Int(0), &arr).unwrap(), Value::Int(42));
-        assert_eq!(array_get(&Value::Int(1), &arr).unwrap(), Value::Str("hello".to_string()));
+        assert_eq!(
+            array_get(&Value::Int(1), &arr).unwrap(),
+            Value::Str("hello".to_string())
+        );
         assert_eq!(array_get(&Value::Int(2), &arr).unwrap(), Value::Bool(true));
         assert_eq!(array_get(&Value::Int(3), &arr).unwrap(), Value::Unit);
     }

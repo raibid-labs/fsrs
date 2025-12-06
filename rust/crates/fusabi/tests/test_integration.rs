@@ -60,7 +60,8 @@ mod pipeline_integration_tests {
 
     #[test]
     fn test_string_concat_example() {
-        let source = r#"let host = "localhost" in let port = "8080" in "http://" ++ host ++ ":" ++ port"#;
+        let source =
+            r#"let host = "localhost" in let port = "8080" in "http://" ++ host ++ ":" ++ port"#;
         let result = run_source(source).expect("Failed to execute URL building");
         assert_eq!(result, Value::Str("http://localhost:8080".to_string()));
     }

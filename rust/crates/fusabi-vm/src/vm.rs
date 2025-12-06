@@ -7,10 +7,10 @@ use crate::gc::GcHeap;
 use crate::host::HostRegistry;
 use crate::instruction::Instruction;
 use crate::value::Value;
-use std::sync::Mutex;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Runtime error that can occur during VM execution
 #[derive(Debug, Clone, PartialEq)]
@@ -254,19 +254,19 @@ impl Vm {
     #[cfg(feature = "serde")]
     pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, VmError> {
         use crate::deserialize_chunk;
-        
+
         // Deserialize the chunk from bytecode
         let chunk = deserialize_chunk(bytecode)
             .map_err(|e| VmError::Runtime(format!("Failed to deserialize bytecode: {}", e)))?;
-        
+
         // Create a new VM
         let mut vm = Vm::new();
-        
+
         // Wrap the chunk in a closure and push initial frame
         let closure = Arc::new(Closure::new(chunk));
         let frame = Frame::new(closure, 0);
         vm.frames.push(frame);
-        
+
         Ok(vm)
     }
 
@@ -295,15 +295,15 @@ impl Vm {
     #[cfg(feature = "serde")]
     pub fn execute_bytecode(bytecode: &[u8]) -> Result<Value, VmError> {
         use crate::{deserialize_chunk, stdlib};
-        
+
         // Deserialize the chunk from bytecode
         let chunk = deserialize_chunk(bytecode)
             .map_err(|e| VmError::Runtime(format!("Failed to deserialize bytecode: {}", e)))?;
-        
+
         // Create a new VM with stdlib registered
         let mut vm = Vm::new();
         stdlib::register_stdlib(&mut vm);
-        
+
         // Execute the chunk
         vm.execute(chunk)
     }
@@ -820,11 +820,9 @@ impl Vm {
                             // Get the method function from registry
                             let method_fn = {
                                 let registry = self.host_registry.lock().unwrap();
-                                registry
-                                    .get_method(type_id, &method_name)
-                                    .ok_or_else(|| {
-                                        VmError::Runtime(format!("Method not found: {}", method_name))
-                                    })?
+                                registry.get_method(type_id, &method_name).ok_or_else(|| {
+                                    VmError::Runtime(format!("Method not found: {}", method_name))
+                                })?
                             };
 
                             // Now call the method with mutable VM reference
@@ -836,22 +834,25 @@ impl Vm {
                             // For records, get the field (which should be a closure/function)
                             // and call it with the arguments
                             let record = receiver.clone();
-                            
+
                             // Get the method/field from the record
-                            let method_value = record
-                                .record_get(&method_name)
-                                .map_err(|e| VmError::Runtime(format!("Method not found on record: {} ({})", method_name, e)))?;
-                            
+                            let method_value = record.record_get(&method_name).map_err(|e| {
+                                VmError::Runtime(format!(
+                                    "Method not found on record: {} ({})",
+                                    method_name, e
+                                ))
+                            })?;
+
                             // Pop arguments from stack (in reverse order)
                             let mut args = Vec::with_capacity(argc as usize);
                             for _ in 0..argc {
                                 args.push(self.pop()?);
                             }
                             args.reverse();
-                            
+
                             // Pop the receiver from stack
                             self.pop()?;
-                            
+
                             // Now call the method value based on its type
                             match method_value {
                                 Value::Closure(closure) => {
@@ -859,21 +860,25 @@ impl Vm {
                                     for arg in args {
                                         self.push(arg);
                                     }
-                                    
+
                                     // Create new frame for closure
                                     let base = self.stack.len() - closure.arity as usize;
                                     let frame = Frame::new(closure, base);
-                                    
+
                                     if self.frames.len() >= 1000 {
                                         return Err(VmError::CallStackOverflow);
                                     }
                                     self.frames.push(frame);
                                 }
-                                Value::NativeFn { name, arity, args: partial_args } => {
+                                Value::NativeFn {
+                                    name,
+                                    arity,
+                                    args: partial_args,
+                                } => {
                                     // Combine partial args with new args
                                     let mut all_args = partial_args.clone();
                                     all_args.extend(args);
-                                    
+
                                     // Check if we have enough args
                                     if all_args.len() < arity as usize {
                                         // Partial application - return a new NativeFn with more args
@@ -887,7 +892,10 @@ impl Vm {
                                         let host_fn = {
                                             let registry = self.host_registry.lock().unwrap();
                                             registry.get(&name).ok_or_else(|| {
-                                                VmError::Runtime(format!("Host function not found: {}", name))
+                                                VmError::Runtime(format!(
+                                                    "Host function not found: {}",
+                                                    name
+                                                ))
                                             })?
                                         };
                                         let result = host_fn(self, &all_args)?;
@@ -995,8 +1003,8 @@ impl Vm {
                     // Reverse to maintain left-to-right order
                     elements.reverse();
                     // Build array from elements
-                    use std::sync::Mutex;
                     use std::sync::Arc;
+                    use std::sync::Mutex;
                     let array = Value::Array(Arc::new(Mutex::new(elements)));
                     self.push(array);
                 }
@@ -1087,8 +1095,8 @@ impl Vm {
                     };
 
                     // Clone the array for immutable update
-                    use std::sync::Mutex;
                     use std::sync::Arc;
+                    use std::sync::Mutex;
                     let new_arr = if let Value::Array(arr) = &array {
                         let mut new_elements = arr.lock().unwrap().clone();
                         if idx >= new_elements.len() {
@@ -1109,9 +1117,9 @@ impl Vm {
                 // Record operations
                 Instruction::MakeRecord(n) => {
                     // Pop N field name/value pairs from stack in reverse order
-                    use std::sync::Mutex;
                     use std::collections::HashMap;
                     use std::sync::Arc;
+                    use std::sync::Mutex;
 
                     let mut fields = HashMap::new();
                     for _ in 0..n {
@@ -1261,7 +1269,10 @@ impl Vm {
     #[inline(always)]
     #[allow(dead_code)]
     fn peek_unchecked(&self) -> &Value {
-        debug_assert!(!self.stack.is_empty(), "peek_unchecked called on empty stack");
+        debug_assert!(
+            !self.stack.is_empty(),
+            "peek_unchecked called on empty stack"
+        );
         unsafe { self.stack.get_unchecked(self.stack.len() - 1) }
     }
 
@@ -1282,7 +1293,10 @@ impl Vm {
     /// Caller must ensure the stack is non-empty
     #[inline(always)]
     fn pop_unchecked(&mut self) -> Value {
-        debug_assert!(!self.stack.is_empty(), "pop_unchecked called on empty stack");
+        debug_assert!(
+            !self.stack.is_empty(),
+            "pop_unchecked called on empty stack"
+        );
         unsafe {
             let len = self.stack.len() - 1;
             self.stack.set_len(len);
@@ -1367,7 +1381,11 @@ impl Vm {
     }
 
     /// Call a closure from Rust code (re-entrant)
-    pub fn call_closure(&mut self, closure: Arc<Closure>, args: &[Value]) -> Result<Value, VmError> {
+    pub fn call_closure(
+        &mut self,
+        closure: Arc<Closure>,
+        args: &[Value],
+    ) -> Result<Value, VmError> {
         if closure.arity as usize != args.len() {
             return Err(VmError::Runtime(format!(
                 "Arity mismatch: expected {}, got {}",
@@ -1707,7 +1725,7 @@ mod tests {
             .constant(Value::Int(42))
             .instruction(Instruction::LoadConst(0))
             .instruction(Instruction::Pop)
-            .instruction(Instruction::Pop)  // This should underflow
+            .instruction(Instruction::Pop) // This should underflow
             .instruction(Instruction::Return)
             .build();
         let result = vm.execute(chunk);
@@ -2286,8 +2304,8 @@ mod tests {
     #[test]
     fn test_vm_array_get() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![
             Value::Int(10),
             Value::Int(20),
@@ -2308,8 +2326,8 @@ mod tests {
     #[test]
     fn test_vm_array_get_bounds_error() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![Value::Int(1)])));
         let chunk = ChunkBuilder::new()
             .constant(arr)
@@ -2326,8 +2344,8 @@ mod tests {
     #[test]
     fn test_vm_array_set() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2354,8 +2372,8 @@ mod tests {
     #[test]
     fn test_vm_array_length() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2374,8 +2392,8 @@ mod tests {
     #[test]
     fn test_vm_array_update() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2402,8 +2420,8 @@ mod tests {
     #[test]
     fn test_vm_array_negative_index_error() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![Value::Int(1)])));
         let chunk = ChunkBuilder::new()
             .constant(arr)
@@ -2454,8 +2472,8 @@ mod tests {
     #[test]
     fn test_vm_array_in_local() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let arr = Value::Array(Arc::new(Mutex::new(vec![Value::Int(1), Value::Int(2)])));
         let chunk = ChunkBuilder::new()
             .constant(arr.clone())
@@ -2471,8 +2489,8 @@ mod tests {
     #[test]
     fn test_vm_array_nested() {
         let mut vm = Vm::new();
-        use std::sync::Mutex;
         use std::sync::Arc;
+        use std::sync::Mutex;
         let inner = Value::Array(Arc::new(Mutex::new(vec![Value::Int(1), Value::Int(2)])));
         let chunk = ChunkBuilder::new()
             .constant(inner)
@@ -2780,33 +2798,36 @@ mod tests {
     #[test]
     fn test_vm_call_method_on_record_with_native_fn() {
         use crate::stdlib;
-        
+
         let mut vm = Vm::new();
         stdlib::register_stdlib(&mut vm);
-        
+
         // Create a record with a NativeFn field (simulating a module like List)
         let mut fields = HashMap::new();
-        fields.insert("len".to_string(), Value::NativeFn {
-            name: "List.length".to_string(),
-            arity: 1,
-            args: vec![],
-        });
+        fields.insert(
+            "len".to_string(),
+            Value::NativeFn {
+                name: "List.length".to_string(),
+                arity: 1,
+                args: vec![],
+            },
+        );
         let module = Value::Record(Arc::new(Mutex::new(fields)));
-        
+
         // Create a list [1, 2, 3]
         let list = Value::vec_to_cons(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-        
+
         // Build bytecode: module.len([1,2,3]) should return 3
         let chunk = ChunkBuilder::new()
             .constant(module)
             .constant(Value::Str("len".to_string()))
             .constant(list)
-            .instruction(Instruction::LoadConst(0))  // Load module record
-            .instruction(Instruction::LoadConst(2))  // Load list argument
-            .instruction(Instruction::CallMethod(1, 1))  // Call "len" with 1 arg
+            .instruction(Instruction::LoadConst(0)) // Load module record
+            .instruction(Instruction::LoadConst(2)) // Load list argument
+            .instruction(Instruction::CallMethod(1, 1)) // Call "len" with 1 arg
             .instruction(Instruction::Return)
             .build();
-        
+
         let result = vm.execute(chunk).unwrap();
         assert_eq!(result, Value::Int(3));
     }
@@ -2814,10 +2835,10 @@ mod tests {
     #[test]
     fn test_vm_call_method_on_record_field_not_found() {
         let mut vm = Vm::new();
-        
+
         // Create an empty record
         let module = Value::Record(Arc::new(Mutex::new(HashMap::new())));
-        
+
         // Try to call a non-existent method
         let chunk = ChunkBuilder::new()
             .constant(module)
@@ -2826,7 +2847,7 @@ mod tests {
             .instruction(Instruction::CallMethod(1, 0))
             .instruction(Instruction::Return)
             .build();
-        
+
         let result = vm.execute(chunk);
         assert!(matches!(result, Err(VmError::Runtime(msg)) if msg.contains("Method not found")));
     }

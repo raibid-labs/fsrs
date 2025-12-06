@@ -28,7 +28,10 @@ mod tests {
         assert_eq!(print_value(&Value::Int(42)), Ok(Value::Unit));
         assert_eq!(print_value(&Value::Float(3.14)), Ok(Value::Unit));
         assert_eq!(print_value(&Value::Bool(true)), Ok(Value::Unit));
-        assert_eq!(print_value(&Value::Str("hello".to_string())), Ok(Value::Unit));
+        assert_eq!(
+            print_value(&Value::Str("hello".to_string())),
+            Ok(Value::Unit)
+        );
         assert_eq!(print_value(&Value::Unit), Ok(Value::Unit));
     }
 
@@ -38,7 +41,10 @@ mod tests {
         assert_eq!(printfn_value(&Value::Int(42)), Ok(Value::Unit));
         assert_eq!(printfn_value(&Value::Float(3.14)), Ok(Value::Unit));
         assert_eq!(printfn_value(&Value::Bool(true)), Ok(Value::Unit));
-        assert_eq!(printfn_value(&Value::Str("hello".to_string())), Ok(Value::Unit));
+        assert_eq!(
+            printfn_value(&Value::Str("hello".to_string())),
+            Ok(Value::Unit)
+        );
         assert_eq!(printfn_value(&Value::Unit), Ok(Value::Unit));
     }
 

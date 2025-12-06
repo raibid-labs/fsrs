@@ -130,9 +130,9 @@ fn run_update() -> Result<(), Box<dyn std::error::Error>> {
 /// Searches for packages in the registry.
 fn run_search(query: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Searching for '{}'...\n", query);
-    
+
     let registry = Registry::new();
-    
+
     match registry.search(query) {
         Ok(matches) => {
             if matches.is_empty() {
@@ -152,7 +152,7 @@ fn run_search(query: &str) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Try running 'fpm update' first.");
         }
     }
-    
+
     Ok(())
 }
 
@@ -223,10 +223,7 @@ fn main() {
 }
 
 /// Adds a dependency to the current package.
-fn add_package(
-    package: String,
-    version: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn add_package(package: String, version: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = std::env::current_dir()?;
     let manifest_path = current_dir.join("fusabi.toml");
 
@@ -264,7 +261,11 @@ fn build_package() -> Result<(), Box<dyn std::error::Error>> {
     let builder = PackageBuilder::new(current_dir).verbose(true);
     let result = builder.build()?;
 
-    println!("Output: {} ({} bytes)", result.output_path.display(), result.output_size);
+    println!(
+        "Output: {} ({} bytes)",
+        result.output_path.display(),
+        result.output_size
+    );
 
     Ok(())
 }

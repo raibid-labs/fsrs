@@ -10,7 +10,6 @@ use fusabi::{
 use fusabi_vm::{deserialize_chunk, Vm};
 use std::fs;
 
-
 #[test]
 fn test_compile_to_bytecode_basic() {
     // Simple expression
@@ -71,8 +70,8 @@ fn test_compile_file_to_bytecode() {
     fs::write(&test_file, source).expect("Failed to write test file");
 
     // Compile the file
-    let bytecode = compile_file_to_bytecode(test_file.to_str().unwrap())
-        .expect("File compilation failed");
+    let bytecode =
+        compile_file_to_bytecode(test_file.to_str().unwrap()).expect("File compilation failed");
 
     // Verify bytecode
     assert!(bytecode.starts_with(b"FZB\x01"));

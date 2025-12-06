@@ -450,7 +450,10 @@ mod tests {
 
     #[test]
     fn test_math_max() {
-        assert_eq!(math_max(&Value::Int(5), &Value::Int(3)).unwrap(), Value::Int(5));
+        assert_eq!(
+            math_max(&Value::Int(5), &Value::Int(3)).unwrap(),
+            Value::Int(5)
+        );
         assert_eq!(
             math_max(&Value::Float(3.14), &Value::Float(2.71)).unwrap(),
             Value::Float(3.14)
@@ -463,7 +466,10 @@ mod tests {
 
     #[test]
     fn test_math_min() {
-        assert_eq!(math_min(&Value::Int(5), &Value::Int(3)).unwrap(), Value::Int(3));
+        assert_eq!(
+            math_min(&Value::Int(5), &Value::Int(3)).unwrap(),
+            Value::Int(3)
+        );
         assert_eq!(
             math_min(&Value::Float(3.14), &Value::Float(2.71)).unwrap(),
             Value::Float(2.71)
@@ -618,8 +624,14 @@ mod tests {
 
     #[test]
     fn test_math_truncate() {
-        assert_eq!(math_truncate(&Value::Float(3.7)).unwrap(), Value::Float(3.0));
-        assert_eq!(math_truncate(&Value::Float(-3.7)).unwrap(), Value::Float(-3.0));
+        assert_eq!(
+            math_truncate(&Value::Float(3.7)).unwrap(),
+            Value::Float(3.0)
+        );
+        assert_eq!(
+            math_truncate(&Value::Float(-3.7)).unwrap(),
+            Value::Float(-3.0)
+        );
         assert_eq!(math_truncate(&Value::Int(5)).unwrap(), Value::Float(5.0));
     }
 

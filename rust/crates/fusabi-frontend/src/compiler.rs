@@ -302,9 +302,9 @@ impl Compiler {
                         .iter()
                         .any(|(_, expr)| Self::expr_references_var(expr, name))
             }
-            Expr::VariantConstruct { fields, .. } => {
-                fields.iter().any(|expr| Self::expr_references_var(expr, name))
-            }
+            Expr::VariantConstruct { fields, .. } => fields
+                .iter()
+                .any(|expr| Self::expr_references_var(expr, name)),
             Expr::Match { scrutinee, arms } => {
                 Self::expr_references_var(scrutinee, name)
                     || arms.iter().any(|arm| {
@@ -314,9 +314,7 @@ impl Compiler {
                         Self::expr_references_var(&arm.body, name)
                     })
             }
-            Expr::MethodCall {
-                receiver, args, ..
-            } => {
+            Expr::MethodCall { receiver, args, .. } => {
                 Self::expr_references_var(receiver, name)
                     || args.iter().any(|e| Self::expr_references_var(e, name))
             }
@@ -560,9 +558,7 @@ impl Compiler {
             Expr::While { cond, body } => self.compile_while(cond, body),
             Expr::Break => self.compile_break(),
             Expr::Continue => self.compile_continue(),
-            Expr::ComputationExpr { builder, body } => {
-                self.compile_computation_expr(builder, body)
-            }
+            Expr::ComputationExpr { builder, body } => self.compile_computation_expr(builder, body),
         }
     }
 

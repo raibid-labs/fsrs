@@ -1270,7 +1270,8 @@ mod tests {
         updates.insert("x".to_string(), Value::Int(99));
         rec1.as_record()
             .unwrap()
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert("x".to_string(), Value::Int(99));
         assert_eq!(rec2.record_get("x"), Ok(Value::Int(99)));
     }

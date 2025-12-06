@@ -266,7 +266,10 @@ pub fn events_handlers(event_name: &Value) -> Result<Value, VmError> {
 
     let registry = EVENT_HANDLERS.lock().unwrap();
     let count = registry.get(&name).map(|h| h.len()).unwrap_or(0)
-        + registry.get(&format!("__once__{}", name)).map(|h| h.len()).unwrap_or(0);
+        + registry
+            .get(&format!("__once__{}", name))
+            .map(|h| h.len())
+            .unwrap_or(0);
 
     Ok(Value::Int(count as i64))
 }
@@ -481,7 +484,11 @@ mod tests {
         let handler = create_mock_handler();
 
         // Register handlers for multiple events
-        events_on(&mut vm, &[Value::Str("Event1".to_string()), handler.clone()]).unwrap();
+        events_on(
+            &mut vm,
+            &[Value::Str("Event1".to_string()), handler.clone()],
+        )
+        .unwrap();
         events_on(&mut vm, &[Value::Str("Event2".to_string()), handler]).unwrap();
 
         // Clear all

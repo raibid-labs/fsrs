@@ -30,7 +30,9 @@ pub fn async_return(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 /// Async.Bind : Async<'a> -> ('a -> Async<'b>) -> Async<'b>
 pub fn async_bind(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
-        return Err(VmError::Runtime("Async.Bind expects 2 arguments".to_string()));
+        return Err(VmError::Runtime(
+            "Async.Bind expects 2 arguments".to_string(),
+        ));
     }
 
     let computation = args[0].clone();
@@ -46,7 +48,9 @@ pub fn async_bind(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 /// Async.Delay : (unit -> Async<'a>) -> Async<'a>
 pub fn async_delay(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
-        return Err(VmError::Runtime("Async.Delay expects 1 argument".to_string()));
+        return Err(VmError::Runtime(
+            "Async.Delay expects 1 argument".to_string(),
+        ));
     }
 
     let generator = args[0].clone();
@@ -61,7 +65,9 @@ pub fn async_delay(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 /// Async.ReturnFrom : Async<'a> -> Async<'a>
 pub fn async_return_from(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
-        return Err(VmError::Runtime("Async.ReturnFrom expects 1 argument".to_string()));
+        return Err(VmError::Runtime(
+            "Async.ReturnFrom expects 1 argument".to_string(),
+        ));
     }
     Ok(args[0].clone())
 }
@@ -79,7 +85,9 @@ pub fn async_zero(_vm: &mut Vm, _args: &[Value]) -> Result<Value, VmError> {
 /// Used for sequencing: do! a; b
 pub fn async_combine(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
-        return Err(VmError::Runtime("Async.Combine expects 2 arguments".to_string()));
+        return Err(VmError::Runtime(
+            "Async.Combine expects 2 arguments".to_string(),
+        ));
     }
 
     let first = args[0].clone();
@@ -102,7 +110,9 @@ pub fn async_combine(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
 /// Interprets the Async Free Monad
 pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 1 {
-        return Err(VmError::Runtime("Async.RunSynchronously expects 1 argument".to_string()));
+        return Err(VmError::Runtime(
+            "Async.RunSynchronously expects 1 argument".to_string(),
+        ));
     }
 
     let mut current = args[0].clone();
@@ -113,7 +123,11 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
 
     loop {
         match current {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 match variant_name.as_str() {
                     "Pure" => {
                         let result = fields[0].clone();
@@ -185,7 +199,7 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
 
                         let helper = Value::NativeFn {
                             name: "Async.Internal.CombineHelper".to_string(),
-                            arity: 2, // takes (second, ignored_result)
+                            arity: 2,           // takes (second, ignored_result)
                             args: vec![second], // Partially applied 'second'
                         };
 
@@ -201,13 +215,20 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
                         // Call generator(unit) -> async_computation
                         current = vm.call_value(generator, &[Value::Unit])?;
                     }
-                    _ => return Err(VmError::Runtime(format!("Unknown Async variant: {}", variant_name))),
+                    _ => {
+                        return Err(VmError::Runtime(format!(
+                            "Unknown Async variant: {}",
+                            variant_name
+                        )))
+                    }
                 }
             }
-            _ => return Err(VmError::TypeMismatch {
-                expected: "Async variant",
-                got: current.type_name(),
-            }),
+            _ => {
+                return Err(VmError::TypeMismatch {
+                    expected: "Async variant",
+                    got: current.type_name(),
+                })
+            }
         }
     }
 }
@@ -217,7 +238,9 @@ pub fn async_run_synchronously(vm: &mut Vm, args: &[Value]) -> Result<Value, VmE
 /// Returns the first argument (the next computation), ignoring the second (the result of previous).
 pub fn async_combine_helper(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     if args.len() != 2 {
-        return Err(VmError::Runtime("CombineHelper expects 2 arguments".to_string()));
+        return Err(VmError::Runtime(
+            "CombineHelper expects 2 arguments".to_string(),
+        ));
     }
     // args[0] is the next computation (captured)
     // args[1] is the result of the previous computation (ignored)

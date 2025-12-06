@@ -294,7 +294,10 @@ version = "0.1.0"
 
         let result = Manifest::parse(toml);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ManifestError::InvalidManifest(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ManifestError::InvalidManifest(_)
+        ));
     }
 
     #[test]
@@ -307,7 +310,10 @@ version = ""
 
         let result = Manifest::parse(toml);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ManifestError::InvalidManifest(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ManifestError::InvalidManifest(_)
+        ));
     }
 
     #[test]

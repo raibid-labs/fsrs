@@ -1,9 +1,9 @@
 // Fusabi Map Standard Library
 use crate::value::Value;
 use crate::vm::{Vm, VmError};
-use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Map.empty : unit -> 'a map
 /// Creates an empty map
@@ -61,9 +61,9 @@ pub fn map_find(key: &Value, map: &Value) -> Result<Value, VmError> {
     match map {
         Value::Map(m) => {
             let m = m.lock().unwrap();
-            m.get(key_str).cloned().ok_or_else(|| {
-                VmError::Runtime(format!("Map key not found: {}", key_str))
-            })
+            m.get(key_str)
+                .cloned()
+                .ok_or_else(|| VmError::Runtime(format!("Map key not found: {}", key_str)))
         }
         _ => Err(VmError::TypeMismatch {
             expected: "map",

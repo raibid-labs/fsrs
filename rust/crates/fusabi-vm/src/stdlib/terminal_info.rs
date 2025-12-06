@@ -188,8 +188,8 @@ pub fn get_line(line_number: &Value) -> Result<Value, VmError> {
 pub fn get_lines(start: &Value, end: &Value) -> Result<Value, VmError> {
     match (start, end) {
         (Value::Int(start_n), Value::Int(end_n)) => {
-            let lines = with_provider(|provider| provider.get_lines(*start_n, *end_n))
-                .unwrap_or_default();
+            let lines =
+                with_provider(|provider| provider.get_lines(*start_n, *end_n)).unwrap_or_default();
 
             // Build list in reverse order
             let mut result = Value::Nil;
@@ -235,8 +235,8 @@ pub fn get_window_title(unit: &Value) -> Result<Value, VmError> {
 pub fn get_tab_title(unit: &Value) -> Result<Value, VmError> {
     match unit {
         Value::Unit => {
-            let title = with_provider(|provider| provider.get_tab_title())
-                .unwrap_or_else(|| String::new());
+            let title =
+                with_provider(|provider| provider.get_tab_title()).unwrap_or_else(|| String::new());
 
             Ok(Value::Str(title))
         }
@@ -253,8 +253,8 @@ pub fn get_tab_title(unit: &Value) -> Result<Value, VmError> {
 pub fn get_terminal_size(unit: &Value) -> Result<Value, VmError> {
     match unit {
         Value::Unit => {
-            let (cols, rows) = with_provider(|provider| provider.get_terminal_size())
-                .unwrap_or((0, 0));
+            let (cols, rows) =
+                with_provider(|provider| provider.get_terminal_size()).unwrap_or((0, 0));
 
             Ok(Value::Tuple(vec![Value::Int(cols), Value::Int(rows)]))
         }
@@ -360,7 +360,11 @@ mod tests {
         let result = get_foreground_process(&Value::Unit).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
 
@@ -382,7 +386,13 @@ mod tests {
     #[test]
     fn test_get_foreground_process_type_error() {
         let result = get_foreground_process(&Value::Int(42));
-        assert!(matches!(result, Err(VmError::TypeMismatch { expected: "unit", .. })));
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "unit",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -417,7 +427,11 @@ mod tests {
         let result = get_current_working_dir(&Value::Unit).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 assert!(matches!(&fields[0], Value::Str(s) if s == "/home/user"));
@@ -464,7 +478,11 @@ mod tests {
         let result = get_line(&Value::Int(1)).unwrap();
 
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 assert!(matches!(&fields[0], Value::Str(s) if s == "line 1"));
@@ -487,7 +505,13 @@ mod tests {
     #[test]
     fn test_get_line_type_error() {
         let result = get_line(&Value::Str("not an int".to_string()));
-        assert!(matches!(result, Err(VmError::TypeMismatch { expected: "int", .. })));
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "int",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -545,10 +569,22 @@ mod tests {
     #[test]
     fn test_get_lines_type_error() {
         let result = get_lines(&Value::Str("not an int".to_string()), &Value::Int(2));
-        assert!(matches!(result, Err(VmError::TypeMismatch { expected: "int", .. })));
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "int",
+                ..
+            })
+        ));
 
         let result = get_lines(&Value::Int(0), &Value::Str("not an int".to_string()));
-        assert!(matches!(result, Err(VmError::TypeMismatch { expected: "int", .. })));
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "int",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -661,7 +697,13 @@ mod tests {
     #[test]
     fn test_get_terminal_size_type_error() {
         let result = get_terminal_size(&Value::Int(42));
-        assert!(matches!(result, Err(VmError::TypeMismatch { expected: "unit", .. })));
+        assert!(matches!(
+            result,
+            Err(VmError::TypeMismatch {
+                expected: "unit",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -681,7 +723,12 @@ mod tests {
                 assert!(matches!(r.get("pid"), Some(Value::Int(9999))));
 
                 // Check commandLine is Some variant
-                if let Some(Value::Variant { variant_name, fields, .. }) = r.get("commandLine") {
+                if let Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) = r.get("commandLine")
+                {
                     assert_eq!(variant_name, "Some");
                     assert_eq!(fields.len(), 1);
                     assert!(matches!(&fields[0], Value::Str(s) if s == "/usr/bin/vim file.txt"));
@@ -708,7 +755,12 @@ mod tests {
                 let r = record.lock().unwrap();
 
                 // Check commandLine is None variant
-                if let Some(Value::Variant { variant_name, fields, .. }) = r.get("commandLine") {
+                if let Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) = r.get("commandLine")
+                {
                     assert_eq!(variant_name, "None");
                     assert_eq!(fields.len(), 0);
                 } else {

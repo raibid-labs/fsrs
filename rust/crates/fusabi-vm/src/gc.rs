@@ -285,7 +285,12 @@ fn mark_value(value: &Value, tracer: &mut Tracer, objects: &HashMap<usize, GcObj
             }
         }
         // Primitive types don't need tracing
-        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Str(_) | Value::Unit | Value::Nil => {}
+        Value::Int(_)
+        | Value::Float(_)
+        | Value::Bool(_)
+        | Value::Str(_)
+        | Value::Unit
+        | Value::Nil => {}
         // HostData is managed by Rust's reference counting
         Value::HostData(_) => {}
     }
@@ -319,11 +324,10 @@ fn estimate_value_size(value: &Value) -> usize {
         Value::Str(s) => std::mem::size_of::<String>() + s.len(),
         Value::Unit => 0,
         Value::Tuple(elements) => {
-            std::mem::size_of::<Vec<Value>>() + elements.iter().map(estimate_value_size).sum::<usize>()
+            std::mem::size_of::<Vec<Value>>()
+                + elements.iter().map(estimate_value_size).sum::<usize>()
         }
-        Value::Cons { head, tail } => {
-            16 + estimate_value_size(head) + estimate_value_size(tail)
-        }
+        Value::Cons { head, tail } => 16 + estimate_value_size(head) + estimate_value_size(tail),
         Value::Nil => 0,
         Value::Array(arr) => {
             let arr = arr.lock().unwrap();
@@ -345,16 +349,18 @@ fn estimate_value_size(value: &Value) -> usize {
                     .map(|(k, v)| k.len() + estimate_value_size(v))
                     .sum::<usize>()
         }
-        Value::Variant { type_name, variant_name, fields } => {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
             type_name.len()
                 + variant_name.len()
                 + fields.iter().map(estimate_value_size).sum::<usize>()
         }
         Value::Closure(c) => {
             // Rough estimate: chunk size + upvalues
-            std::mem::size_of::<Closure>()
-                + c.chunk.instructions.len() * 4
-                + c.upvalues.len() * 8
+            std::mem::size_of::<Closure>() + c.chunk.instructions.len() * 4 + c.upvalues.len() * 8
         }
         Value::NativeFn { name, args, .. } => {
             name.len() + args.iter().map(estimate_value_size).sum::<usize>()
@@ -430,9 +436,9 @@ impl Trace for Closure {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use super::*;
 
     #[test]
     fn test_gc_header_creation() {
@@ -579,7 +585,9 @@ mod tests {
 
         // Create the cycle
         if let Value::Record(r1) = &record1 {
-            r1.lock().unwrap().insert("next".to_string(), record2.clone());
+            r1.lock()
+                .unwrap()
+                .insert("next".to_string(), record2.clone());
         }
 
         heap.allocate(record1.clone());

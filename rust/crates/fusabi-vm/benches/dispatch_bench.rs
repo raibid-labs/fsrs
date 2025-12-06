@@ -180,41 +180,45 @@ fn bench_nested_calls(c: &mut Criterion) {
     let mut group = c.benchmark_group("dispatch/function_calls");
 
     for depth in [5, 10, 20, 50] {
-        group.bench_with_input(BenchmarkId::new("nested_calls", depth), &depth, |b, &depth| {
-            let mut inner_fn = ChunkBuilder::new("inner");
-            let const_idx = inner_fn.add_constant(Value::Int(42));
-            inner_fn.add_instruction(Instruction::LoadConst(const_idx));
-            inner_fn.add_instruction(Instruction::Return);
+        group.bench_with_input(
+            BenchmarkId::new("nested_calls", depth),
+            &depth,
+            |b, &depth| {
+                let mut inner_fn = ChunkBuilder::new("inner");
+                let const_idx = inner_fn.add_constant(Value::Int(42));
+                inner_fn.add_instruction(Instruction::LoadConst(const_idx));
+                inner_fn.add_instruction(Instruction::Return);
 
-            let mut current_chunk = inner_fn.build();
+                let mut current_chunk = inner_fn.build();
 
-            for i in 0..depth {
-                let mut wrapper = ChunkBuilder::new(&format!("wrapper_{}", i));
-                let fn_idx = wrapper.add_constant(Value::Chunk(current_chunk));
-                wrapper.add_instruction(Instruction::LoadConst(fn_idx));
-                wrapper.add_instruction(Instruction::Call(0));
-                wrapper.add_instruction(Instruction::Return);
-                current_chunk = wrapper.build();
-            }
+                for i in 0..depth {
+                    let mut wrapper = ChunkBuilder::new(&format!("wrapper_{}", i));
+                    let fn_idx = wrapper.add_constant(Value::Chunk(current_chunk));
+                    wrapper.add_instruction(Instruction::LoadConst(fn_idx));
+                    wrapper.add_instruction(Instruction::Call(0));
+                    wrapper.add_instruction(Instruction::Return);
+                    current_chunk = wrapper.build();
+                }
 
-            let mut builder = ChunkBuilder::new("nested_call_benchmark");
-            for _ in 0..100 {
-                let fn_idx = builder.add_constant(Value::Chunk(current_chunk.clone()));
-                builder.add_instruction(Instruction::LoadConst(fn_idx));
-                builder.add_instruction(Instruction::Call(0));
-                builder.add_instruction(Instruction::Pop);
-            }
+                let mut builder = ChunkBuilder::new("nested_call_benchmark");
+                for _ in 0..100 {
+                    let fn_idx = builder.add_constant(Value::Chunk(current_chunk.clone()));
+                    builder.add_instruction(Instruction::LoadConst(fn_idx));
+                    builder.add_instruction(Instruction::Call(0));
+                    builder.add_instruction(Instruction::Pop);
+                }
 
-            let ret_idx = builder.add_constant(Value::Unit);
-            builder.add_instruction(Instruction::LoadConst(ret_idx));
-            builder.add_instruction(Instruction::Return);
-            let chunk = builder.build();
+                let ret_idx = builder.add_constant(Value::Unit);
+                builder.add_instruction(Instruction::LoadConst(ret_idx));
+                builder.add_instruction(Instruction::Return);
+                let chunk = builder.build();
 
-            b.iter(|| {
-                let mut vm = Vm::new();
-                black_box(vm.execute(chunk.clone()).unwrap());
-            });
-        });
+                b.iter(|| {
+                    let mut vm = Vm::new();
+                    black_box(vm.execute(chunk.clone()).unwrap());
+                });
+            },
+        );
     }
 
     group.finish();
@@ -732,24 +736,28 @@ fn bench_dispatch_baseline(c: &mut Criterion) {
 
     for size in [1000, 10_000, 100_000] {
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("noop_sequence", size), &size, |b, &size| {
-            let mut builder = ChunkBuilder::new("noop_sequence");
-            let val_idx = builder.add_constant(Value::Int(1));
+        group.bench_with_input(
+            BenchmarkId::new("noop_sequence", size),
+            &size,
+            |b, &size| {
+                let mut builder = ChunkBuilder::new("noop_sequence");
+                let val_idx = builder.add_constant(Value::Int(1));
 
-            builder.add_instruction(Instruction::LoadConst(val_idx));
-            for _ in 0..size {
-                builder.add_instruction(Instruction::Dup);
-                builder.add_instruction(Instruction::Pop);
-            }
+                builder.add_instruction(Instruction::LoadConst(val_idx));
+                for _ in 0..size {
+                    builder.add_instruction(Instruction::Dup);
+                    builder.add_instruction(Instruction::Pop);
+                }
 
-            builder.add_instruction(Instruction::Return);
-            let chunk = builder.build();
+                builder.add_instruction(Instruction::Return);
+                let chunk = builder.build();
 
-            b.iter(|| {
-                let mut vm = Vm::new();
-                black_box(vm.execute(chunk.clone()).unwrap());
-            });
-        });
+                b.iter(|| {
+                    let mut vm = Vm::new();
+                    black_box(vm.execute(chunk.clone()).unwrap());
+                });
+            },
+        );
     }
 
     group.finish();

@@ -172,9 +172,9 @@ impl TypeInference {
                         .iter()
                         .any(|(_, expr)| Self::expr_references_var(expr, name))
             }
-            Expr::VariantConstruct { fields, .. } => {
-                fields.iter().any(|expr| Self::expr_references_var(expr, name))
-            }
+            Expr::VariantConstruct { fields, .. } => fields
+                .iter()
+                .any(|expr| Self::expr_references_var(expr, name)),
             Expr::Match { scrutinee, arms } => {
                 Self::expr_references_var(scrutinee, name)
                     || arms.iter().any(|arm| {
@@ -184,9 +184,7 @@ impl TypeInference {
                         !pattern_binds && Self::expr_references_var(&arm.body, name)
                     })
             }
-            Expr::MethodCall {
-                receiver, args, ..
-            } => {
+            Expr::MethodCall { receiver, args, .. } => {
                 Self::expr_references_var(receiver, name)
                     || args.iter().any(|e| Self::expr_references_var(e, name))
             }
@@ -356,7 +354,10 @@ impl TypeInference {
             }
 
             // Computation expression (stub implementation)
-            Expr::ComputationExpr { builder: _, body: _ } => {
+            Expr::ComputationExpr {
+                builder: _,
+                body: _,
+            } => {
                 // TODO: Implement proper type inference for computation expressions
                 // For now, return a fresh type variable
                 Ok(Type::Var(self.fresh_var()))
@@ -1203,7 +1204,11 @@ mod tests {
             else_branch: Box::new(else_branch),
         };
         let factorial_lambda = lambda("n", factorial_body);
-        let expr = let_expr("factorial", factorial_lambda, app(var("factorial"), lit_int(5)));
+        let expr = let_expr(
+            "factorial",
+            factorial_lambda,
+            app(var("factorial"), lit_int(5)),
+        );
 
         // Should successfully infer type without needing explicit 'rec'
         let ty = inf.infer_and_solve(&expr, &env).unwrap();

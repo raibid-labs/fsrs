@@ -74,7 +74,10 @@ impl CommandEntry {
         let mut fields = HashMap::new();
         fields.insert("id".to_string(), Value::Str(self.id.clone()));
         fields.insert("name".to_string(), Value::Str(self.name.clone()));
-        fields.insert("description".to_string(), Value::Str(self.description.clone()));
+        fields.insert(
+            "description".to_string(),
+            Value::Str(self.description.clone()),
+        );
         fields.insert("category".to_string(), Value::Str(self.category.clone()));
         fields.insert("handler".to_string(), self.handler.clone());
         Value::Record(Arc::new(Mutex::new(fields)))
@@ -86,33 +89,54 @@ impl CommandEntry {
             Value::Record(record) => {
                 let fields = record.lock().unwrap();
 
-                let id = fields.get("id")
+                let id = fields
+                    .get("id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| VmError::Runtime("CommandInfo missing 'id' field (string)".to_string()))?
+                    .ok_or_else(|| {
+                        VmError::Runtime("CommandInfo missing 'id' field (string)".to_string())
+                    })?
                     .to_string();
 
-                let name = fields.get("name")
+                let name = fields
+                    .get("name")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| VmError::Runtime("CommandInfo missing 'name' field (string)".to_string()))?
+                    .ok_or_else(|| {
+                        VmError::Runtime("CommandInfo missing 'name' field (string)".to_string())
+                    })?
                     .to_string();
 
-                let description = fields.get("description")
+                let description = fields
+                    .get("description")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| VmError::Runtime("CommandInfo missing 'description' field (string)".to_string()))?
+                    .ok_or_else(|| {
+                        VmError::Runtime(
+                            "CommandInfo missing 'description' field (string)".to_string(),
+                        )
+                    })?
                     .to_string();
 
-                let category = fields.get("category")
+                let category = fields
+                    .get("category")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| VmError::Runtime("CommandInfo missing 'category' field (string)".to_string()))?
+                    .ok_or_else(|| {
+                        VmError::Runtime(
+                            "CommandInfo missing 'category' field (string)".to_string(),
+                        )
+                    })?
                     .to_string();
 
-                let handler = fields.get("handler")
-                    .ok_or_else(|| VmError::Runtime("CommandInfo missing 'handler' field".to_string()))?
+                let handler = fields
+                    .get("handler")
+                    .ok_or_else(|| {
+                        VmError::Runtime("CommandInfo missing 'handler' field".to_string())
+                    })?
                     .clone();
 
                 // Validate that handler is a function
                 if !matches!(handler, Value::Closure(_) | Value::NativeFn { .. }) {
-                    return Err(VmError::Runtime("CommandInfo 'handler' must be a function or closure".to_string()));
+                    return Err(VmError::Runtime(
+                        "CommandInfo 'handler' must be a function or closure".to_string(),
+                    ));
                 }
 
                 Ok(CommandEntry {
@@ -237,7 +261,9 @@ pub fn commands_unregister(_vm: &mut Vm, args: &[Value]) -> Result<Value, VmErro
         }
         Value::Int(numeric_id) => {
             // Find and remove by numeric ID
-            let key_to_remove = reg.commands.iter()
+            let key_to_remove = reg
+                .commands
+                .iter()
                 .find(|(_, entry)| entry.numeric_id == *numeric_id)
                 .map(|(k, _)| k.clone());
 
@@ -339,7 +365,8 @@ pub fn commands_invoke(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
     let handler = {
         let registry = get_registry();
         let reg = registry.lock().unwrap();
-        reg.commands.get(id)
+        reg.commands
+            .get(id)
             .map(|entry| entry.handler.clone())
             .ok_or_else(|| VmError::Runtime(format!("Command not found: {}", id)))?
     };
@@ -363,11 +390,12 @@ pub fn commands_invoke(vm: &mut Vm, args: &[Value]) -> Result<Value, VmError> {
             // Since we can't directly invoke them, we'll just return an error for now
             // In a real implementation, the host application would handle command invocation
             Err(VmError::Runtime(
-                "Cannot invoke native function commands directly; host must handle invocation".to_string()
+                "Cannot invoke native function commands directly; host must handle invocation"
+                    .to_string(),
             ))
         }
         _ => Err(VmError::Runtime(
-            "Invalid handler type (must be closure or native function)".to_string()
+            "Invalid handler type (must be closure or native function)".to_string(),
         )),
     }
 }
@@ -381,14 +409,20 @@ mod tests {
         let mut fields = HashMap::new();
         fields.insert("id".to_string(), Value::Str(id.to_string()));
         fields.insert("name".to_string(), Value::Str(name.to_string()));
-        fields.insert("description".to_string(), Value::Str(description.to_string()));
+        fields.insert(
+            "description".to_string(),
+            Value::Str(description.to_string()),
+        );
         fields.insert("category".to_string(), Value::Str(category.to_string()));
         // Use a dummy NativeFn as handler for testing
-        fields.insert("handler".to_string(), Value::NativeFn {
-            name: "test_handler".to_string(),
-            arity: 0,
-            args: vec![],
-        });
+        fields.insert(
+            "handler".to_string(),
+            Value::NativeFn {
+                name: "test_handler".to_string(),
+                arity: 0,
+                args: vec![],
+            },
+        );
         Value::Record(Arc::new(Mutex::new(fields)))
     }
 
@@ -408,12 +442,7 @@ mod tests {
         clear_registry();
         let mut vm = Vm::new();
 
-        let cmd = create_test_command(
-            "test.command",
-            "Test Command",
-            "A test command",
-            "Testing"
-        );
+        let cmd = create_test_command("test.command", "Test Command", "A test command", "Testing");
 
         let result = commands_register(&mut vm, &[cmd]).unwrap();
 
@@ -520,19 +549,19 @@ mod tests {
         clear_registry();
         let mut vm = Vm::new();
 
-        let cmd = create_test_command(
-            "test.command",
-            "Test Command",
-            "A test command",
-            "Testing"
-        );
+        let cmd = create_test_command("test.command", "Test Command", "A test command", "Testing");
 
         commands_register(&mut vm, &[cmd]).unwrap();
 
         // Get existing command
-        let result = commands_get_by_id(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
+        let result =
+            commands_get_by_id(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "Some");
                 assert_eq!(fields.len(), 1);
                 assert!(matches!(fields[0], Value::Record(_)));
@@ -543,7 +572,11 @@ mod tests {
         // Get non-existing command
         let result = commands_get_by_id(&mut vm, &[Value::Str("nonexistent".to_string())]).unwrap();
         match result {
-            Value::Variant { variant_name, fields, .. } => {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
                 assert_eq!(variant_name, "None");
                 assert_eq!(fields.len(), 0);
             }
@@ -561,7 +594,8 @@ mod tests {
         commands_register(&mut vm, &[cmd]).unwrap();
 
         // Unregister by string ID
-        let result = commands_unregister(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
+        let result =
+            commands_unregister(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
         assert_eq!(result, Value::Bool(true));
 
         // Verify it's gone
@@ -571,7 +605,8 @@ mod tests {
         drop(reg);
 
         // Try to unregister again
-        let result = commands_unregister(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
+        let result =
+            commands_unregister(&mut vm, &[Value::Str("test.command".to_string())]).unwrap();
         assert_eq!(result, Value::Bool(false));
     }
 
@@ -604,11 +639,14 @@ mod tests {
         fields.insert("id".to_string(), Value::Str("test".to_string()));
         fields.insert("description".to_string(), Value::Str("desc".to_string()));
         fields.insert("category".to_string(), Value::Str("cat".to_string()));
-        fields.insert("handler".to_string(), Value::NativeFn {
-            name: "test".to_string(),
-            arity: 0,
-            args: vec![],
-        });
+        fields.insert(
+            "handler".to_string(),
+            Value::NativeFn {
+                name: "test".to_string(),
+                arity: 0,
+                args: vec![],
+            },
+        );
         let cmd = Value::Record(Arc::new(Mutex::new(fields)));
 
         let result = commands_register(&mut vm, &[cmd]);

@@ -22,7 +22,10 @@ fn test_none_no_parens() {
     let expr = parse_expr("None").unwrap();
     assert!(expr.is_variant_construct());
 
-    if let Expr::VariantConstruct { variant, fields, .. } = expr {
+    if let Expr::VariantConstruct {
+        variant, fields, ..
+    } = expr
+    {
         assert_eq!(variant, "None");
         assert_eq!(fields.len(), 0);
     } else {
@@ -36,7 +39,10 @@ fn test_some_with_parens() {
     let expr = parse_expr("Some(42)").unwrap();
     assert!(expr.is_variant_construct());
 
-    if let Expr::VariantConstruct { variant, fields, .. } = expr {
+    if let Expr::VariantConstruct {
+        variant, fields, ..
+    } = expr
+    {
         assert_eq!(variant, "Some");
         assert_eq!(fields.len(), 1);
     } else {
@@ -48,9 +54,16 @@ fn test_some_with_parens() {
 fn test_some_without_parens() {
     // Some 42 should work (F# style)
     let expr = parse_expr("Some 42").unwrap();
-    assert!(expr.is_variant_construct(), "Some 42 should be parsed as variant, got: {:?}", expr);
+    assert!(
+        expr.is_variant_construct(),
+        "Some 42 should be parsed as variant, got: {:?}",
+        expr
+    );
 
-    if let Expr::VariantConstruct { variant, fields, .. } = expr {
+    if let Expr::VariantConstruct {
+        variant, fields, ..
+    } = expr
+    {
         assert_eq!(variant, "Some");
         assert_eq!(fields.len(), 1);
         // Check the field is Int(42)
@@ -71,7 +84,10 @@ fn test_some_with_variable() {
 
     if let Expr::Let { body, .. } = expr {
         assert!(body.is_variant_construct());
-        if let Expr::VariantConstruct { variant, fields, .. } = *body {
+        if let Expr::VariantConstruct {
+            variant, fields, ..
+        } = *body
+        {
             assert_eq!(variant, "Some");
             assert_eq!(fields.len(), 1);
             assert!(fields[0].is_var());
@@ -99,7 +115,10 @@ fn test_nested_option() {
     let expr = parse_expr("Some (Some 42)").unwrap();
     assert!(expr.is_variant_construct());
 
-    if let Expr::VariantConstruct { variant, fields, .. } = expr {
+    if let Expr::VariantConstruct {
+        variant, fields, ..
+    } = expr
+    {
         assert_eq!(variant, "Some");
         assert_eq!(fields.len(), 1);
         // Inner should also be a variant construct
@@ -125,7 +144,10 @@ fn test_option_with_string() {
     let expr = parse_expr("Some \"hello\"").unwrap();
     assert!(expr.is_variant_construct());
 
-    if let Expr::VariantConstruct { variant, fields, .. } = expr {
+    if let Expr::VariantConstruct {
+        variant, fields, ..
+    } = expr
+    {
         assert_eq!(variant, "Some");
         assert_eq!(fields.len(), 1);
         match fields[0].as_ref() {
@@ -159,5 +181,8 @@ fn test_compile_some_without_parens() {
     let chunk = Compiler::compile(&expr).unwrap();
 
     // Should have MakeVariant instruction
-    assert!(chunk.instructions.iter().any(|i| matches!(i, fusabi_vm::instruction::Instruction::MakeVariant(1))));
+    assert!(chunk
+        .instructions
+        .iter()
+        .any(|i| matches!(i, fusabi_vm::instruction::Instruction::MakeVariant(1))));
 }
