@@ -305,9 +305,9 @@ jobs:
           fi
 
           # Check for forbidden content (AI notes)
-          if find docs -type f -name "*notes*.md" -o -name "*instructions*.md" | grep -q .; then
+          if find docs -type f \( -name "*notes*.md" -o -name "*instructions*.md" \) | grep -q .; then
             echo "::error::Found AI notes or instructions files in docs/. These should not be committed."
-            find docs -type f -name "*notes*.md" -o -name "*instructions*.md"
+            find docs -type f \( -name "*notes*.md" -o -name "*instructions*.md" \)
             exit 1
           fi
 
