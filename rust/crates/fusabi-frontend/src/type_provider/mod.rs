@@ -8,6 +8,7 @@ pub mod generator;
 pub mod registry;
 pub mod json_schema;
 pub mod kubernetes;
+pub mod opentelemetry;
 
 pub use error::{ProviderError, ProviderResult};
 pub use registry::ProviderRegistry;
