@@ -234,6 +234,11 @@ impl FusabiEngine {
         source: &str,
         options: crate::RunOptions,
     ) -> Result<Value, crate::FusabiError> {
+        // Sync global_bindings to vm.globals before execution
+        for (name, value) in self.global_bindings.iter() {
+            self.vm.globals.insert(name.clone(), value.clone());
+        }
+
         // Stage 1: Lexical Analysis
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize()?;
@@ -512,6 +517,33 @@ mod tests {
         engine.set_global("x", Value::Int(42));
         assert_eq!(engine.get_global("x"), Some(&Value::Int(42)));
         assert_eq!(engine.get_global("y"), None);
+    }
+
+    #[test]
+    fn test_set_global_visible_in_eval() {
+        // Test for issue #244: set_global() values should be visible in eval()
+        let mut engine = FusabiEngine::new();
+
+        // Set global variables before evaluation
+        engine.set_global("myGlobal", Value::Int(100));
+        engine.set_global("name", Value::Str("Fusabi".to_string()));
+
+        // These globals should be visible in eval()
+        let result1 = engine.eval("myGlobal * 2").unwrap();
+        assert_eq!(result1.as_int(), Some(200));
+
+        let result2 = engine.eval("name").unwrap();
+        assert_eq!(result2.as_str(), Some("Fusabi"));
+
+        // Test using globals in complex expressions
+        let result3 = engine.eval("let x = myGlobal + 50 in x * 2").unwrap();
+        assert_eq!(result3.as_int(), Some(300));
+
+        // Test that we can set multiple globals and use them together
+        engine.set_global("a", Value::Int(10));
+        engine.set_global("b", Value::Int(32));
+        let result4 = engine.eval("a + b").unwrap();
+        assert_eq!(result4.as_int(), Some(42));
     }
 
     #[test]
