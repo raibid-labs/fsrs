@@ -1155,12 +1155,34 @@ impl fmt::Display for Import {
     }
 }
 
+/// Type provider declaration
+/// Example: type K8s = KubernetesProvider<"https://...">
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeProviderDecl {
+    /// Alias name (e.g., "K8s")
+    pub alias: String,
+    /// Provider name (e.g., "KubernetesProvider")
+    pub provider: String,
+    /// Source URI (e.g., "https://..." or file path)
+    pub source: String,
+    /// Optional parameters as key-value pairs
+    pub params: Vec<(String, String)>,
+}
+
+impl fmt::Display for TypeProviderDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "type {} = {}<\"{}\">", self.alias, self.provider, self.source)
+    }
+}
+
 /// Complete program with modules and main expression
 ///
 /// Top-level structure representing a complete Fusabi program with
 /// module definitions, imports, and an optional main expression.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    /// Type provider declarations
+    pub type_providers: Vec<TypeProviderDecl>,
     /// Module definitions
     pub modules: Vec<ModuleDef>,
     /// Import statements
@@ -1173,6 +1195,12 @@ pub struct Program {
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for type_provider in &self.type_providers {
+            writeln!(f, "{}", type_provider)?;
+        }
+        if !self.type_providers.is_empty() && !self.imports.is_empty() {
+            writeln!(f)?;
+        }
         for import in &self.imports {
             writeln!(f, "{}", import)?;
         }

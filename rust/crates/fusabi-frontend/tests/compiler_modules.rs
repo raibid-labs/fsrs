@@ -28,6 +28,7 @@ fn make_import(module_name: &str) -> Import {
 #[test]
 fn test_compile_empty_program() {
     let program = Program {
+        type_providers: vec![],
         modules: vec![],
         imports: vec![],
         items: vec![],
@@ -47,6 +48,7 @@ fn test_compile_program_with_simple_module_constant() {
     let math_module = make_simple_module("Math", "pi", Expr::Lit(Literal::Int(3)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -70,6 +72,7 @@ fn test_compile_program_with_import() {
     let constants_module = make_simple_module("Constants", "value", Expr::Lit(Literal::Int(10)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![constants_module],
         imports: vec![make_import("Constants")],
         items: vec![],
@@ -89,6 +92,7 @@ fn test_compile_qualified_name() {
     let math_module = make_simple_module("Math", "value", Expr::Lit(Literal::Int(100)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -111,6 +115,7 @@ fn test_compile_imported_binding() {
     let constants_module = make_simple_module("Constants", "answer", Expr::Lit(Literal::Int(42)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![constants_module],
         imports: vec![make_import("Constants")],
         items: vec![],
@@ -135,6 +140,7 @@ fn test_compile_multiple_modules() {
     let physics_module = make_simple_module("Physics", "c", Expr::Lit(Literal::Int(300000000)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module, physics_module],
         imports: vec![],
         items: vec![],
@@ -160,6 +166,7 @@ fn test_compile_multiple_imports() {
     let physics_module = make_simple_module("Physics", "c", Expr::Lit(Literal::Int(300000000)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module, physics_module],
         imports: vec![make_import("Math"), make_import("Physics")],
         items: vec![],
@@ -186,6 +193,7 @@ fn test_compile_module_with_multiple_bindings() {
     };
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -211,6 +219,7 @@ fn test_compile_nested_modules() {
     };
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![outer_module],
         imports: vec![],
         items: vec![],
@@ -237,6 +246,7 @@ fn test_compile_module_with_constant() {
     };
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![constants_module],
         imports: vec![],
         items: vec![],
@@ -259,6 +269,7 @@ fn test_compile_program_using_imported_constant() {
     let constants_module = make_simple_module("Constants", "value", Expr::Lit(Literal::Int(99)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![constants_module],
         imports: vec![make_import("Constants")],
         items: vec![],
@@ -274,6 +285,7 @@ fn test_compile_program_using_imported_constant() {
 fn test_compile_error_undefined_module() {
     // Reference a module that doesn't exist
     let program = Program {
+        type_providers: vec![],
         modules: vec![],
         imports: vec![],
         items: vec![],
@@ -299,6 +311,7 @@ fn test_compile_error_undefined_binding_in_module() {
     let math_module = make_simple_module("Math", "value", Expr::Lit(Literal::Int(10)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -334,6 +347,7 @@ fn test_compile_module_with_expression() {
     );
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -355,6 +369,7 @@ fn test_compile_program_with_expression_using_module() {
     let math_module = make_simple_module("Math", "value", Expr::Lit(Literal::Int(10)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![],
         items: vec![],
@@ -389,6 +404,7 @@ fn test_compile_imported_expression() {
     );
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![math_module],
         imports: vec![make_import("Math")],
         items: vec![],
@@ -409,6 +425,7 @@ fn test_compile_module_with_bool() {
     let flags_module = make_simple_module("Flags", "enabled", Expr::Lit(Literal::Bool(true)));
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![flags_module],
         imports: vec![],
         items: vec![],
@@ -435,6 +452,7 @@ fn test_compile_module_with_string() {
     );
 
     let program = Program {
+        type_providers: vec![],
         modules: vec![messages_module],
         imports: vec![],
         items: vec![],

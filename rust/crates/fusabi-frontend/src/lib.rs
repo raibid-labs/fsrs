@@ -62,10 +62,11 @@ pub mod modules;
 pub mod parser;
 pub mod span;
 pub mod typed_ast;
+pub mod type_provider;
 pub mod types;
 
 // Re-export commonly used types for convenience
-pub use ast::{BinOp, Expr, Literal, ModuleDef, ModuleItem, Pattern, Program};
+pub use ast::{BinOp, Expr, Literal, ModuleDef, ModuleItem, Pattern, Program, TypeProviderDecl};
 pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use error::{TypeError, TypeErrorKind};
 pub use inference::TypeInference;

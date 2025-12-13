@@ -227,6 +227,7 @@ impl Parser {
         }
 
         Ok(Program {
+            type_providers: vec![],
             modules,
             imports,
             items,
