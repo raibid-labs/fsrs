@@ -71,7 +71,7 @@ pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use error::{TypeError, TypeErrorKind};
 pub use inference::TypeInference;
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
-pub use modules::{Module, ModulePath, ModuleRegistry, TypeDefinition as ModuleTypeDef};
+pub use modules::{Module, ModulePath, ModuleRegistry, TypeDefinition as ModuleTypeDef, FieldValidationResult, TypeValidationError};
 pub use parser::{ParseError, Parser};
 pub use span::Span;
 pub use typed_ast::{TypedExpr, TypedPattern};

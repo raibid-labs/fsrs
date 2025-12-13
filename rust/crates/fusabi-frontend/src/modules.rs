@@ -60,6 +60,73 @@ pub enum TypeDefinition {
     Du(DuTypeDef),
 }
 
+/// Result of validating fields against a type definition
+#[derive(Debug, Clone)]
+pub struct FieldValidationResult {
+    /// Fields that are in the type but not provided
+    pub missing_fields: Vec<String>,
+    /// Fields that are provided but not in the type
+    pub extra_fields: Vec<String>,
+    /// Whether validation passed (no missing required fields, no extra fields)
+    pub is_valid: bool,
+}
+
+impl TypeDefinition {
+    /// Validate provided fields against this type definition.
+    ///
+    /// Returns a result indicating which fields are missing or extra.
+    /// For record types, validates that all provided fields exist in the type.
+    /// For DU types, returns invalid (DUs don't have field constructors this way).
+    pub fn validate_fields(&self, provided_fields: &[String]) -> FieldValidationResult {
+        match self {
+            TypeDefinition::Record(record) => {
+                let expected_fields: std::collections::HashSet<&str> =
+                    record.fields.iter().map(|(name, _)| name.as_str()).collect();
+                let provided_set: std::collections::HashSet<&str> =
+                    provided_fields.iter().map(|s| s.as_str()).collect();
+
+                let missing: Vec<String> = expected_fields
+                    .difference(&provided_set)
+                    .map(|s| s.to_string())
+                    .collect();
+
+                let extra: Vec<String> = provided_set
+                    .difference(&expected_fields)
+                    .map(|s| s.to_string())
+                    .collect();
+
+                // For now, we allow missing fields (they might be optional)
+                // But we don't allow extra fields
+                let is_valid = extra.is_empty();
+
+                FieldValidationResult {
+                    missing_fields: missing,
+                    extra_fields: extra,
+                    is_valid,
+                }
+            }
+            TypeDefinition::Du(_) => {
+                // DU types don't support field-based construction
+                FieldValidationResult {
+                    missing_fields: vec![],
+                    extra_fields: provided_fields.to_vec(),
+                    is_valid: false,
+                }
+            }
+        }
+    }
+
+    /// Get the expected field names for this type (if it's a record)
+    pub fn field_names(&self) -> Vec<String> {
+        match self {
+            TypeDefinition::Record(record) => {
+                record.fields.iter().map(|(name, _)| name.clone()).collect()
+            }
+            TypeDefinition::Du(_) => vec![],
+        }
+    }
+}
+
 impl ModuleRegistry {
     /// Create a new empty module registry
     pub fn new() -> Self {
@@ -248,6 +315,102 @@ impl ModuleRegistry {
     /// List all registered module names
     pub fn module_names(&self) -> Vec<&str> {
         self.modules.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Validate a typed record literal against its type definition.
+    ///
+    /// Returns Ok(FieldValidationResult) if the type is found, or an error if
+    /// the type cannot be resolved.
+    ///
+    /// # Arguments
+    ///
+    /// * `type_path` - Qualified type path like "OTel.Http.Client"
+    /// * `provided_fields` - Field names provided in the record literal
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let result = registry.validate_record_literal(
+    ///     "OTel.Http.Client",
+    ///     &["requestMethod".to_string(), "requestUrl".to_string()]
+    /// )?;
+    /// if !result.is_valid {
+    ///     // Report extra_fields errors
+    /// }
+    /// ```
+    pub fn validate_record_literal(
+        &self,
+        type_path: &str,
+        provided_fields: &[String],
+    ) -> Result<FieldValidationResult, TypeValidationError> {
+        // If no type name, skip validation (anonymous record)
+        if type_path.is_empty() {
+            return Ok(FieldValidationResult {
+                missing_fields: vec![],
+                extra_fields: vec![],
+                is_valid: true,
+            });
+        }
+
+        // Try simple module.type lookup first
+        if let Some((module_name, type_name)) = parse_type_path(type_path) {
+            if let Some(module) = self.modules.get(&module_name) {
+                if let Some(type_def) = module.types.get(&type_name) {
+                    let result = type_def.validate_fields(provided_fields);
+
+                    if !result.is_valid {
+                        return Err(TypeValidationError::FieldMismatch {
+                            type_name: type_path.to_string(),
+                            missing: result.missing_fields.clone(),
+                            extra: result.extra_fields.clone(),
+                            available: type_def.field_names(),
+                        });
+                    }
+
+                    return Ok(result);
+                }
+            }
+        }
+
+        // Type not found
+        Err(TypeValidationError::UnknownType(type_path.to_string()))
+    }
+}
+
+/// Errors that can occur during type validation
+#[derive(Debug, Clone)]
+pub enum TypeValidationError {
+    /// The type path could not be resolved
+    UnknownType(String),
+    /// Fields don't match the type definition
+    FieldMismatch {
+        type_name: String,
+        missing: Vec<String>,
+        extra: Vec<String>,
+        available: Vec<String>,
+    },
+}
+
+/// Parse a type path into module name and type name
+///
+/// Examples:
+/// - "Person" -> ("", "Person")
+/// - "Data.Person" -> ("Data", "Person")
+/// - "OTel.Http.Client" -> ("OTel.Http", "Client")
+fn parse_type_path(type_path: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = type_path.split('.').collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    if parts.len() == 1 {
+        // Just a type name, no module
+        Some(("".to_string(), parts[0].to_string()))
+    } else {
+        // Last part is type name, rest is module path
+        let type_name = parts[parts.len() - 1].to_string();
+        let module_path = parts[..parts.len() - 1].join(".");
+        Some((module_path, type_name))
     }
 }
 

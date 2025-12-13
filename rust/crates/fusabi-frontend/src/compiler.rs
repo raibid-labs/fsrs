@@ -76,6 +76,8 @@ pub enum CompileError {
     BreakOutsideLoop,
     /// Continue statement used outside of loop
     ContinueOutsideLoop,
+    /// Field validation error (extra/unknown fields in typed record literal)
+    FieldValidationError(String),
 }
 
 impl fmt::Display for CompileError {
@@ -116,6 +118,9 @@ impl fmt::Display for CompileError {
             }
             CompileError::ContinueOutsideLoop => {
                 write!(f, "Continue statement used outside of loop")
+            }
+            CompileError::FieldValidationError(msg) => {
+                write!(f, "Field validation error: {}", msg)
             }
         }
     }
@@ -541,7 +546,7 @@ impl Compiler {
                 value,
             } => self.compile_array_update(array, index, value),
             Expr::ArrayLength(array) => self.compile_array_length(array),
-            Expr::RecordLiteral { fields, .. } => self.compile_record_literal(fields),
+            Expr::RecordLiteral { type_name, fields } => self.compile_record_literal(type_name, fields),
             Expr::RecordAccess { record, field } => self.compile_record_access(record, field),
             Expr::RecordUpdate { record, fields } => self.compile_record_update(record, fields),
             Expr::Match { scrutinee, arms } => self.compile_match(scrutinee, arms),
@@ -1676,7 +1681,45 @@ impl Compiler {
     }
     /// Compile a record literal expression
     /// Stack effect: pushes a record value
-    fn compile_record_literal(&mut self, fields: &[(String, Box<Expr>)]) -> CompileResult<()> {
+    fn compile_record_literal(&mut self, type_name: &str, fields: &[(String, Box<Expr>)]) -> CompileResult<()> {
+        // Validate fields if this is a typed record literal (has a type_name)
+        if !type_name.is_empty() {
+            if let Some(registry) = &self.module_registry {
+                let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+
+                match registry.validate_record_literal(type_name, &field_names) {
+                    Ok(_) => {
+                        // Validation passed
+                    }
+                    Err(crate::modules::TypeValidationError::UnknownType(type_path)) => {
+                        return Err(CompileError::FieldValidationError(format!(
+                            "Unknown type '{}'. Did you forget to declare a type provider?",
+                            type_path
+                        )));
+                    }
+                    Err(crate::modules::TypeValidationError::FieldMismatch { type_name, extra, available, .. }) => {
+                        if !extra.is_empty() {
+                            let suggestion = if available.is_empty() {
+                                "This type has no fields defined.".to_string()
+                            } else {
+                                format!("Available fields are: {}. Did you mean one of these?", available.join(", "))
+                            };
+
+                            return Err(CompileError::FieldValidationError(format!(
+                                "Unknown field(s) {} in type '{}'. {}",
+                                extra.iter()
+                                    .map(|f| format!("'{}'", f))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                type_name,
+                                suggestion
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if record size fits in u16
         if fields.len() > u16::MAX as usize {
             return Err(CompileError::TupleTooLarge); // Reuse error for now, or add RecordTooLarge
