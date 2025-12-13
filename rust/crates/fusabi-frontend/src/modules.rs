@@ -24,7 +24,7 @@
 //! let result2 = Math.multiply 3 4  // Qualified access
 //! ```
 
-use crate::ast::{DuTypeDef, Expr, RecordTypeDef};
+use crate::ast::{DuTypeDef, Expr, RecordTypeDef, TypeProviderDecl};
 use crate::types::TypeEnv;
 use std::collections::HashMap;
 
@@ -58,6 +58,8 @@ pub enum TypeDefinition {
     Record(RecordTypeDef),
     /// Discriminated union type definition
     Du(DuTypeDef),
+    /// Type provider declaration (resolved at compile time)
+    Provider(TypeProviderDecl),
 }
 
 impl ModuleRegistry {
