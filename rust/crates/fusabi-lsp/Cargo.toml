@@ -1,6 +1,6 @@
 [package]
 name = "fusabi-lsp"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2021"
 description = "Language Server Protocol implementation for Fusabi"
 license = "MIT"
@@ -10,6 +10,6 @@ name = "fusabi-lsp"
 path = "src/main.rs"
 
 [dependencies]
-fusabi-frontend = { path = "../fusabi-frontend", version = "0.21.0" }
+fusabi-frontend = { path = "../fusabi-frontend", version = "0.22.0" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }

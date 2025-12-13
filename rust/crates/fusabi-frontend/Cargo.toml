@@ -1,10 +1,10 @@
 [package]
 name = "fusabi-frontend"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2021"
 rust-version = "1.70.0"
 description = "Frontend (parser, compiler) for Fusabi language"
 license = "MIT"
 
 [dependencies]
-fusabi-vm = { path = "../fusabi-vm", version = "0.21.0" }
+fusabi-vm = { path = "../fusabi-vm", version = "0.22.0" }
