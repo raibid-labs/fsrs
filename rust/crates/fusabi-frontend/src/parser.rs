@@ -75,8 +75,8 @@
 //! assert!(ast.is_let());
 //! ```
 use crate::ast::{
-    BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern,
-    Program, TypeDefinition, TypeExpr, VariantDef,
+    BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, LoadDirective, MatchArm, ModuleDef,
+    ModuleItem, Pattern, Program, TypeDefinition, TypeExpr, VariantDef,
 };
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
@@ -170,12 +170,18 @@ impl Parser {
     ///
     /// This is the new entry point for parsing programs with module system support.
     pub fn parse_program(&mut self) -> Result<Program> {
+        let mut directives = vec![];
         let mut imports = vec![];
         let mut modules = vec![];
         let mut items = vec![];
         let mut main_expr = None;
 
-        // Parse imports first
+        // Parse load directives first (must come before everything else)
+        while let Some(Token::LoadDirective(_)) = self.peek() {
+            directives.push(self.parse_load_directive()?);
+        }
+
+        // Parse imports
         while self.peek() == Some(&Token::Open) {
             imports.push(self.parse_import()?);
         }
@@ -227,6 +233,7 @@ impl Parser {
         }
 
         Ok(Program {
+            directives,
             modules,
             imports,
             items,
@@ -438,6 +445,22 @@ impl Parser {
     }
 
     /// Parse an import statement: open Math or open Math.Geometry
+    /// Parse a load directive: #load "path.fsx"
+    fn parse_load_directive(&mut self) -> Result<LoadDirective> {
+        if let Some(Token::LoadDirective(path)) = self.peek() {
+            let path = path.clone();
+            self.advance();
+            Ok(LoadDirective { path })
+        } else {
+            let tok = self.current_token();
+            Err(ParseError::UnexpectedToken {
+                expected: "#load directive".to_string(),
+                found: tok.token.clone(),
+                pos: tok.pos,
+            })
+        }
+    }
+
     fn parse_import(&mut self) -> Result<Import> {
         self.expect_token(Token::Open)?;
 

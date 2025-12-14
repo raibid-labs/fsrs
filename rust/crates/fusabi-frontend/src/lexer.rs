@@ -169,6 +169,10 @@ pub enum Token {
     /// _ underscore
     Underscore,
 
+    // Directives
+    /// #load directive (e.g., #load "path.fsx")
+    LoadDirective(String),
+
     // Special
     /// End of file marker
     Eof,
@@ -241,6 +245,7 @@ impl fmt::Display for Token {
             Token::DoBang => write!(f, "do!"),
             Token::ReturnBang => write!(f, "return!"),
             Token::YieldBang => write!(f, "yield!"),
+            Token::LoadDirective(path) => write!(f, "#load \"{}\"", path),
             Token::Eof => write!(f, "EOF"),
         }
     }
@@ -289,6 +294,8 @@ pub enum LexError {
     InvalidNumber(String, Position),
     /// Unterminated multi-line comment
     UnterminatedComment(Position),
+    /// Unknown directive
+    UnknownDirective(String, Position),
 }
 
 impl fmt::Display for LexError {
@@ -305,6 +312,9 @@ impl fmt::Display for LexError {
             }
             LexError::UnterminatedComment(pos) => {
                 write!(f, "Unterminated multi-line comment at {}", pos)
+            }
+            LexError::UnknownDirective(name, pos) => {
+                write!(f, "Unknown directive '{}' at {}", name, pos)
             }
         }
     }
@@ -462,6 +472,7 @@ impl Lexer {
                 self.advance();
                 Ok(Token::Dot)
             }
+            '#' => self.lex_directive(),
             _ => Err(LexError::UnexpectedChar(ch, self.current_position())),
         }
     }
@@ -704,6 +715,49 @@ impl Lexer {
             Ok(Token::LBracePipe)
         } else {
             Ok(Token::LBrace)
+        }
+    }
+
+    /// Lex a directive (#load "path").
+    fn lex_directive(&mut self) -> Result<Token, LexError> {
+        let start_pos = self.current_position();
+        self.advance(); // consume '#'
+
+        // Read the directive name
+        let directive_start = self.pos;
+        while !self.is_at_end()
+            && (self.current_char().is_alphanumeric() || self.current_char() == '_')
+        {
+            self.advance();
+        }
+
+        let directive: String = self.input[directive_start..self.pos].iter().collect();
+
+        // Skip whitespace between directive and path
+        while !self.is_at_end() && matches!(self.current_char(), ' ' | '\t') {
+            self.advance();
+        }
+
+        match directive.as_str() {
+            "load" => {
+                // Expect a string literal for the path
+                if self.is_at_end() || self.current_char() != '"' {
+                    return Err(LexError::UnknownDirective(
+                        format!("#load requires a string path"),
+                        start_pos,
+                    ));
+                }
+                let path_token = self.lex_string()?;
+                if let Token::String(path) = path_token {
+                    Ok(Token::LoadDirective(path))
+                } else {
+                    Err(LexError::UnknownDirective(
+                        format!("#load requires a string path"),
+                        start_pos,
+                    ))
+                }
+            }
+            _ => Err(LexError::UnknownDirective(directive, start_pos)),
         }
     }
 
