@@ -5,6 +5,7 @@
 
 use std::io::Write;
 
+use crossterm::ExecutableCommand;
 use fusabi_tui_core::buffer::{Buffer, Cell};
 use fusabi_tui_core::layout::Rect;
 use fusabi_tui_core::style::{Color, Modifier};
@@ -16,7 +17,7 @@ use crate::renderer::Renderer;
 ///
 /// This renderer implements differential rendering by comparing the current buffer
 /// with the last rendered buffer and only updating cells that have changed.
-pub struct CrosstermRenderer<W: Write> {
+pub struct CrosstermRenderer<W: Write + Send> {
     /// The output writer (typically stdout)
     writer: W,
     /// The current buffer being rendered
@@ -25,7 +26,7 @@ pub struct CrosstermRenderer<W: Write> {
     last_buffer: Option<Buffer>,
 }
 
-impl<W: Write> CrosstermRenderer<W> {
+impl<W: Write + Send> CrosstermRenderer<W> {
     /// Creates a new crossterm renderer with the given writer.
     ///
     /// The renderer will query the terminal size on initialization.
@@ -155,7 +156,7 @@ impl<W: Write> CrosstermRenderer<W> {
     }
 }
 
-impl<W: Write> Renderer for CrosstermRenderer<W> {
+impl<W: Write + Send> Renderer for CrosstermRenderer<W> {
     fn draw(&mut self, buffer: &Buffer) -> Result<()> {
         // Check if buffer size matches our expected size
         if buffer.area != self.buffer.area {
