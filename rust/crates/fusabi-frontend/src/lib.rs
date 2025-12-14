@@ -58,6 +58,7 @@ pub mod compiler;
 pub mod error;
 pub mod inference;
 pub mod lexer;
+pub mod loader;
 pub mod modules;
 pub mod parser;
 pub mod span;
@@ -65,11 +66,12 @@ pub mod typed_ast;
 pub mod types;
 
 // Re-export commonly used types for convenience
-pub use ast::{BinOp, Expr, Literal, ModuleDef, ModuleItem, Pattern, Program};
+pub use ast::{BinOp, Expr, Literal, LoadDirective, ModuleDef, ModuleItem, Pattern, Program};
 pub use compiler::{CompileError, CompileOptions, Compiler};
 pub use error::{TypeError, TypeErrorKind};
 pub use inference::TypeInference;
 pub use lexer::{LexError, Lexer, Position, Token, TokenWithPos};
+pub use loader::{FileLoader, LoadError, LoadedFile};
 pub use modules::{Module, ModulePath, ModuleRegistry, TypeDefinition as ModuleTypeDef};
 pub use parser::{ParseError, Parser};
 pub use span::Span;

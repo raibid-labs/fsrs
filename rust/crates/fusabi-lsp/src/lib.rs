@@ -54,6 +54,11 @@ impl FusabiLanguageServer {
                     fusabi_frontend::LexError::UnterminatedComment(pos) => {
                         (pos.line, pos.column, "Unterminated comment".to_string())
                     }
+                    fusabi_frontend::LexError::UnknownDirective(name, pos) => (
+                        pos.line,
+                        pos.column,
+                        format!("Unknown directive: '{}'", name),
+                    ),
                 };
                 diagnostics.push(Diagnostic {
                     range: Range {

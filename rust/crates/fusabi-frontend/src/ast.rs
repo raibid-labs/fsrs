@@ -1155,12 +1155,30 @@ impl fmt::Display for Import {
     }
 }
 
+/// Load directive for multi-file module system
+///
+/// Represents a #load directive that imports another .fsx file.
+/// Example: #load "utils.fsx"
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadDirective {
+    /// Path to the file to load
+    pub path: String,
+}
+
+impl fmt::Display for LoadDirective {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#load \"{}\"", self.path)
+    }
+}
+
 /// Complete program with modules and main expression
 ///
 /// Top-level structure representing a complete Fusabi program with
 /// module definitions, imports, and an optional main expression.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    /// Load directives (must appear before other declarations)
+    pub directives: Vec<LoadDirective>,
     /// Module definitions
     pub modules: Vec<ModuleDef>,
     /// Import statements
@@ -1173,6 +1191,12 @@ pub struct Program {
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for directive in &self.directives {
+            writeln!(f, "{}", directive)?;
+        }
+        if !self.directives.is_empty() && (!self.imports.is_empty() || !self.modules.is_empty()) {
+            writeln!(f)?;
+        }
         for import in &self.imports {
             writeln!(f, "{}", import)?;
         }
