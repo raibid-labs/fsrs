@@ -66,6 +66,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusabi-tui-widgets"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "fusabi-tui-core",
+ "unicode-width",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.178"
 source = "registry+https://github.com/rust-lang/crates.io-index"

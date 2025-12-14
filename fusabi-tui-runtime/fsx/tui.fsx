@@ -8,6 +8,7 @@
 #load "tui/buffer.fsx"
 #load "tui/layout.fsx"
 #load "tui/symbols.fsx"
+#load "tui/widgets.fsx"
 
 // TUI library version
 let tuiVersion = "0.1.0"
