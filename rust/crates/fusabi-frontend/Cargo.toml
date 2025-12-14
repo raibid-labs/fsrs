@@ -1,13 +1,13 @@
 [package]
 name = "fusabi-frontend"
-version = "0.34.0"
+version = "0.35.0"
 edition = "2021"
 rust-version = "1.70.0"
 description = "Frontend (parser, compiler) for Fusabi language"
 license = "MIT"
 
 [dependencies]
-fusabi-vm = { path = "../fusabi-vm", version = "0.34.0" }
+fusabi-vm = { path = "../fusabi-vm", version = "0.35.0" }
 
 [dev-dependencies]
 tempfile = "3.8"
