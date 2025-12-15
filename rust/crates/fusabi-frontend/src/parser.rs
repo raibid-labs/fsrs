@@ -76,7 +76,7 @@
 //! ```
 use crate::ast::{
     BinOp, CEStatement, DuTypeDef, Expr, Import, Literal, LoadDirective, MatchArm, ModuleDef,
-    ModuleItem, Pattern, Program, TypeDefinition, TypeExpr, VariantDef,
+    ModuleItem, Pattern, Program, TypeDefinition, TypeExpr, TypeProviderDecl, VariantDef,
 };
 use crate::lexer::{Position, Token, TokenWithPos};
 use std::fmt;
@@ -478,12 +478,104 @@ impl Parser {
         })
     }
 
-    /// Parse a type definition (record or discriminated union)
+    /// Parse a type definition (record, discriminated union, or type provider)
+    ///
+    /// Syntax:
+    /// - DU: `type Option = Some of int | None`
+    /// - Record: `type Person = { name: string; age: int }`
+    /// - Provider: `type DbSchema = SqlProvider<"schema.sql">`
     fn parse_type_def(&mut self) -> Result<TypeDefinition> {
-        // For now, delegate to existing parse_du_type_def
-        // In the future, this should also handle records
-        let du_def = self.parse_du_type_def()?;
-        Ok(TypeDefinition::Du(du_def))
+        self.expect_token(Token::Type)?;
+        let type_name = self.expect_ident()?;
+        self.expect_token(Token::Eq)?;
+
+        // Check if this is a type provider: ProviderName<"source">
+        // Look ahead to see if we have Ident followed by Lt
+        if let Token::Ident(provider_name) = self.current_token().token.clone() {
+            // Save position in case we need to backtrack
+            let saved_pos = self.pos;
+            self.advance();
+
+            // Check for < (type provider syntax)
+            if self.match_token(&Token::Lt) {
+                // This is a type provider declaration
+                // Expect a string literal as the source
+                let source = match &self.current_token().token {
+                    Token::String(s) => {
+                        let s = s.clone();
+                        self.advance();
+                        s
+                    }
+                    _ => {
+                        return Err(ParseError::UnexpectedToken {
+                            expected: "string literal for type provider source".to_string(),
+                            found: self.current_token().token.clone(),
+                            pos: self.current_token().pos,
+                        });
+                    }
+                };
+
+                // Expect closing >
+                self.expect_token(Token::Gt)?;
+
+                return Ok(TypeDefinition::Provider(TypeProviderDecl::new(
+                    type_name,
+                    provider_name,
+                    source,
+                )));
+            } else {
+                // Not a type provider, backtrack
+                self.pos = saved_pos;
+            }
+        }
+
+        // Fall back to parsing as a discriminated union
+        // We've already consumed `type TypeName =`, so we need to parse variants directly
+        let mut variants = vec![];
+
+        // Optional leading pipe
+        if self.match_token(&Token::Pipe) {
+            let tok = self.current_token();
+            if !matches!(&tok.token, Token::Ident(_)) {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "variant name".to_string(),
+                    found: tok.token.clone(),
+                    pos: tok.pos,
+                });
+            }
+        }
+
+        loop {
+            let variant_name = self.expect_ident()?;
+
+            // Check for 'of' keyword (variant with fields)
+            let fields = if self.match_token(&Token::Of) {
+                let mut field_types = vec![];
+                loop {
+                    let ty = self.parse_type_expr()?;
+                    field_types.push(ty);
+                    if self.match_token(&Token::Star) {
+                        continue;
+                    }
+                    break;
+                }
+                field_types
+            } else {
+                vec![]
+            };
+
+            variants.push(VariantDef { name: variant_name, fields });
+
+            // Check for more variants
+            if !self.match_token(&Token::Pipe) {
+                break;
+            }
+        }
+
+        Ok(TypeDefinition::Du(DuTypeDef {
+            name: type_name,
+            variants,
+        }))
     }
 
     // ========================================================================
@@ -2302,5 +2394,109 @@ mod tests {
         let (builder, body) = result.unwrap();
         assert_eq!(builder, "async");
         assert_eq!(body.len(), 0);
+    }
+
+    // ========================================================================
+    // Type Provider Tests
+    // ========================================================================
+
+    fn parse_program_str(input: &str) -> Result<Program> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        parser.parse_program()
+    }
+
+    #[test]
+    fn test_parse_type_provider_basic() {
+        let program = parse_program_str(r#"type DbSchema = SqlProvider<"schema.sql">"#).unwrap();
+        assert_eq!(program.items.len(), 1);
+
+        match &program.items[0] {
+            ModuleItem::TypeDef(TypeDefinition::Provider(p)) => {
+                assert_eq!(p.name, "DbSchema");
+                assert_eq!(p.provider, "SqlProvider");
+                assert_eq!(p.source, "schema.sql");
+            }
+            _ => panic!("Expected type provider declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_type_provider_with_url() {
+        let program = parse_program_str(
+            r#"type K8sTypes = KubernetesProvider<"https://api.k8s.io/openapi/v2">"#,
+        )
+        .unwrap();
+        assert_eq!(program.items.len(), 1);
+
+        match &program.items[0] {
+            ModuleItem::TypeDef(TypeDefinition::Provider(p)) => {
+                assert_eq!(p.name, "K8sTypes");
+                assert_eq!(p.provider, "KubernetesProvider");
+                assert_eq!(p.source, "https://api.k8s.io/openapi/v2");
+            }
+            _ => panic!("Expected type provider declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_type_provider_embedded() {
+        let program =
+            parse_program_str(r#"type Sources = HibanaSourcesProvider<"embedded">"#).unwrap();
+        assert_eq!(program.items.len(), 1);
+
+        match &program.items[0] {
+            ModuleItem::TypeDef(TypeDefinition::Provider(p)) => {
+                assert_eq!(p.name, "Sources");
+                assert_eq!(p.provider, "HibanaSourcesProvider");
+                assert_eq!(p.source, "embedded");
+            }
+            _ => panic!("Expected type provider declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_du_still_works() {
+        // Ensure regular DU parsing still works
+        let program = parse_program_str("type Option = Some of int | None").unwrap();
+        assert_eq!(program.items.len(), 1);
+
+        match &program.items[0] {
+            ModuleItem::TypeDef(TypeDefinition::Du(du)) => {
+                assert_eq!(du.name, "Option");
+                assert_eq!(du.variants.len(), 2);
+                assert_eq!(du.variants[0].name, "Some");
+                assert_eq!(du.variants[1].name, "None");
+            }
+            _ => panic!("Expected DU type definition"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mixed_types() {
+        // Parse both DU and type provider in same program
+        let program = parse_program_str(
+            r#"
+            type Option = Some of int | None
+            type DbSchema = SqlProvider<"schema.sql">
+            "#,
+        )
+        .unwrap();
+        assert_eq!(program.items.len(), 2);
+
+        match &program.items[0] {
+            ModuleItem::TypeDef(TypeDefinition::Du(du)) => {
+                assert_eq!(du.name, "Option");
+            }
+            _ => panic!("Expected DU"),
+        }
+
+        match &program.items[1] {
+            ModuleItem::TypeDef(TypeDefinition::Provider(p)) => {
+                assert_eq!(p.name, "DbSchema");
+            }
+            _ => panic!("Expected type provider"),
+        }
     }
 }

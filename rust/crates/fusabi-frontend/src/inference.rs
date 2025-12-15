@@ -38,6 +38,7 @@
 
 use crate::ast::{BinOp, Expr, Literal, MatchArm, Pattern};
 use crate::error::{TypeError, TypeErrorKind};
+use crate::modules::ModuleRegistry;
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVar};
 use std::collections::HashMap;
 
@@ -59,6 +60,8 @@ pub struct TypeInference {
     next_var_id: usize,
     /// Accumulated type constraints
     constraints: Vec<Constraint>,
+    /// Optional module registry for type definition lookups
+    module_registry: Option<ModuleRegistry>,
 }
 
 #[allow(clippy::result_large_err)]
@@ -68,7 +71,22 @@ impl TypeInference {
         TypeInference {
             next_var_id: 0,
             constraints: Vec::new(),
+            module_registry: None,
         }
+    }
+
+    /// Create a new type inference instance with a module registry for type validation.
+    pub fn with_module_registry(module_registry: ModuleRegistry) -> Self {
+        TypeInference {
+            next_var_id: 0,
+            constraints: Vec::new(),
+            module_registry: Some(module_registry),
+        }
+    }
+
+    /// Set the module registry for type definition lookups.
+    pub fn set_module_registry(&mut self, registry: ModuleRegistry) {
+        self.module_registry = Some(registry);
     }
 
     /// Generate a fresh type variable.
@@ -666,10 +684,17 @@ impl TypeInference {
     /// Infer the type of a record literal.
     fn infer_record_literal(
         &mut self,
-        _type_name: &str,
+        type_name: &str,
         fields: &[(String, Box<Expr>)],
         env: &TypeEnv,
     ) -> Result<Type, TypeError> {
+        // If type_name is provided and we have a module registry, validate fields
+        if !type_name.is_empty() {
+            if let Some(ref registry) = self.module_registry {
+                self.validate_record_fields(type_name, fields, registry)?;
+            }
+        }
+
         let mut field_types = HashMap::new();
 
         for (field_name, field_expr) in fields {
@@ -678,6 +703,201 @@ impl TypeInference {
         }
 
         Ok(Type::Record(field_types))
+    }
+
+    /// Validate that record literal fields match the type definition.
+    fn validate_record_fields(
+        &self,
+        type_name: &str,
+        fields: &[(String, Box<Expr>)],
+        registry: &ModuleRegistry,
+    ) -> Result<(), TypeError> {
+        // Try to find the type definition in the registry
+        // First check if it's a qualified name (e.g., "Module.TypeName")
+        let type_def = if type_name.contains('.') {
+            let parts: Vec<&str> = type_name.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                let (module_name, type_local_name) = (parts[0], parts[1]);
+                registry
+                    .get_module_types(module_name)
+                    .and_then(|types| types.get(type_local_name))
+            } else {
+                None
+            }
+        } else {
+            // Try to find in any module (search all modules)
+            registry
+                .module_names()
+                .iter()
+                .find_map(|module_name| {
+                    registry
+                        .get_module_types(module_name)
+                        .and_then(|types| types.get(type_name))
+                })
+        };
+
+        if let Some(type_def) = type_def {
+            // Use the type provider's field validation
+            let provided_fields: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+
+            // Convert AST TypeDefinition to type provider TypeDefinition and validate
+            let validation_result = match type_def {
+                crate::modules::TypeDefinition::Record(record) => {
+                    // Convert to type provider RecordDef
+                    let provider_fields: Vec<(String, fusabi_type_providers::TypeExpr)> = record
+                        .fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            (name.clone(), self.ast_type_expr_to_provider_type_expr(ty))
+                        })
+                        .collect();
+
+                    let provider_record = fusabi_type_providers::RecordDef {
+                        name: record.name.clone(),
+                        fields: provider_fields,
+                    };
+
+                    let provider_type_def = fusabi_type_providers::TypeDefinition::Record(provider_record);
+                    provider_type_def.validate_fields(&provided_fields)
+                }
+                crate::modules::TypeDefinition::Du(_) => {
+                    // DU types don't support record literal syntax
+                    return Err(TypeError::new(TypeErrorKind::Custom {
+                        message: format!(
+                            "Type '{}' is a discriminated union, not a record. Use variant constructors instead.",
+                            type_name
+                        ),
+                    }));
+                }
+                crate::modules::TypeDefinition::Provider(_) => {
+                    // Type provider declarations should already be resolved
+                    return Err(TypeError::new(TypeErrorKind::Custom {
+                        message: format!(
+                            "Type '{}' is a type provider declaration. It should be resolved before type checking.",
+                            type_name
+                        ),
+                    }));
+                }
+            };
+
+            // Report validation errors
+            if !validation_result.is_valid {
+                if !validation_result.extra_fields.is_empty() {
+                    // Get expected field names for suggestions
+                    let expected_fields = match type_def {
+                        crate::modules::TypeDefinition::Record(record) => {
+                            record.fields.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>()
+                        }
+                        _ => vec![],
+                    };
+
+                    // For each extra field, compute suggestions
+                    for extra_field in &validation_result.extra_fields {
+                        let suggestions = Self::compute_field_suggestions(extra_field, &expected_fields);
+                        return Err(TypeError::new(TypeErrorKind::ExtraField {
+                            type_name: type_name.to_string(),
+                            field: extra_field.clone(),
+                            suggestions,
+                        }));
+                    }
+                }
+
+                // Report missing fields as a TypeProviderFieldMismatch
+                if !validation_result.missing_fields.is_empty() || !validation_result.extra_fields.is_empty() {
+                    return Err(TypeError::new(TypeErrorKind::TypeProviderFieldMismatch {
+                        type_name: type_name.to_string(),
+                        extra_fields: validation_result.extra_fields,
+                        missing_fields: validation_result.missing_fields,
+                    }));
+                }
+            }
+
+            Ok(())
+        } else {
+            // Type not found in registry
+            Err(TypeError::new(TypeErrorKind::UnknownType {
+                type_name: type_name.to_string(),
+            }))
+        }
+    }
+
+    /// Convert AST TypeExpr to type provider TypeExpr.
+    fn ast_type_expr_to_provider_type_expr(
+        &self,
+        ty: &crate::ast::TypeExpr,
+    ) -> fusabi_type_providers::TypeExpr {
+        match ty {
+            crate::ast::TypeExpr::Named(name) => fusabi_type_providers::TypeExpr::Named(name.clone()),
+            crate::ast::TypeExpr::Tuple(types) => fusabi_type_providers::TypeExpr::Tuple(
+                types
+                    .iter()
+                    .map(|t| self.ast_type_expr_to_provider_type_expr(t))
+                    .collect(),
+            ),
+            crate::ast::TypeExpr::Function(param, ret) => {
+                fusabi_type_providers::TypeExpr::Function(
+                    Box::new(self.ast_type_expr_to_provider_type_expr(param)),
+                    Box::new(self.ast_type_expr_to_provider_type_expr(ret)),
+                )
+            }
+        }
+    }
+
+    /// Compute field name suggestions based on Levenshtein distance.
+    fn compute_field_suggestions(field: &str, expected_fields: &[String]) -> Vec<String> {
+        let mut suggestions: Vec<(String, usize)> = expected_fields
+            .iter()
+            .map(|expected| {
+                let distance = Self::levenshtein_distance(field, expected);
+                (expected.clone(), distance)
+            })
+            .collect();
+
+        // Sort by distance and keep only close matches (distance <= 3)
+        suggestions.sort_by_key(|(_, dist)| *dist);
+        suggestions
+            .into_iter()
+            .filter(|(_, dist)| *dist <= 3)
+            .take(3) // Limit to top 3 suggestions
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// Compute Levenshtein distance between two strings.
+    fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+        let len1 = s1.len();
+        let len2 = s2.len();
+
+        if len1 == 0 {
+            return len2;
+        }
+        if len2 == 0 {
+            return len1;
+        }
+
+        let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
+
+        for i in 0..=len1 {
+            matrix[i][0] = i;
+        }
+        for j in 0..=len2 {
+            matrix[0][j] = j;
+        }
+
+        let s1_chars: Vec<char> = s1.chars().collect();
+        let s2_chars: Vec<char> = s2.chars().collect();
+
+        for i in 1..=len1 {
+            for j in 1..=len2 {
+                let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
+                matrix[i][j] = std::cmp::min(
+                    std::cmp::min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1),
+                    matrix[i - 1][j - 1] + cost,
+                );
+            }
+        }
+
+        matrix[len1][len2]
     }
 
     /// Infer the type of record field access.
@@ -1263,5 +1483,209 @@ mod tests {
         let ty = inf.infer_and_solve(&expr, &env).unwrap();
         // Result type should be int (identity function applied to int gives int)
         assert_eq!(ty, Type::Int);
+    }
+
+    // ========================================================================
+    // Field Validation Tests (Issue #249)
+    // ========================================================================
+
+    #[test]
+    fn test_record_literal_valid_fields() {
+        use crate::ast::{RecordTypeDef, TypeExpr as AstTypeExpr};
+        use crate::modules::{ModuleRegistry, TypeDefinition};
+
+        let mut registry = ModuleRegistry::new();
+
+        // Define a Person record type
+        let person_type = TypeDefinition::Record(RecordTypeDef {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), AstTypeExpr::Named("string".to_string())),
+                ("age".to_string(), AstTypeExpr::Named("int".to_string())),
+            ],
+        });
+
+        let mut types = HashMap::new();
+        types.insert("Person".to_string(), person_type);
+        registry.register_module("Test".to_string(), HashMap::new(), types);
+
+        let mut inf = TypeInference::with_module_registry(registry);
+        let env = TypeEnv::new();
+
+        // Valid record literal with all fields
+        let expr = Expr::RecordLiteral {
+            type_name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), Box::new(Expr::Lit(Literal::Str("Alice".to_string())))),
+                ("age".to_string(), Box::new(lit_int(30))),
+            ],
+        };
+
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_record_literal_extra_field() {
+        use crate::ast::{RecordTypeDef, TypeExpr as AstTypeExpr};
+        use crate::modules::{ModuleRegistry, TypeDefinition};
+
+        let mut registry = ModuleRegistry::new();
+
+        // Define a Person record type
+        let person_type = TypeDefinition::Record(RecordTypeDef {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), AstTypeExpr::Named("string".to_string())),
+                ("age".to_string(), AstTypeExpr::Named("int".to_string())),
+            ],
+        });
+
+        let mut types = HashMap::new();
+        types.insert("Person".to_string(), person_type);
+        registry.register_module("Test".to_string(), HashMap::new(), types);
+
+        let mut inf = TypeInference::with_module_registry(registry);
+        let env = TypeEnv::new();
+
+        // Record literal with extra field "email"
+        let expr = Expr::RecordLiteral {
+            type_name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), Box::new(Expr::Lit(Literal::Str("Alice".to_string())))),
+                ("age".to_string(), Box::new(lit_int(30))),
+                ("email".to_string(), Box::new(Expr::Lit(Literal::Str("alice@example.com".to_string())))),
+            ],
+        };
+
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_err());
+
+        match result.unwrap_err().kind {
+            TypeErrorKind::ExtraField { field, .. } => {
+                assert_eq!(field, "email");
+            }
+            _ => panic!("Expected ExtraField error"),
+        }
+    }
+
+    #[test]
+    fn test_record_literal_typo_suggestion() {
+        use crate::ast::{RecordTypeDef, TypeExpr as AstTypeExpr};
+        use crate::modules::{ModuleRegistry, TypeDefinition};
+
+        let mut registry = ModuleRegistry::new();
+
+        // Define a Person record type
+        let person_type = TypeDefinition::Record(RecordTypeDef {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), AstTypeExpr::Named("string".to_string())),
+                ("age".to_string(), AstTypeExpr::Named("int".to_string())),
+            ],
+        });
+
+        let mut types = HashMap::new();
+        types.insert("Person".to_string(), person_type);
+        registry.register_module("Test".to_string(), HashMap::new(), types);
+
+        let mut inf = TypeInference::with_module_registry(registry);
+        let env = TypeEnv::new();
+
+        // Record literal with typo "nam" instead of "name"
+        let expr = Expr::RecordLiteral {
+            type_name: "Person".to_string(),
+            fields: vec![
+                ("nam".to_string(), Box::new(Expr::Lit(Literal::Str("Alice".to_string())))),
+                ("age".to_string(), Box::new(lit_int(30))),
+            ],
+        };
+
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_err());
+
+        match result.unwrap_err().kind {
+            TypeErrorKind::ExtraField { field, suggestions, .. } => {
+                assert_eq!(field, "nam");
+                assert!(suggestions.contains(&"name".to_string()));
+            }
+            _ => panic!("Expected ExtraField error with suggestions"),
+        }
+    }
+
+    #[test]
+    fn test_record_literal_unknown_type() {
+        let registry = ModuleRegistry::new();
+        let mut inf = TypeInference::with_module_registry(registry);
+        let env = TypeEnv::new();
+
+        // Record literal with unknown type
+        let expr = Expr::RecordLiteral {
+            type_name: "UnknownType".to_string(),
+            fields: vec![
+                ("field1".to_string(), Box::new(lit_int(42))),
+            ],
+        };
+
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_err());
+
+        match result.unwrap_err().kind {
+            TypeErrorKind::UnknownType { type_name } => {
+                assert_eq!(type_name, "UnknownType");
+            }
+            _ => panic!("Expected UnknownType error"),
+        }
+    }
+
+    #[test]
+    fn test_record_literal_without_type_name_skips_validation() {
+        // When type_name is empty, validation should be skipped
+        let registry = ModuleRegistry::new();
+        let mut inf = TypeInference::with_module_registry(registry);
+        let env = TypeEnv::new();
+
+        // Record literal without type annotation
+        let expr = Expr::RecordLiteral {
+            type_name: String::new(),
+            fields: vec![
+                ("field1".to_string(), Box::new(lit_int(42))),
+                ("field2".to_string(), Box::new(Expr::Lit(Literal::Str("hello".to_string())))),
+            ],
+        };
+
+        let result = inf.infer_and_solve(&expr, &env);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_levenshtein_distance() {
+        assert_eq!(TypeInference::levenshtein_distance("", ""), 0);
+        assert_eq!(TypeInference::levenshtein_distance("hello", "hello"), 0);
+        assert_eq!(TypeInference::levenshtein_distance("hello", "hallo"), 1);
+        assert_eq!(TypeInference::levenshtein_distance("nam", "name"), 1);
+        assert_eq!(TypeInference::levenshtein_distance("age", "aeg"), 2); // swap is 2 edits
+        assert_eq!(TypeInference::levenshtein_distance("kitten", "sitting"), 3);
+    }
+
+    #[test]
+    fn test_field_suggestions() {
+        let expected = vec!["name".to_string(), "age".to_string(), "email".to_string()];
+
+        // Exact match should still be suggested
+        let suggestions = TypeInference::compute_field_suggestions("name", &expected);
+        assert!(suggestions.contains(&"name".to_string()));
+
+        // Close typo should be suggested
+        let suggestions = TypeInference::compute_field_suggestions("nam", &expected);
+        assert!(suggestions.contains(&"name".to_string()));
+
+        // Multiple close matches
+        let suggestions = TypeInference::compute_field_suggestions("ema", &expected);
+        assert!(suggestions.contains(&"email".to_string()) || suggestions.contains(&"name".to_string()));
+
+        // Too far should return empty or distant matches
+        let suggestions = TypeInference::compute_field_suggestions("xyz", &expected);
+        assert!(suggestions.is_empty() || suggestions.len() <= 3);
     }
 }

@@ -252,6 +252,7 @@ impl FusabiEngine {
             enable_type_checking: options.enable_type_checking,
             strict_mode: options.strict_mode,
             allow_warnings: !options.strict_mode,
+            provider_resolver: None, // Type providers can be configured separately
         };
         let chunk = Compiler::compile_with_options(&ast, compile_options)?;
 

@@ -300,13 +300,59 @@ impl DuTypeDef {
     }
 }
 
-/// Type definition variants (Records or Discriminated Unions).
+/// Type provider declaration.
+///
+/// Represents a type alias that derives its definition from a type provider.
+/// Example: type DbSchema = SqlProvider<"schema.sql">
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeProviderDecl {
+    /// Name of the type alias
+    pub name: String,
+    /// Name of the type provider (e.g., "SqlProvider", "ProtobufProvider")
+    pub provider: String,
+    /// Source string for the provider (file path, URL, inline content, etc.)
+    pub source: String,
+    /// Optional parameters for the provider
+    pub params: Vec<(String, String)>,
+}
+
+impl fmt::Display for TypeProviderDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "type {} = {}<\"{}\">", self.name, self.provider, self.source)
+    }
+}
+
+impl TypeProviderDecl {
+    /// Create a new type provider declaration.
+    pub fn new(name: String, provider: String, source: String) -> Self {
+        TypeProviderDecl {
+            name,
+            provider,
+            source,
+            params: vec![],
+        }
+    }
+
+    /// Create a type provider declaration with parameters.
+    pub fn with_params(name: String, provider: String, source: String, params: Vec<(String, String)>) -> Self {
+        TypeProviderDecl {
+            name,
+            provider,
+            source,
+            params,
+        }
+    }
+}
+
+/// Type definition variants (Records, Discriminated Unions, or Type Providers).
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDefinition {
     /// Record type definition
     Record(RecordTypeDef),
     /// Discriminated union type definition
     Du(DuTypeDef),
+    /// Type provider declaration (generates types from external schemas)
+    Provider(TypeProviderDecl),
 }
 
 impl fmt::Display for TypeDefinition {
@@ -314,6 +360,7 @@ impl fmt::Display for TypeDefinition {
         match self {
             TypeDefinition::Record(r) => write!(f, "{}", r),
             TypeDefinition::Du(du) => write!(f, "{}", du),
+            TypeDefinition::Provider(p) => write!(f, "{}", p),
         }
     }
 }

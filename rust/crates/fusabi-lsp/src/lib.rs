@@ -165,7 +165,7 @@ impl FusabiLanguageServer {
             "fun" => "**fun** - Lambda/anonymous function\n\n```fusabi\nfun x -> x + 1\nfun x y -> x + y\n```",
             "match" => "**match** - Pattern matching\n\n```fusabi\nmatch value with\n| Some x -> x\n| None -> 0\n```",
             "with" => "**with** - Match arms or record update\n\n```fusabi\n{ record with field = newValue }\n```",
-            "type" => "**type** - Type definition\n\n```fusabi\ntype Option = Some of int | None\ntype Person = { name: string; age: int }\n```",
+            "type" => "**type** - Type definition\n\n```fusabi\ntype Option = Some of int | None\ntype Person = { name: string; age: int }\ntype Schema = SqlProvider<\"schema.sql\">  // Type provider\n```",
             "of" => "**of** - Discriminated union variant payload",
             "module" => "**module** - Module definition\n\n```fusabi\nmodule Math =\n  let pi = 3.14159\n```",
             "open" => "**open** - Import module\n\n```fusabi\nopen Math\n```",
@@ -181,6 +181,18 @@ impl FusabiLanguageServer {
             "continue" => "**continue** - Skip to next iteration",
             "true" => "**true** - Boolean true literal",
             "false" => "**false** - Boolean false literal",
+            // Type providers
+            "SqlProvider" => "**SqlProvider** - SQL Schema Type Provider\n\nGenerates record types from SQL DDL schema definitions.\n\n```fusabi\ntype DbSchema = SqlProvider<\"schema.sql\">\ntype Users = DbSchema.users  // Record with columns as fields\n```\n\nSource: file path, inline SQL, or \"embedded\"",
+            "ProtobufProvider" => "**ProtobufProvider** - Protocol Buffer Type Provider\n\nGenerates types from .proto file definitions.\n\n```fusabi\ntype Proto = ProtobufProvider<\"messages.proto\">\ntype User = Proto.User  // Generated message type\n```",
+            "JsonSchemaProvider" => "**JsonSchemaProvider** - JSON Schema Type Provider\n\nGenerates types from JSON Schema definitions.\n\n```fusabi\ntype Schema = JsonSchemaProvider<\"schema.json\">\n```\n\nSupports $ref resolution, oneOf → DU conversion.",
+            "KubernetesProvider" => "**KubernetesProvider** - Kubernetes OpenAPI Type Provider\n\nGenerates types from Kubernetes API schemas.\n\n```fusabi\ntype K8s = KubernetesProvider<\"https://api.k8s.io/openapi/v2\">\ntype Pod = K8s.Core.V1.Pod\n```",
+            "TomlProvider" => "**TomlProvider** - TOML Configuration Type Provider\n\nGenerates types from TOML configuration files.\n\n```fusabi\ntype Config = TomlProvider<\"config.toml\">\nlet settings = Config.parse \"config.toml\"\n```",
+            "RegexProvider" => "**RegexProvider** - Regex Capture Group Type Provider\n\nGenerates record types from named regex capture groups.\n\n```fusabi\ntype LogEntry = RegexProvider<\"(?P<timestamp>\\d+) (?P<level>\\w+) (?P<msg>.*)\">\n```",
+            "McpProvider" => "**McpProvider** - MCP Schema Type Provider\n\nGenerates types from Model Context Protocol tool/resource schemas.\n\n```fusabi\ntype Mcp = McpProvider<\"server.json\">\ntype Tool = Mcp.tools.search\n```",
+            "GraphqlProvider" => "**GraphqlProvider** - GraphQL Schema Type Provider\n\nGenerates types from GraphQL schema definitions.\n\n```fusabi\ntype Api = GraphqlProvider<\"schema.graphql\">\ntype User = Api.User\n```",
+            "ObiProvider" => "**ObiProvider** - OBI/eBPF Event Type Provider\n\nGenerates types from Observability Binary Interface schemas.\n\n```fusabi\ntype Events = ObiProvider<\"events.obi\">\ntype SyscallEvent = Events.syscall\n```",
+            "HibanaSourcesProvider" => "**HibanaSourcesProvider** - Hibana Sources Type Provider\n\nGenerates types for Hibana observability agent data sources.\n\n```fusabi\ntype Sources = HibanaSourcesProvider<\"embedded\">\ntype FileSource = Sources.File\n```",
+            "HibanaSinksProvider" => "**HibanaSinksProvider** - Hibana Sinks Type Provider\n\nGenerates types for Hibana observability agent data sinks.\n\n```fusabi\ntype Sinks = HibanaSinksProvider<\"embedded\">\ntype StdoutSink = Sinks.Stdout\n```",
             _ => return None,
         };
         Some(docs.to_string())
@@ -241,9 +253,69 @@ impl FusabiLanguageServer {
             ),
         ];
 
+        // Type providers for compile-time type generation
+        let type_providers = vec![
+            (
+                "SqlProvider",
+                "Generate types from SQL DDL schema",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "ProtobufProvider",
+                "Generate types from Protocol Buffer definitions",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "JsonSchemaProvider",
+                "Generate types from JSON Schema",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "KubernetesProvider",
+                "Generate types from Kubernetes OpenAPI specs",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "TomlProvider",
+                "Generate types from TOML configuration",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "RegexProvider",
+                "Generate record types from regex capture groups",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "McpProvider",
+                "Generate types from MCP tool/resource schemas",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "GraphqlProvider",
+                "Generate types from GraphQL schemas",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "ObiProvider",
+                "Generate types from OBI/eBPF event schemas",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "HibanaSourcesProvider",
+                "Generate types for Hibana data sources",
+                CompletionItemKind::CLASS,
+            ),
+            (
+                "HibanaSinksProvider",
+                "Generate types for Hibana data sinks",
+                CompletionItemKind::CLASS,
+            ),
+        ];
+
         keywords
             .into_iter()
             .chain(builtins)
+            .chain(type_providers)
             .map(|(label, detail, kind)| CompletionItem {
                 label: label.to_string(),
                 kind: Some(kind),

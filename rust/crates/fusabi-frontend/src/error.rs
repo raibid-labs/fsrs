@@ -140,6 +140,32 @@ pub enum TypeErrorKind {
         field: String,
     },
 
+    /// Extra field in record literal (field not defined in type)
+    ExtraField {
+        /// The record type name
+        type_name: String,
+        /// The extra field name
+        field: String,
+        /// Suggested field names (typo corrections)
+        suggestions: Vec<String>,
+    },
+
+    /// Unknown type referenced in record literal
+    UnknownType {
+        /// The type name that couldn't be found
+        type_name: String,
+    },
+
+    /// Type provider field mismatch
+    TypeProviderFieldMismatch {
+        /// The type name
+        type_name: String,
+        /// Fields that are provided but not in the type
+        extra_fields: Vec<String>,
+        /// Fields that are in the type but not provided
+        missing_fields: Vec<String>,
+    },
+
     /// Generic error with custom message
     Custom {
         /// Error message
@@ -329,6 +355,41 @@ impl TypeError {
             TypeErrorKind::MissingField { field, .. } => {
                 Some(format!("Add the required field '{}' to the record", field))
             }
+            TypeErrorKind::ExtraField { field, suggestions, .. } => {
+                if suggestions.is_empty() {
+                    Some(format!("Remove the field '{}' as it is not defined in the type", field))
+                } else {
+                    Some(format!(
+                        "Field '{}' is not defined. Did you mean one of: {}?",
+                        field,
+                        suggestions.join(", ")
+                    ))
+                }
+            }
+            TypeErrorKind::UnknownType { type_name } => {
+                Some(format!(
+                    "The type '{}' is not defined. Check your type definitions or imports.",
+                    type_name
+                ))
+            }
+            TypeErrorKind::TypeProviderFieldMismatch {
+                extra_fields,
+                missing_fields,
+                ..
+            } => {
+                let mut parts = Vec::new();
+                if !extra_fields.is_empty() {
+                    parts.push(format!("Remove extra fields: {}", extra_fields.join(", ")));
+                }
+                if !missing_fields.is_empty() {
+                    parts.push(format!("Add missing fields: {}", missing_fields.join(", ")));
+                }
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(parts.join(". "))
+                }
+            }
             TypeErrorKind::OccursCheck { var, in_type } => {
                 Some(format!(
                     "This would create an infinite type {} = {}. Check your recursive type definitions.",
@@ -427,6 +488,41 @@ impl fmt::Display for TypeError {
                     "Missing field '{}' in record type {}",
                     field, record_type
                 )
+            }
+            TypeErrorKind::ExtraField {
+                type_name,
+                field,
+                suggestions,
+            } => {
+                write!(
+                    f,
+                    "Extra field '{}' in record literal for type '{}'",
+                    field, type_name
+                )?;
+                if !suggestions.is_empty() {
+                    write!(f, " (did you mean: {}?)", suggestions.join(", "))?;
+                }
+                Ok(())
+            }
+            TypeErrorKind::UnknownType { type_name } => {
+                write!(f, "Unknown type: '{}'", type_name)
+            }
+            TypeErrorKind::TypeProviderFieldMismatch {
+                type_name,
+                extra_fields,
+                missing_fields,
+            } => {
+                writeln!(f, "Field mismatch in type '{}' from type provider", type_name)?;
+                if !extra_fields.is_empty() {
+                    writeln!(f, "  Extra fields: {}", extra_fields.join(", "))?;
+                }
+                if !missing_fields.is_empty() {
+                    write!(f, "  Missing fields: {}", missing_fields.join(", "))?;
+                } else {
+                    // Remove trailing newline if no missing fields
+                    write!(f, "")?;
+                }
+                Ok(())
             }
             TypeErrorKind::Custom { message } => {
                 write!(f, "{}", message)
