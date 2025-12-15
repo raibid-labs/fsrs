@@ -40,6 +40,7 @@
 
 use crate::ast::{BinOp, Expr, Import, Literal, MatchArm, ModuleDef, ModuleItem, Pattern, Program};
 use crate::modules::ModuleRegistry;
+use crate::provider_resolver::ProviderResolver;
 use crate::types::{Type, TypeEnv};
 use fusabi_vm::chunk::Chunk;
 use fusabi_vm::closure::Closure;
@@ -76,6 +77,8 @@ pub enum CompileError {
     BreakOutsideLoop,
     /// Continue statement used outside of loop
     ContinueOutsideLoop,
+    /// Type provider resolution error
+    ProviderError(String),
 }
 
 impl fmt::Display for CompileError {
@@ -117,6 +120,9 @@ impl fmt::Display for CompileError {
             CompileError::ContinueOutsideLoop => {
                 write!(f, "Continue statement used outside of loop")
             }
+            CompileError::ProviderError(msg) => {
+                write!(f, "Type provider error: {}", msg)
+            }
         }
     }
 }
@@ -130,7 +136,6 @@ pub type CompileResult<T> = Result<T, CompileError>;
 ///
 /// Controls various aspects of the compilation process, including
 /// optional type checking and strictness levels.
-#[derive(Debug, Clone)]
 pub struct CompileOptions {
     /// Enable type checking before compilation
     pub enable_type_checking: bool,
@@ -138,6 +143,19 @@ pub struct CompileOptions {
     pub strict_mode: bool,
     /// Allow type warnings (only relevant if enable_type_checking is true)
     pub allow_warnings: bool,
+    /// Optional provider resolver for type provider declarations
+    pub provider_resolver: Option<ProviderResolver>,
+}
+
+impl std::fmt::Debug for CompileOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompileOptions")
+            .field("enable_type_checking", &self.enable_type_checking)
+            .field("strict_mode", &self.strict_mode)
+            .field("allow_warnings", &self.allow_warnings)
+            .field("provider_resolver", &self.provider_resolver.is_some())
+            .finish()
+    }
 }
 
 impl Default for CompileOptions {
@@ -146,6 +164,7 @@ impl Default for CompileOptions {
             enable_type_checking: false, // Backward compatible - type checking is opt-in
             strict_mode: false,
             allow_warnings: true,
+            provider_resolver: None,
         }
     }
 }
@@ -379,10 +398,58 @@ impl Compiler {
     /// 2. Apply imports to the current environment
     /// 3. Compile the main expression (if present)
     pub fn compile_program(program: &Program) -> CompileResult<Chunk> {
-        let mut compiler = Compiler::new();
+        Self::compile_program_with_options(program, CompileOptions::default())
+    }
+
+    /// Compile a complete program with custom options
+    ///
+    /// This function supports:
+    /// - Type provider resolution (when provider_resolver is set)
+    /// - Optional type checking
+    /// - Module registration and imports
+    ///
+    /// Phases:
+    /// 1. Resolve type providers (if resolver is provided)
+    /// 2. Register all modules and their bindings
+    /// 3. Apply imports to the current environment
+    /// 4. Optional type checking
+    /// 5. Compile the main expression (if present)
+    pub fn compile_program_with_options(
+        program: &Program,
+        options: CompileOptions,
+    ) -> CompileResult<Chunk> {
+        let mut compiler = Compiler::new_with_options(options);
         let mut registry = ModuleRegistry::with_stdlib();
 
-        // Phase 1: Register all modules
+        // Phase 1: Resolve type providers in top-level items
+        // This collects all type provider declarations and resolves them
+        if let Some(ref resolver) = compiler.options.provider_resolver {
+            for item in &program.items {
+                if let ModuleItem::TypeDef(crate::ast::TypeDefinition::Provider(decl)) = item {
+                    match resolver.resolve(decl) {
+                        Ok(resolved) => {
+                            // Inject resolved types into type environment
+                            if let Some(ref mut env) = compiler.type_env {
+                                resolver.inject_into_env(&resolved, env);
+                            } else {
+                                // Create new environment if none exists
+                                let mut env = TypeEnv::new();
+                                resolver.inject_into_env(&resolved, &mut env);
+                                compiler.type_env = Some(env);
+                            }
+                        }
+                        Err(e) => {
+                            return Err(CompileError::ProviderError(format!(
+                                "Resolution failed for {}: {}",
+                                decl.name, e
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Register all modules
         for module in &program.modules {
             compiler.register_module(&mut registry, module)?;
         }
@@ -390,12 +457,12 @@ impl Compiler {
         // Store registry for qualified name lookups
         compiler.module_registry = Some(registry);
 
-        // Phase 2: Apply imports to environment
+        // Phase 3: Apply imports to environment
         for import in &program.imports {
             compiler.apply_import(import)?;
         }
 
-        // Phase 3: Compile top-level items and main expression
+        // Phase 4: Compile top-level items and main expression
         compiler.compile_top_level_items(&program.items, &program.main_expr)?;
 
         compiler.emit(Instruction::Return);
@@ -438,12 +505,16 @@ impl Compiler {
                         crate::ast::TypeDefinition::Du(du) => {
                             crate::modules::TypeDefinition::Du(du.clone())
                         }
+                        crate::ast::TypeDefinition::Provider(p) => {
+                            crate::modules::TypeDefinition::Provider(p.clone())
+                        }
                     };
 
                     // Extract type name based on definition
                     let type_name = match type_def {
                         crate::ast::TypeDefinition::Record(r) => r.name.clone(),
                         crate::ast::TypeDefinition::Du(du) => du.name.clone(),
+                        crate::ast::TypeDefinition::Provider(p) => p.name.clone(),
                     };
 
                     types.insert(type_name, module_type_def);
